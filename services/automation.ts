@@ -19,8 +19,9 @@ export const automationService = {
     let texto = modelo.modeloTexto;
 
     // Helper para formatar moeda BRL
+    // Alterado para retornar apenas o número (ex: 1.250,00) para permitir maior flexibilidade no template
     const formatMoney = (val: number) => {
-      return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
     // 2. Substituir Variáveis

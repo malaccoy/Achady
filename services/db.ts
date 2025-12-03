@@ -69,7 +69,24 @@ export const db = {
     // Inicializar dados padrão
     db.salvarApiKeyShopee(newUser.id, '', '');
     db.alternarAutomacao(newUser.id, false, 15);
-    db.salvarModeloMensagem(newUser.id, '🔥 OFERTA IMPERDÍVEL! 🔥\n\n{{titulo}}\n\n💰 Apenas: {{preco}}\n🏷 De: {{precoOriginal}}\n🎟 Desconto: {{desconto}}\n\n🛒 Compre aqui: {{link}}');
+    
+    // Modelo de Mensagem Atualizado conforme solicitado
+    const novoModelo = `🔥 A SHÓ TÁ DEMAISSSS 😭🔥
+
+🎁 {{titulo}}
+
+⚠️ De: R$ {{precoOriginal}}
+🔥 Por: R$ {{preco}}
+
+🛒 Compre aqui:
+{{link}}
+
+🎫 Cupons disponíveis aqui:
+https://s.shopee.com.br/9fDVlcSL5R
+
+*O preço e disponibilidade do produto podem variar, pois as promoções são por tempo limitado.*`;
+
+    db.salvarModeloMensagem(newUser.id, novoModelo);
 
     return { success: true };
   },
