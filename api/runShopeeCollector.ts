@@ -267,11 +267,12 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
       // Determinar Endpoint WPPConnect (Imagem ou Texto)
+      // CORREÇÃO: Usar rotas padrão do WPPConnect Server (sem prefixo messages/)
       const hasImage = !!product.imagem;
-      const route = hasImage ? 'messages/send-image' : 'messages/send-text';
+      const route = hasImage ? 'send-image' : 'send-message';
       
       // Constroi URL: BASE_URL + /api/ + SESSION + / + route
-      // Ex: https://carmel-liturgical-degressively.ngrok-free.dev/api/achady/messages/send-image
+      // Ex: https://carmel-liturgical-degressively.ngrok-free.dev/api/achady/send-image
       const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
 
       // Montar Payload WPPConnect
@@ -280,7 +281,8 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
             phone: g.linkWhatsapp, // Deve ser o ID do grupo (ex: 123456@g.us)
             path: product.imagem,
             caption: message,
-            isGroup: true
+            isGroup: true,
+            filename: 'oferta.jpg' // Adicionado para melhor compatibilidade
           }
         : {
             phone: g.linkWhatsapp,
