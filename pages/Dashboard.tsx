@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
-import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, X } from 'lucide-react';
+import { ConnectWhatsAppModal } from '../components/ConnectWhatsAppModal';
+import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
 
@@ -9,16 +10,11 @@ const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
 
-const API_URL = "https://achady-whatsapp-server.onrender.com";
-
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  // Ref for polling
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // State
   const [settings, setSettings] = useState<AppSettings>({
     shopeeApiKey: '',
@@ -41,16 +37,6 @@ export const Dashboard: React.FC = () => {
 
   // WhatsApp QR Modal State
   const [showQrModal, setShowQrModal] = useState(false);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [statusText, setStatusText] = useState('Aguardando...');
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
-    };
-  }, []);
 
   useEffect(() => {
     const userId = db.getCurrentUserId();
@@ -104,69 +90,10 @@ export const Dashboard: React.FC = () => {
     }, 800);
   };
 
-  const handleConnectWhatsapp = async () => {
+  const handleWhatsappConnected = () => {
     if (!currentUserId) return;
-    setQrLoading(true);
-    setShowQrModal(true);
-    setQrCodeUrl('');
-    setStatusText('Gerando QR...');
-
-    try {
-      // 1. Iniciar sessão no servidor
-      await fetch(`${API_URL}/generate-qr/${currentUserId}`);
-      
-      // 2. Começar a buscar QR continuamente
-      pollQrCode();
-    } catch (error) {
-      console.error("Erro ao iniciar conexão WhatsApp:", error);
-      setStatusText('Erro ao conectar servidor.');
-      setQrLoading(false);
-    }
-  };
-
-  const pollQrCode = async () => {
-    // If user is missing or modal closed (though difficult to check stale state in closure), try fetch
-    // Real check for modal open state would require a ref or verifying component mounted
-    if (!currentUserId) return;
-
-    try {
-      const res = await fetch(`${API_URL}/qr/${currentUserId}`);
-      const data = await res.json();
-
-      // Caso venha QR → exibir imagem
-      if (data.status === 'qr' && data.qr) {
-        setQrCodeUrl(data.qr);
-        setQrLoading(false);
-        setStatusText('Escaneie o QR com seu WhatsApp');
-        // Continue polling
-        pollRef.current = setTimeout(pollQrCode, 2000);
-      } 
-      // Caso esteja conectado
-      else if (data.status === 'ready') {
-        setStatusText('✅ WhatsApp conectado!');
-        db.setWhatsappStatus(currentUserId, 'CONNECTED');
-        setSettings(prev => ({ ...prev, whatsappConnected: true }));
-        // Pequeno delay para usuário ver a mensagem de sucesso
-        setTimeout(() => {
-          handleCloseModal();
-        }, 1500);
-      } else {
-        // Ainda aguardando ou inicializando
-        pollRef.current = setTimeout(pollQrCode, 2000);
-      }
-    } catch (error) {
-      console.error("Erro no polling do QR Code:", error);
-      // Tenta novamente em caso de erro de rede momentâneo
-      pollRef.current = setTimeout(pollQrCode, 2000);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setShowQrModal(false);
-    if (pollRef.current) {
-      clearTimeout(pollRef.current);
-      pollRef.current = null;
-    }
+    db.setWhatsappStatus(currentUserId, 'CONNECTED');
+    setSettings(prev => ({ ...prev, whatsappConnected: true }));
   };
 
   const handleDisconnectWhatsapp = () => {
@@ -184,7 +111,7 @@ export const Dashboard: React.FC = () => {
   const handleSaveTemplate = () => {
     if (!currentUserId) return;
     db.salvarModeloMensagem(currentUserId, settings.messageTemplate);
-    alert('Modelo salvo com sucesso!'); // In a real app, use a toast
+    alert('Modelo salvo com sucesso!');
   };
 
   const handleAddGroup = () => {
@@ -271,7 +198,7 @@ export const Dashboard: React.FC = () => {
               </Button>
             ) : (
               <Button 
-                onClick={handleConnectWhatsapp} 
+                onClick={() => setShowQrModal(true)} 
                 fullWidth
                 id="btnConnect"
               >
@@ -476,57 +403,13 @@ export const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* QR Code Modal Overlay */}
-      {showQrModal && (
-        <div id="qrModal" className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
-            
-            {/* Modal Header */}
-            <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
-               <h2 className="font-display font-semibold text-slate-800">Conecte seu WhatsApp</h2>
-               <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 transition-colors">
-                  <X className="w-5 h-5" />
-               </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-8 flex flex-col items-center justify-center text-center">
-              
-              {qrLoading ? (
-                <div className="py-12 flex flex-col items-center gap-4">
-                  <div className="w-12 h-12 border-4 border-achady-purple/30 border-t-achady-purple rounded-full animate-spin"></div>
-                  <p className="text-sm text-slate-500 font-medium">{statusText || 'Gerando sessão segura...'}</p>
-                </div>
-              ) : (
-                <>
-                  <div className="mb-6 relative">
-                    <img 
-                      id="qrImage"
-                      src={qrCodeUrl} 
-                      alt="WhatsApp QR Code" 
-                      className="w-[260px] h-[260px] rounded-xl border-2 border-slate-100 shadow-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-3 max-w-xs">
-                    <h3 className="font-medium text-slate-900">Escaneie o QR Code acima</h3>
-                    <ol className="text-sm text-slate-500 text-left space-y-2 list-decimal list-inside bg-slate-50 p-4 rounded-lg">
-                      <li>Abra o WhatsApp no seu celular</li>
-                      <li>Toque em <strong>Configurações</strong> ou menu</li>
-                      <li>Selecione <strong>Aparelhos conectados</strong></li>
-                      <li>Aponte a câmera para esta tela</li>
-                    </ol>
-                  </div>
-                  
-                  <p id="statusText" className="mt-6 text-xs text-achady-purple font-semibold animate-pulse">
-                    {statusText}
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* WhatsApp Connect Modal */}
+      <ConnectWhatsAppModal 
+        open={showQrModal} 
+        onClose={() => setShowQrModal(false)}
+        userId={currentUserId || ''}
+        onConnected={handleWhatsappConnected}
+      />
 
     </div>
   );
