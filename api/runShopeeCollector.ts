@@ -1,22 +1,26 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import * as crypto from 'crypto';
 
-// --- Interfaces & Types ---
+// --- Types & Interfaces ---
 
 interface ShopeeProduct {
   id: string;
   titulo: string;
   precoPromocional: number;
   precoOriginal: number;
-  desconto: string;
+  desconto: string; // ex: "35%"
+  descontoValor: number; // ex: 35
   imagem: string;
   linkAfiliado: string;
 }
 
-interface WhatsAppGroup {
+interface Grupo {
   id: string;
-  name: string;
-  whatsappId: string; // ID used by the bot
+  nome: string;
+  linkWhatsapp: string; // Identificador do grupo
+  categoria: string; // 'moda' | 'beleza' | 'casa' | etc
+  ativo: boolean;
 }
 
 interface ExecutionResult {
@@ -24,65 +28,142 @@ interface ExecutionResult {
   totalFound: number;
   totalFiltered: number;
   messagesSent: number;
-  errors: string[];
+  errors: Array<{ local: string; msg: string }>;
   timestamp: string;
 }
 
-// --- Configuration ---
-// In a real environment, these come from process.env
-// We access the same keys that would be in your AppSettings
+// --- Configuration & Secrets ---
+
 const CONFIG = {
-  APP_ID: process.env.SHOPEE_APP_ID || '', 
+  APP_ID: process.env.SHOPEE_APP_ID || '',
   APP_SECRET: process.env.SHOPEE_APP_SECRET || '',
-  // Use a real endpoint for your bot, or a request bin for testing
-  BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post',
+  BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post', // URL do seu Robô de WhatsApp
 };
 
-// --- Core Logic Functions ---
+// --- Helper: Mapeamento de Categorias ---
 
-/**
- * 1. Fetch Shopee Promotions
- * Connects to Shopee GraphQL API using configured credentials.
- */
-async function fetchShopeePromotions(): Promise<ShopeeProduct[]> {
-  console.log("📡 Fetching promotions from Shopee...");
+const CATEGORY_KEYWORDS: Record<string, string> = {
+  'moda': 'moda roupas feminina',
+  'beleza': 'maquiagem beleza skincare',
+  'casa': 'casa decoração organização',
+  'cozinha': 'utensilios cozinha eletroportateis',
+  'esportes': 'esporte fitness academia',
+  'eletronicos': 'eletronicos fone celular',
+  'brinquedos': 'brinquedos infantil jogos',
+  'pet': 'pet shop cachorro gato',
+  'geral': 'ofertas promoção',
+};
+
+// --- 1. Database Simulation (Server Side) ---
+// Como estamos no Serverless da Vercel, não temos acesso ao localStorage do navegador.
+// Aqui simulamos a leitura do banco. Em produção, substitua por SQL ou conexão com banco real.
+
+async function getActiveGroupsWithCategory(): Promise<Grupo[]> {
+  // SIMULAÇÃO: Retorna grupos fixos para teste se não houver ENV configurada
+  // Em produção, você faria: await sql`SELECT * FROM grupos WHERE ativo = true`
   
+  return [
+    {
+      id: 'grp_01',
+      nome: 'Ofertas Moda VIP',
+      linkWhatsapp: process.env.WHATSAPP_GROUP_ID || '120363025225@g.us', // Use ID real aqui
+      categoria: 'moda',
+      ativo: true
+    },
+    {
+      id: 'grp_02',
+      nome: 'Promoções Tech',
+      linkWhatsapp: 'fake_group_id_tech', 
+      categoria: 'eletronicos',
+      ativo: true
+    },
+    {
+      id: 'grp_03',
+      nome: 'Achadinhos de Casa',
+      linkWhatsapp: 'fake_group_id_home',
+      categoria: 'casa',
+      ativo: true
+    }
+  ];
+}
+
+async function getMessageTemplate(): Promise<string> {
+  // Simula busca no banco
+  return `🔥 A SHÓ TÁ DEMAISSSS 😭🔥
+
+🎁 {{titulo}}
+
+⚠️ De: R$ {{precoOriginal}}
+🔥 Por: R$ {{preco}}
+📉 Desconto: {{desconto}} OFF
+
+🛒 Compre aqui:
+{{link}}
+
+🎫 Pegue Cupons: https://shopee.com.br/m/cupom`;
+}
+
+// --- 2. Shopee API Logic ---
+
+function generateSignature(payload: string, timestamp: number): string {
+  // Algoritmo: SHA256(appId + timestamp + payload + appSecret)
+  const rawString = `${CONFIG.APP_ID}${timestamp}${payload}${CONFIG.APP_SECRET}`;
+  return crypto.createHash('sha256').update(rawString).digest('hex');
+}
+
+async function fetchShopeeOffersByCategory(categoryKey: string): Promise<ShopeeProduct[]> {
+  const keyword = CATEGORY_KEYWORDS[categoryKey] || 'ofertas';
+  console.log(`📡 Fetching Shopee for category: [${categoryKey}] -> keyword: "${keyword}"`);
+
   if (!CONFIG.APP_ID || !CONFIG.APP_SECRET) {
-    console.warn("⚠️ Shopee Credentials (SHOPEE_APP_ID/SECRET) not found in env.");
-    // Returning empty array to prevent crash, but logging warning
+    console.warn("⚠️ Shopee App ID/Secret not configured.");
     return [];
   }
 
-  const url = 'https://open-api.affiliate.shopee.com.br/graphql';
-  const headers = {
-    'Content-Type': 'application/json',
-    'App-ID': CONFIG.APP_ID,
-    'App-Secret': CONFIG.APP_SECRET
-  };
+  const timestamp = Math.floor(Date.now() / 1000);
+  const endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-  // Same query as client-side service
   const query = `
-    {
-      getOfferList(categoryId: 0, page: 1, size: 50) {
-        productName
-        offerPrice
-        originalPrice
-        discount
-        image
-        offerUrl
+    query {
+      productOfferV2(
+        keyword: "${keyword}",
+        page: 1,
+        limit: 20,
+        sortType: 2 
+      ) {
+        nodes {
+          productName
+          price
+          priceMin
+          priceMax
+          imageUrl
+          offerLink
+          ratingStar
+        }
       }
     }
   `;
 
+  // Payload para assinatura (body cru)
+  const payload = JSON.stringify({ query });
+  const signature = generateSignature(payload, timestamp);
+
+  // Headers exatos da documentação Shopee Open API
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `SHA256 Credential=${CONFIG.APP_ID},Timestamp=${timestamp},Signature=${signature}`
+  };
+
   try {
-    const response = await fetch(url, {
+    const response = await fetch(endpoint, {
       method: 'POST',
-      headers: headers,
-      body: JSON.stringify({ query })
+      headers,
+      body: payload
     });
 
     if (!response.ok) {
-      throw new Error(`Shopee API responded with status: ${response.status}`);
+      const txt = await response.text();
+      throw new Error(`HTTP ${response.status}: ${txt}`);
     }
 
     const json = await response.json();
@@ -92,112 +173,61 @@ async function fetchShopeePromotions(): Promise<ShopeeProduct[]> {
       return [];
     }
 
-    const rawList = json.data?.getOfferList || [];
-    
-    return rawList.map((item: any, index: number) => ({
-      // Generates a pseudo-ID if none exists
-      id: `shp_${index}_${Date.now()}`,
-      titulo: item.productName || 'Oferta Shopee',
-      precoPromocional: parseFloat(item.offerPrice) || 0,
-      precoOriginal: parseFloat(item.originalPrice) || 0,
-      desconto: item.discount || '0%',
-      imagem: item.image || '',
-      linkAfiliado: item.offerUrl || ''
-    }));
+    // Adaptar resposta (a estrutura pode variar levemente dependendo da versão da API)
+    // Usando estrutura genérica baseada em 'nodes' comum em GQL
+    const nodes = json.data?.productOfferV2?.nodes || [];
 
-  } catch (error) {
-    console.error("❌ Network Error fetching Shopee:", error);
+    return nodes.map((node: any, idx: number) => {
+      // Tentar inferir preço original se a API não entregar explícito
+      // A Shopee as vezes manda priceMin/Max. Vamos assumir priceMax como original
+      // e price como promocional para calculo de desconto se não vier explícito.
+      
+      const precoAtual = node.price || node.priceMin || 0;
+      const precoOrig = node.priceMax && node.priceMax > precoAtual ? node.priceMax : (precoAtual * 1.4); // fallback fake orig
+      
+      const descontoVal = precoOrig > 0 ? Math.round(((precoOrig - precoAtual) / precoOrig) * 100) : 0;
+
+      return {
+        id: `shp_${Date.now()}_${idx}`,
+        titulo: node.productName || 'Oferta Shopee',
+        precoPromocional: precoAtual,
+        precoOriginal: precoOrig,
+        desconto: `${descontoVal}%`,
+        descontoValor: descontoVal,
+        imagem: node.imageUrl || '',
+        linkAfiliado: node.offerLink || ''
+      };
+    });
+
+  } catch (err: any) {
+    console.error(`❌ Error fetching category ${categoryKey}:`, err.message);
     return [];
   }
 }
 
-/**
- * 2. Filter Promotions
- * Applies rules: Discount > 30%
- */
-function filterPromotions(products: ShopeeProduct[]): ShopeeProduct[] {
-  return products.filter(p => {
-    // Parse discount string (e.g. "40%" -> 40)
-    const discountValue = parseFloat(p.desconto.replace('%', ''));
-    
-    // Rule: Must have at least 30% discount
-    const isGoodDiscount = !isNaN(discountValue) && discountValue >= 30;
-    
-    // Optional Rule: Price must be valid
-    const isValidPrice = p.precoPromocional > 0;
+// --- 3. Filtering Logic ---
 
-    return isGoodDiscount && isValidPrice;
+function filterProducts(products: ShopeeProduct[]): ShopeeProduct[] {
+  return products.filter(p => {
+    // Regra 1: Desconto >= 30%
+    const hasGoodDiscount = p.descontoValor >= 30;
+    
+    // Regra 2: Preço mínimo de R$ 10,00 (evitar coisas muito baratas que não geram comissão)
+    const hasMinPrice = p.precoPromocional >= 10;
+
+    // Regra 3: Validar link e imagem
+    const isValid = p.linkAfiliado && p.imagem;
+
+    return hasGoodDiscount && hasMinPrice && isValid;
   });
 }
 
-/**
- * 3. Save Promotions (Mock DB)
- * Since Serverless functions can't access localStorage, we mock this.
- * In production, replace with: await sql`INSERT INTO promotions ...`
- */
-async function savePromotions(products: ShopeeProduct[]) {
-  if (products.length === 0) return;
-  console.log(`💾 Persisting ${products.length} offers to database... (Mocked)`);
-  // TODO: Connect to Postgres/MongoDB here
-}
+// --- 4. Message Building ---
 
-/**
- * 4. Fetch Active Groups
- * Returns list of groups to receive messages.
- */
-async function fetchActiveGroups(): Promise<WhatsAppGroup[]> {
-  // In production, fetch from DB: await db.groups.find({ status: 'active' })
-  // Here we assume 1 demo group or read from ENV
-  const groups: WhatsAppGroup[] = [];
-
-  if (process.env.WHATSAPP_GROUP_ID) {
-    groups.push({
-      id: 'grp_env_1',
-      name: 'Grupo Promoções (Env)',
-      whatsappId: process.env.WHATSAPP_GROUP_ID
-    });
-  } else {
-    // Fallback for testing logic flow
-    groups.push({
-      id: 'grp_demo_1',
-      name: 'Grupo Demo',
-      whatsappId: '120363025225@g.us'
-    });
-  }
-
-  return groups;
-}
-
-/**
- * 5. Fetch Message Template
- * Retrieves the user configured template.
- */
-async function fetchMessageTemplate(): Promise<string> {
-  // Fallback template (same as db.ts default)
-  return `🔥 A SHÓ TÁ DEMAISSSS 😭🔥
-
-🎁 {{titulo}}
-
-⚠️ De: R$ {{precoOriginal}}
-🔥 Por: R$ {{preco}}
-
-🛒 Compre aqui:
-{{link}}
-
-🎫 Cupons: https://shopee.com.br/m/cupom
-
-*Promoção por tempo limitado.*`;
-}
-
-/**
- * 6. Build Message
- * Replaces placeholders with real product data.
- */
-function buildMessageFromTemplate(template: string, product: ShopeeProduct): string {
+function buildMessage(template: string, product: ShopeeProduct): string {
   let msg = template;
   
-  const formatMoney = (val: number) => 
-    val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatMoney = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
   msg = msg.replace(/{{titulo}}/g, product.titulo);
   msg = msg.replace(/{{preco}}/g, formatMoney(product.precoPromocional));
@@ -208,100 +238,126 @@ function buildMessageFromTemplate(template: string, product: ShopeeProduct): str
   return msg;
 }
 
-/**
- * 7. Send to WhatsApp Bot
- * Dispatches the message via HTTP request to the bot service.
- */
-async function sendToWhatsAppBot(group: WhatsAppGroup, message: string, product: ShopeeProduct) {
-  // If no bot URL configured, just log
-  if (CONFIG.BOT_URL.includes('httpbin')) {
-    console.log(`[SIMULATION] Sending to ${group.name}: ${product.titulo.substring(0, 20)}...`);
-    return { success: true, simulated: true };
-  }
+// --- 5. Dispatch Logic ---
 
-  try {
-    const payload = {
-      groupId: group.whatsappId,
-      message: message,
-      imageUrl: product.imagem
-    };
+async function dispatchOffersByGroups(
+  productsByCategory: Map<string, ShopeeProduct[]>,
+  groups: Grupo[],
+  template: string
+): Promise<{ sent: number; errors: any[] }> {
+  
+  let sentCount = 0;
+  const errors: any[] = [];
 
-    const res = await fetch(CONFIG.BOT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) throw new Error(`Bot API error: ${res.status}`);
+  for (const group of groups) {
+    // 1. Descobrir produtos para este grupo
+    const categoryKey = group.categoria || 'geral';
     
-    return { success: true };
+    // Fallback: se o grupo é 'geral', pode pegar produtos de 'moda' ou 'eletronicos' randomicamente
+    // ou pegar da chave 'geral' se tivermos buscado.
+    const products = productsByCategory.get(categoryKey) || productsByCategory.get('geral') || [];
 
-  } catch (error: any) {
-    console.error(`❌ Failed to send to ${group.name}:`, error.message);
-    return { success: false, error: error.message };
+    if (products.length === 0) {
+      console.log(`⚠️ No products found for group ${group.nome} (cat: ${categoryKey})`);
+      continue;
+    }
+
+    // 2. Selecionar Top 1 produto para enviar (para não fazer spam no loop)
+    // Em produção, você pode enviar mais ou rotacionar.
+    const productToSend = products[0]; 
+
+    // 3. Montar mensagem
+    const messageBody = buildMessage(template, productToSend);
+
+    // 4. Enviar
+    try {
+      if (CONFIG.BOT_URL.includes('httpbin')) {
+        console.log(`[SIMULADO] Enviando para ${group.nome}: ${productToSend.titulo.substring(0, 30)}...`);
+        sentCount++;
+      } else {
+        const payload = {
+          groupId: group.linkWhatsapp, // ID do grupo no WhatsApp
+          message: messageBody,
+          imageUrl: productToSend.imagem
+        };
+
+        const res = await fetch(CONFIG.BOT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) sentCount++;
+        else errors.push({ local: `WhatsApp ${group.nome}`, msg: `HTTP ${res.status}` });
+      }
+    } catch (e: any) {
+      errors.push({ local: `WhatsApp ${group.nome}`, msg: e.message });
+    }
   }
+
+  return { sent: sentCount, errors };
 }
 
-// --- Main Handler (The "Controller") ---
+// --- MAIN HANDLER ---
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const log: string[] = [];
-  const errors: string[] = [];
-  let sentCount = 0;
+  const result: ExecutionResult = {
+    ok: false,
+    totalFound: 0,
+    totalFiltered: 0,
+    messagesSent: 0,
+    errors: [],
+    timestamp: new Date().toISOString()
+  };
 
   try {
-    console.log("🚀 Starting runShopeeCollector...");
-    
-    // a) Fetch
-    const allProducts = await fetchShopeePromotions();
-    log.push(`Found ${allProducts.length} products on Shopee.`);
+    console.log("🚀 Iniciando RunShopeeCollector v2...");
 
-    // b) Filter
-    const filteredProducts = filterPromotions(allProducts);
-    log.push(`Filtered down to ${filteredProducts.length} best offers (>30% OFF).`);
+    // 1. Buscar Grupos Ativos
+    const activeGroups = await getActiveGroupsWithCategory();
+    if (activeGroups.length === 0) {
+      result.ok = true;
+      return res.status(200).json(result);
+    }
 
-    // c) Save
-    await savePromotions(filteredProducts);
+    // 2. Extrair Categorias Únicas
+    const uniqueCategories = Array.from(new Set(activeGroups.map(g => g.categoria || 'geral')));
+    console.log(`📋 Categorias identificadas: ${uniqueCategories.join(', ')}`);
 
-    // d) Get Groups
-    const groups = await fetchActiveGroups();
-    log.push(`Targeting ${groups.length} active groups.`);
+    // 3. Buscar e Filtrar Produtos por Categoria
+    const productsMap = new Map<string, ShopeeProduct[]>();
 
-    // e) Get Template
-    const template = await fetchMessageTemplate();
+    for (const cat of uniqueCategories) {
+      const rawOffers = await fetchShopeeOffersByCategory(cat);
+      result.totalFound += rawOffers.length;
 
-    // f) & g) Generate & Send
-    // Limit to top 3 products per run to avoid spamming while testing
-    const productsToSend = filteredProducts.slice(0, 3);
-    
-    for (const product of productsToSend) {
-      const message = buildMessageFromTemplate(template, product);
-      
-      for (const group of groups) {
-        const result = await sendToWhatsAppBot(group, message, product);
-        if (result.success) sentCount++;
-        else errors.push(`Failed to send ${product.id} to ${group.name}`);
+      const filtered = filterProducts(rawOffers);
+      result.totalFiltered += filtered.length;
+
+      if (filtered.length > 0) {
+        productsMap.set(cat, filtered);
       }
     }
 
-    const responseData: ExecutionResult = {
-      ok: true,
-      totalFound: allProducts.length,
-      totalFiltered: filteredProducts.length,
-      messagesSent: sentCount,
-      errors,
-      timestamp: new Date().toISOString()
-    };
+    // 4. Salvar Promoções (Placeholder para lógica de DB)
+    // await savePromotions(allFilteredProducts);
 
-    console.log("✅ Collector finished.", responseData);
-    return res.status(200).json(responseData);
+    // 5. Preparar Template
+    const template = await getMessageTemplate();
+
+    // 6. Despachar para Grupos
+    const dispatchResult = await dispatchOffersByGroups(productsMap, activeGroups, template);
+    
+    result.messagesSent = dispatchResult.sent;
+    result.errors = [...result.errors, ...dispatchResult.errors];
+    result.ok = true;
+
+    console.log("✅ Ciclo finalizado.", result);
+    return res.status(200).json(result);
 
   } catch (error: any) {
-    console.error("🔥 Critical Error in Collector:", error);
-    return res.status(500).json({
-      ok: false,
-      error: error.message || 'Unknown server error',
-      timestamp: new Date().toISOString()
-    });
+    console.error("🔥 Erro crítico no collector:", error);
+    result.errors.push({ local: 'General', msg: error.message });
+    return res.status(500).json(result);
   }
 }
