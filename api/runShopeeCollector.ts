@@ -42,7 +42,8 @@ const CONFIG = {
   // BASE_URL definida como raiz do domínio
   WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
   WPP_SESSION: 'Caio', // Sessão atualizada conforme solicitado
-  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSURETOKEN', // Token Bearer atualizado
+  // CORREÇÃO: O padrão oficial é THISISMYSECURETOKEN (com SECURE), corrigindo possível typo
+  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSECURETOKEN', 
 };
 
 // --- Helpers de Segurança de Tipos (Definitivos) ---
@@ -267,14 +268,17 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
       // Determinar Endpoint WPPConnect (Imagem ou Texto)
-      // Ajuste: Rotas oficiais geralmente são 'send-image' (raiz) e 'send-message' (ou messages/send-text customizado).
-      // Como 'messages/send-image' deu 404, usamos 'send-image'.
+      // Rotas sem prefixo 'messages/' na raiz da sessão, padrão oficial WPPConnect Server
       const hasImage = !!product.imagem;
-      const route = hasImage ? 'send-image' : 'messages/send-text';
+      const route = hasImage ? 'send-image' : 'send-message';
       
       // Constroi URL: BASE_URL + /api/ + SESSION + / + route
       // Ex: https://.../api/Caio/send-image
       const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
+
+      // Debug simples do token (mostrar só primeiros 4 caracteres)
+      const maskedToken = CONFIG.WPP_TOKEN.substring(0, 4) + '****';
+      console.log(`[WPP] Chamando URL: ${url} com Token: ${maskedToken}`);
 
       // Montar Payload WPPConnect
       const payload = hasImage 
