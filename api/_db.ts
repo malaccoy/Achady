@@ -1,4 +1,4 @@
-import { MessageLog } from '../types.js';
+import { MessageLog } from '../types';
 import * as crypto from 'crypto';
 
 // In-memory storage simulation for Vercel Serverless
