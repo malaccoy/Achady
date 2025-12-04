@@ -42,8 +42,8 @@ const CONFIG = {
   // BASE_URL definida como raiz do domínio
   WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
   WPP_SESSION: 'Caio', // Sessão atualizada conforme solicitado
-  // Revertendo para o token fornecido no snippet do usuário (com possível typo intencional no servidor)
-  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSURETOKEN', 
+  // Token corrigido para o padrão oficial do WPPConnect (com SECURE)
+  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSECURETOKEN', 
 };
 
 // --- Helpers de Segurança de Tipos (Definitivos) ---
