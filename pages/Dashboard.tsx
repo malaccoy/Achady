@@ -2,9 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
-import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, ExternalLink, Key } from 'lucide-react';
-import type { AppSettings, WhatsAppGroup } from '../types';
+import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, ExternalLink, Key, Tag } from 'lucide-react';
+import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
+
+const CATEGORIES: GroupCategory[] = [
+  'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
+];
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +27,7 @@ export const Dashboard: React.FC = () => {
   
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
   const [newGroupLink, setNewGroupLink] = useState('');
+  const [newGroupCategory, setNewGroupCategory] = useState<GroupCategory>('geral');
   
   // Shopee Auth State
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -57,7 +62,8 @@ export const Dashboard: React.FC = () => {
     setGroups(gruposData.map(g => ({
       id: g.idGrupoInterno,
       link: g.linkGrupo,
-      name: g.nomeGrupo || 'Grupo'
+      name: g.nomeGrupo || 'Grupo',
+      category: g.categoria || 'geral'
     })));
 
     setLoading(false);
@@ -93,14 +99,20 @@ export const Dashboard: React.FC = () => {
 
   const handleAddGroup = () => {
     if (!newGroupLink || !currentUserId) return;
-    const novoGrupoDb = db.adicionarGrupoWhatsApp(currentUserId, newGroupLink);
+    
+    // Add group with category
+    const novoGrupoDb = db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory);
+    
     const newGroupView: WhatsAppGroup = {
       id: novoGrupoDb.idGrupoInterno,
       link: novoGrupoDb.linkGrupo,
-      name: novoGrupoDb.nomeGrupo || 'Grupo'
+      name: novoGrupoDb.nomeGrupo || 'Grupo',
+      category: novoGrupoDb.categoria
     };
+    
     setGroups([...groups, newGroupView]);
     setNewGroupLink('');
+    setNewGroupCategory('geral'); // reset to default
   };
 
   const handleDeleteGroup = (id: string) => {
@@ -273,17 +285,39 @@ export const Dashboard: React.FC = () => {
           }
         >
           <div className="space-y-6">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <Input
+            <div className="flex flex-col md:flex-row gap-3 items-end">
+              <div className="flex-1 w-full">
+                 <Input
+                  label="Link do Grupo WhatsApp"
                   icon={<LinkIcon className="w-4 h-4" />}
-                  placeholder="Cole o link do grupo WhatsApp (https://chat...)"
+                  placeholder="https://chat.whatsapp.com/..."
                   value={newGroupLink}
                   onChange={(e) => setNewGroupLink(e.target.value)}
                 />
               </div>
+              
+              <div className="w-full md:w-48">
+                <label className="block text-sm font-medium text-slate-600 mb-2 ml-1">Categoria (Nicho)</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Tag className="w-4 h-4" />
+                  </div>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 bg-white text-slate-900 pl-10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-achady-purple/20 focus:border-achady-purple transition-all duration-200 appearance-none"
+                    value={newGroupCategory}
+                    onChange={(e) => setNewGroupCategory(e.target.value as GroupCategory)}
+                  >
+                    {CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <Button onClick={handleAddGroup} disabled={!newGroupLink}>
-                Adicionar
+                <Plus className="w-4 h-4 mr-1" /> Adicionar
               </Button>
             </div>
 
@@ -302,8 +336,15 @@ export const Dashboard: React.FC = () => {
                     </button>
                   </div>
                   <h4 className="font-semibold text-slate-900 truncate">{group.name}</h4>
-                  <a href={group.link} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-achady-purple flex items-center gap-1 mt-1 truncate">
-                    {group.link} <ExternalLink className="w-3 h-3" />
+                  
+                  <div className="mt-1 mb-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 uppercase tracking-wide">
+                      {group.category || 'Geral'}
+                    </span>
+                  </div>
+
+                  <a href={group.link} target="_blank" rel="noreferrer" className="text-xs text-slate-500 hover:text-achady-purple flex items-center gap-1 mt-2 truncate border-t border-slate-50 pt-2">
+                    <LinkIcon className="w-3 h-3" /> {group.link.replace('https://', '')}
                   </a>
                 </div>
               ))}

@@ -4,6 +4,7 @@ export interface WhatsAppGroup {
   id: string;
   link: string;
   name: string;
+  category: GroupCategory; // Added
 }
 
 export interface AutomationLog {
@@ -11,7 +12,7 @@ export interface AutomationLog {
   timestamp: string;
   groupName: string;
   messageSnippet: string;
-  status: 'success' | 'error' | 'info'; // Adicionado 'info' para preview/formatado
+  status: 'success' | 'error' | 'info'; 
 }
 
 export interface AppSettings {
@@ -50,12 +51,17 @@ export interface TabelaModeloMensagem {
   ultimaAtualizacao: string;
 }
 
+// Nova definição de Categorias
+export type GroupCategory = 'moda' | 'beleza' | 'casa' | 'esportes' | 'eletronicos' | 'brinquedos' | 'pet' | 'cozinha' | 'geral';
+
 export interface TabelaGrupos {
   idGrupoInterno: string; // auto
   userId: string;
   linkGrupo: string;
-  // Extra field for UI display
-  nomeGrupo?: string; 
+  nomeGrupo?: string;
+  categoria: GroupCategory; // Novo campo obrigatório
+  ativo: boolean; // Novo campo implícito na especificação, default true
+  criadoEm: string; // Novo campo
 }
 
 export interface TabelaAutomacao {
@@ -69,7 +75,7 @@ export interface TabelaLogs {
   userId: string;
   grupo: string;
   mensagem: string;
-  status: 'sucesso' | 'erro' | 'formatado'; // Adicionado 'formatado'
+  status: 'sucesso' | 'erro' | 'formatado';
   dataHora: string;
 }
 

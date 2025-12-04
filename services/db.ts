@@ -5,7 +5,8 @@ import {
   TabelaModeloMensagem, 
   TabelaGrupos, 
   TabelaLogs,
-  TabelaAutomacao
+  TabelaAutomacao,
+  GroupCategory
 } from '../types';
 
 const KEYS = {
@@ -141,14 +142,21 @@ https://s.shopee.com.br/9fDVlcSL5R
   },
 
   // Insere linkGrupo na tabelaGrupos do usuário.
-  adicionarGrupoWhatsApp: (userId: string, linkGrupo: string) => {
+  // ATUALIZADO: Agora aceita categoria
+  adicionarGrupoWhatsApp: (userId: string, linkGrupo: string, categoria: GroupCategory) => {
     const table = getTable<TabelaGrupos>(KEYS.GRUPOS);
+    const count = table.filter(g => g.userId === userId).length + 1;
+    
     const novoGrupo: TabelaGrupos = {
       idGrupoInterno: Date.now().toString(),
       userId,
       linkGrupo,
-      nomeGrupo: `Grupo ${table.filter(g => g.userId === userId).length + 1}`
+      nomeGrupo: `Grupo ${count}`,
+      categoria: categoria,
+      ativo: true,
+      criadoEm: new Date().toISOString()
     };
+    
     table.push(novoGrupo);
     setTable(KEYS.GRUPOS, table);
     return novoGrupo;
@@ -165,7 +173,15 @@ https://s.shopee.com.br/9fDVlcSL5R
   // Recupera grupos (auxiliar para UI)
   getGrupos: (userId: string): TabelaGrupos[] => {
     const table = getTable<TabelaGrupos>(KEYS.GRUPOS);
-    return table.filter(r => r.userId === userId);
+    // Garante retrocompatibilidade se o campo categoria não existir em registros antigos
+    return table
+      .filter(r => r.userId === userId)
+      .map(g => ({
+        ...g,
+        categoria: g.categoria || 'geral', // Default fallback
+        ativo: g.ativo ?? true,
+        criadoEm: g.criadoEm || new Date().toISOString()
+      }));
   },
 
   // Salva na tabelaAutomacao: userId, estado, intervalo
