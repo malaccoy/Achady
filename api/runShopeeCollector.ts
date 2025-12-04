@@ -37,7 +37,11 @@ interface ExecutionResult {
 const CONFIG = {
   APP_ID: process.env.SHOPEE_APP_ID || '',
   APP_SECRET: process.env.SHOPEE_SECRET || '',
-  BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post',
+  
+  // WPPConnect Configuration (Ngrok)
+  WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev/api',
+  WPP_SESSION: 'achady', // Sessão padrão do robô
+  WPP_TOKEN: process.env.WPP_TOKEN || 'seu-token-aqui', // Token Bearer
 };
 
 // --- Helpers de Segurança de Tipos (Definitivos) ---
@@ -96,6 +100,7 @@ async function getActiveGroupsWithCategory(): Promise<Grupo[]> {
     {
       id: 'grp01',
       nome: 'Ofertas Moda',
+      // IMPORTANTE: Para WPPConnect, usar o ID do grupo (ex: 120363...@g.us)
       linkWhatsapp: process.env.WHATSAPP_GROUP_ID || '120363025225@g.us',
       categoria: 'moda',
       ativo: true
@@ -241,7 +246,7 @@ function buildMessage(template: string, p: ShopeeProduct): string {
     .replace(/{{link}}/g, link);
 }
 
-// --- Enviar para Grupos ---
+// --- Enviar para Grupos (WPPConnect) ---
 async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], template: string) {
   let sent = 0;
   const errors: any[] = [];
@@ -260,19 +265,43 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
     
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
-      // Verifica se é simulação ou envio real
-      if (!CONFIG.BOT_URL.includes("httpbin")) {
-        await fetch(CONFIG.BOT_URL, {
+      // Determinar Endpoint WPPConnect (Imagem ou Texto)
+      const hasImage = !!product.imagem;
+      // WPPConnect Endpoints: /api/{session}/messages/send-image OR /api/{session}/messages/send-text
+      const route = hasImage ? 'messages/send-image' : 'messages/send-text';
+      const url = `${CONFIG.WPP_BASE_URL}/${CONFIG.WPP_SESSION}/${route}`;
+
+      // Montar Payload WPPConnect
+      const payload = hasImage 
+        ? {
+            phone: g.linkWhatsapp, // Deve ser o ID do grupo (ex: 123456@g.us)
+            path: product.imagem,
+            caption: message,
+            isGroup: true
+          }
+        : {
+            phone: g.linkWhatsapp,
+            message: message,
+            isGroup: true
+          };
+
+      // Envia requisição
+      if (CONFIG.WPP_BASE_URL.includes("ngrok") || !url.includes("httpbin")) {
+        const response = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            groupId: g.linkWhatsapp,
-            message,
-            imageUrl: product.imagem
-          })
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${CONFIG.WPP_TOKEN}`
+          },
+          body: JSON.stringify(payload)
         });
+
+        if (!response.ok) {
+           const errText = await response.text();
+           throw new Error(`WPPConnect Error ${response.status}: ${errText}`);
+        }
       } else {
-        console.log(`[DRY RUN] Mensagem não enviada (URL padrão httpbin): \n${message}`);
+        console.log(`[DRY RUN] Mensagem simulada: \n${message}`);
       }
 
       sent++;
