@@ -1,5 +1,6 @@
 
 import { MessageLog } from '../types';
+import * as crypto from 'crypto';
 
 /**
  * SQL SCHEMA DEFINITION (PostgreSQL):
