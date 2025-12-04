@@ -272,13 +272,13 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
       const hasImage = !!product.imagem;
       const route = hasImage ? 'send-image' : 'send-message';
       
-      // Constroi URL: BASE_URL + /api/ + SESSION + / + TOKEN + / + route
-      // ATUALIZAÇÃO: Inserindo TOKEN no PATH conforme documentação (secretkey path param)
-      const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${CONFIG.WPP_TOKEN}/${route}`;
+      // Constroi URL: BASE_URL + /api/ + SESSION + / + route
+      // Revertido para o padrão (Token vai no Header) pois o path token gerou 404
+      const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
 
       // Debug simples do token (mostrar só primeiros 4 caracteres)
       const maskedToken = CONFIG.WPP_TOKEN.substring(0, 4) + '****';
-      console.log(`[WPP] Chamando URL: ${url} (Token no path)`);
+      console.log(`[WPP] Chamando URL: ${url} com Token: ${maskedToken}`);
 
       // Montar Payload WPPConnect
       const payload = hasImage 
