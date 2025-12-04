@@ -2,12 +2,24 @@ import express from "express";
 import cors from "cors";
 import pkg from "whatsapp-web.js";
 import QRCode from "qrcode";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Configuração para ES Modules (para usar __dirname)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const { Client, LocalAuth } = pkg;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// =======================================================
+// 📂 SERVIR FRONTEND (VITE BUILD)
+// =======================================================
+// Serve os arquivos estáticos gerados pelo 'npm run build' na pasta 'dist'
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Armazena sessões e QRs
 const sessions = {};
@@ -26,7 +38,7 @@ function createSession(sessionId) {
         authStrategy: new LocalAuth({ clientId: sessionId }),
         puppeteer: {
             headless: true,
-            // Importante para Railway/Docker: usa o Chrome instalado na imagem se a var de ambiente existir
+            // Importante para Railway/Docker: usa o Chrome instalado na imagem
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             args: [
                 "--no-sandbox",
@@ -70,45 +82,45 @@ function createSession(sessionId) {
 }
 
 // =======================================================
-// 🔥 ROTA PARA INICIAR SESSÃO
+// 🔥 API ROUTES
 // =======================================================
+
+// Rota GET legada (mantida por compatibilidade)
 app.get("/generate-qr/:sessionId", (req, res) => {
     const { sessionId } = req.params;
-
     createSession(sessionId);
-
     res.json({
         ok: true,
         message: "Sessão iniciada. Busque o QR em /qr/" + sessionId
     });
 });
 
-// =======================================================
-// 🔥 ROTA PARA PEGAR QR ATUAL
-// =======================================================
+// NOVA ROTA POST (Solicitada para integração)
+app.post("/start/:sessionId", (req, res) => {
+    const { sessionId } = req.params;
+    createSession(sessionId);
+    res.json({
+        ok: true,
+        message: "Sessão iniciada com sucesso via POST."
+    });
+});
+
 app.get("/qr/:sessionId", (req, res) => {
     const { sessionId } = req.params;
-
     if (!sessions[sessionId]) {
         return res.json({ qr: null, status: "no-session" });
     }
-
     res.json({
         qr: qrCodes[sessionId] || null,
         status: sessions[sessionId].status
     });
 });
 
-// =======================================================
-// 🔥 ROTA PARA ENVIAR MENSAGEM
-// =======================================================
 app.post("/enviarMensagem", async (req, res) => {
     const { sessionId, grupo, mensagem } = req.body;
-
     if (!sessions[sessionId]) {
         return res.status(400).json({ error: "Sessão não encontrada" });
     }
-
     try {
         await sessions[sessionId].client.sendMessage(grupo, mensagem);
         res.json({ ok: true });
@@ -117,11 +129,21 @@ app.post("/enviarMensagem", async (req, res) => {
     }
 });
 
-// =======================================================
-// 🌐 TESTE
-// =======================================================
-app.get("/", (req, res) => {
+// Health Check API
+app.get("/api/health", (req, res) => {
     res.send("Servidor WhatsApp Achady está rodando. 🚀");
+});
+
+// =======================================================
+// 🌐 SPA FALLBACK (REACT ROUTER)
+// =======================================================
+// Qualquer rota que não seja API será redirecionada para o index.html
+app.get("*", (req, res) => {
+    // Evita loop se tentar acessar API inexistente
+    if (req.path.startsWith('/qr/') || req.path.startsWith('/generate-qr/') || req.path.startsWith('/start/') || req.path.startsWith('/enviarMensagem')) {
+        return res.status(404).json({ error: "Endpoint não encontrado" });
+    }
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // =======================================================

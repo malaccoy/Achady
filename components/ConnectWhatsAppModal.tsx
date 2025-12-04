@@ -8,7 +8,8 @@ interface ConnectWhatsAppModalProps {
   onConnected: () => void;
 }
 
-const API_BASE = "https://achady-whatsapp-server.onrender.com";
+// Configuração da API Externa conforme solicitado
+const API_BASE = "http://72.60.228.212:3000"; 
 
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
   const [status, setStatus] = useState<'loading' | 'qr' | 'authenticated'>('loading');
@@ -19,9 +20,17 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
 
     const iniciarSessao = async () => {
       try {
-        await fetch(`${API_BASE}/generate-qr/${userId}`);
+        // Mudança para POST /start conforme solicitado
+        const response = await fetch(`${API_BASE}/start/${userId}`, {
+          method: "POST"
+        });
+        const data = await response.json();
+        
+        if (!data.ok) {
+          console.error("Erro ao iniciar sessão no servidor.");
+        }
       } catch (err) {
-        console.error("Erro ao iniciar sessão:", err);
+        console.error("Erro de conexão ao iniciar sessão:", err);
       }
     };
 
@@ -30,7 +39,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
       intervalId = setInterval(async () => {
         try {
           tentativas++;
-          if (tentativas > 60) { // Timeout após 2 minutos (60 * 2s)
+          if (tentativas > 60) { // Timeout após 2 minutos
             clearInterval(intervalId);
             return;
           }
@@ -63,8 +72,8 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     if (open && userId) {
       setStatus('loading');
       setQrImage(null);
-      iniciarSessao();
-      buscarQR();
+      iniciarSessao(); // 1. POST /start
+      buscarQR();      // 2. Loop GET /qr
     }
 
     return () => {
@@ -95,7 +104,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
           {status === 'loading' && (
             <div className="flex flex-col items-center gap-4 py-8">
               <Loader2 className="w-10 h-10 text-achady-purple animate-spin" />
-              <p className="text-slate-500 font-medium animate-pulse">Gerando QR Code...</p>
+              <p className="text-slate-500 font-medium animate-pulse">Iniciando sessão...</p>
             </div>
           )}
 
