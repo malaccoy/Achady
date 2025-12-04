@@ -70,15 +70,19 @@ function createSession(sessionId) {
     return sessions[sessionId];
 }
 
-// 🔹 ROTA POST /start (Solicitado pelo Google Studio Logic)
+// =======================================================
+// 🔥 ROTAS SOLICITADAS PELO SNIPPET (GOOGLE STUDIO)
+// =======================================================
+
+// 1. Iniciar Sessão
 app.post("/start/:sessionId", (req, res) => {
     const { sessionId } = req.params;
     createSession(sessionId);
-    // Retorna exatamente o que o frontend espera: { ok: true }
+    // Retorno simplificado conforme solicitado:
     res.json({ ok: true });
 });
 
-// 🔹 ROTA GET /qr (Solicitado pelo Google Studio Logic)
+// 2. Buscar QR Code
 app.get("/qr/:sessionId", (req, res) => {
     const { sessionId } = req.params;
     
@@ -92,7 +96,9 @@ app.get("/qr/:sessionId", (req, res) => {
     });
 });
 
-// Compatibilidade (Rota legada)
+// =======================================================
+
+// Rota legado de compatibilidade
 app.get("/generate-qr/:sessionId", (req, res) => {
     const { sessionId } = req.params;
     createSession(sessionId);

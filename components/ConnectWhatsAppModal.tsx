@@ -8,21 +8,23 @@ interface ConnectWhatsAppModalProps {
   onConnected: () => void;
 }
 
-// URL da VPS (Conforme solicitado)
+// URL da VPS definida no snippet
 const API_BASE = "http://72.60.228.212:3000"; 
 
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
   // Estados mapeados do Google Studio: whatsappStatus, qrCode
+  // whatsappStatus pode ser: 'idle' | 'loading' | 'qr' | 'error' | 'authenticated'
   const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'loading' | 'qr' | 'error' | 'authenticated'>('idle');
   const [qrCode, setQrCode] = useState<string | null>(null);
   
-  // Ref para controlar o loop e evitar memory leaks se fechar o modal
+  // Ref para evitar atualizações de estado se o componente desmontar
   const isMounted = useRef(false);
 
   useEffect(() => {
     isMounted.current = true;
 
     if (open) {
+      // Ao abrir, chama a função global: iniciarSessao
       iniciarSessao();
     }
 
@@ -31,19 +33,23 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     };
   }, [open]);
 
-  // 🔹 Função 1: Iniciar Sessão
+  // 🔹 Função 1: Iniciar Sessão (Baseado no snippet do Studio)
   async function iniciarSessao() {
     if (!isMounted.current) return;
+    
+    // State.set("whatsappStatus", "loading");
     setWhatsappStatus("loading");
     setQrCode(null);
 
     try {
+      // POST na rota /start/:id
       const res = await fetch(`${API_BASE}/start/${userId}`, {
         method: "POST",
       });
 
       const data = await res.json();
 
+      // if (data.ok === true) { carregarQRCode() }
       if (data.ok === true) {
         carregarQRCode();  
       } else {
@@ -55,7 +61,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     }
   }
 
-  // 🔹 Função 2: Carregar QR Code (Recursiva)
+  // 🔹 Função 2: Carregar QR Code (Baseado no snippet do Studio)
   async function carregarQRCode() {
     if (!isMounted.current) return;
 
@@ -63,31 +69,35 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
       const res = await fetch(`${API_BASE}/qr/${userId}`);
       const data = await res.json();
 
-      // Caso 1: Conectado (Status Ready)
+      // Verifica se já conectou (status: ready)
       if (data.status === 'ready' || data.status === 'authenticated') {
         setWhatsappStatus('authenticated');
         onConnected();
-        setTimeout(() => onClose(), 2000);
-        return; // Para o loop
+        setTimeout(() => {
+          if (isMounted.current) onClose();
+        }, 2000);
+        return; 
       }
 
-      // Caso 2: QR Code ainda não gerado ou nulo
+      // Se o QR ainda não estiver pronto (null ou undefined)
       if (!data.qr) {
-        // Tenta novamente em 1.5s
+        // setTimeout(carregarQRCode, 1500);
         if (isMounted.current) setTimeout(carregarQRCode, 1500);
         return;
       }
 
-      // Caso 3: QR Pronto
+      // QR pronto → armazenar no estado
+      // State.set("qrCode", data.qr);
       setQrCode(data.qr);
+      // State.set("whatsappStatus", "qr");
       setWhatsappStatus("qr");
 
-      // Continuamos buscando para saber quando o usuário escanear (virar 'ready')
-      if (isMounted.current) setTimeout(carregarQRCode, 2000);
+      // Continua buscando para saber quando o usuário ler o QR (virar ready)
+      if (isMounted.current) setTimeout(carregarQRCode, 1500);
 
     } catch (e) {
       console.log("Erro ao buscar QR:", e);
-      // Tenta novamente mesmo com erro (pode ser falha de rede momentânea)
+      // setTimeout(carregarQRCode, 1500);
       if (isMounted.current) setTimeout(carregarQRCode, 1500);
     }
   }
@@ -113,17 +123,17 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
         
         <h2 className="text-xl font-display font-bold text-slate-900 mb-1">Conectar WhatsApp</h2>
 
-        {/* --- ESTADOS DA INTERFACE (Mapeando show when) --- */}
+        {/* --- LÓGICA DE EXIBIÇÃO --- */}
 
-        {/* Show when = whatsappStatus === "loading" */}
+        {/* Estado: Carregando (Iniciando sessão) */}
         {whatsappStatus === 'loading' && (
           <div className="flex flex-col items-center gap-4 py-8 min-h-[250px] justify-center">
             <Loader2 className="w-10 h-10 text-achady-purple animate-spin" />
-            <p className="text-slate-500 font-medium animate-pulse">Iniciando sessão...</p>
+            <p className="text-slate-500 font-medium animate-pulse">Gerando sessão...</p>
           </div>
         )}
 
-        {/* Show when = whatsappStatus === "qr" */}
+        {/* Estado: QR Code Pronto (Show when = whatsappStatus === "qr") */}
         {whatsappStatus === 'qr' && qrCode && (
           <div className="flex flex-col items-center gap-4 animate-in zoom-in duration-300 min-h-[250px]">
             <p className="text-sm text-slate-500 text-center">Escaneie o QR Code abaixo com seu celular.</p>
@@ -137,7 +147,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
           </div>
         )}
 
-        {/* Show when = whatsappStatus === "authenticated" */}
+        {/* Estado: Conectado */}
         {whatsappStatus === 'authenticated' && (
           <div className="flex flex-col items-center gap-4 animate-in zoom-in duration-300 py-8 min-h-[250px] justify-center">
             <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-inner">
@@ -150,7 +160,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
           </div>
         )}
 
-        {/* Show when = whatsappStatus === "error" */}
+        {/* Estado: Erro */}
         {whatsappStatus === 'error' && (
            <div className="flex flex-col items-center gap-4 py-8 min-h-[250px] justify-center text-center">
              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center">
@@ -158,7 +168,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
              </div>
              <div>
                <p className="font-bold text-slate-800">Falha na conexão</p>
-               <p className="text-sm text-slate-500 mt-1">Não foi possível gerar o QR Code.</p>
+               <p className="text-sm text-slate-500 mt-1">Não foi possível iniciar a sessão na VPS.</p>
              </div>
              <button 
                 onClick={iniciarSessao}
