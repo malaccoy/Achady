@@ -88,3 +88,20 @@ export interface OfertaShopee {
   imagem: string;
   linkAfiliado: string;
 }
+
+// NEW: Server-side Message Log Structure
+export interface MessageLog {
+  id: string;
+  grupoId: string;
+  grupoNome: string;
+  whatsappLink: string;
+  categoria: string;
+  produtoId: string;
+  titulo: string;
+  precoOriginal?: number;
+  preco: number;
+  descontoPercentual?: number;
+  linkAfiliado: string;
+  mensagemEnviada: string;
+  enviadoEm: string; // ISO String
+}
