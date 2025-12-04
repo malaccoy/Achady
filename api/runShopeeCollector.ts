@@ -40,39 +40,51 @@ const CONFIG = {
   BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post',
 };
 
-// --- Helper Seguro para Números ---
-// Transforma qualquer entrada (string, undefined, null, objeto) em number primitivo.
-// Retorna 0.00 se falhar. Nunca lança erro.
+// --- Helpers de Segurança de Tipos (Anti-Crash) ---
+
+/**
+ * Converte qualquer entrada para number de forma segura.
+ * Nunca lança erro. Retorna 0 em caso de falha.
+ */
 const safeParseFloat = (val: any): number => {
   try {
-    if (val === null || val === undefined) return 0;
-    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (typeof val === 'number') {
+      return isNaN(val) ? 0 : val;
+    }
     
+    if (val === null || val === undefined) return 0;
+
     if (typeof val === 'string') {
-      // Remove caracteres monetários (R$, $, etc) e espaços
+      // Remove tudo que não for dígito, ponto, vírgula ou sinal de menos
       const clean = val.replace(/[^0-9.,-]/g, '');
-      if (!clean) return 0;
+      if (!clean.trim()) return 0;
       
-      // Substitui vírgula por ponto se for decimal BR
-      // Ex: "1.250,50" -> remove ponto milhar, troca virgula por ponto?
-      // Simplificação: substitui virgula por ponto para parsear float padrão
-      const dotDecimal = clean.replace(',', '.');
-      const parsed = parseFloat(dotDecimal);
+      // Substitui vírgula por ponto para parsear corretamente
+      const normalized = clean.replace(',', '.');
+      const parsed = parseFloat(normalized);
+      
       return isNaN(parsed) ? 0 : parsed;
     }
     
-    // Fallback para objetos ou outros tipos inesperados
-    return 0;
+    // Tenta conversão direta como fallback
+    const fallback = Number(val);
+    return isNaN(fallback) ? 0 : fallback;
   } catch (e) {
     return 0;
   }
 };
 
-// --- Helper de Formatação Defensivo ---
-// Garante que o toFixed seja chamado em um number, independente do input
+/**
+ * Formata um valor como moeda BRL (ex: 12,50).
+ * Garante que toFixed seja chamado apenas em number.
+ */
 const safeFormatCurrency = (val: any): string => {
-  const num = safeParseFloat(val);
-  return num.toFixed(2).replace('.', ',');
+  try {
+    const num = safeParseFloat(val);
+    return num.toFixed(2).replace('.', ',');
+  } catch (e) {
+    return "0,00";
+  }
 };
 
 // --- Map categorias -> keywords Shopee ---
@@ -166,7 +178,7 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      // 1. Conversão Agressiva para Number
+      // 1. Conversão Segura de Valores da API
       const price = safeParseFloat(n.price);
       const priceMin = safeParseFloat(n.priceMin);
       const priceMax = safeParseFloat(n.priceMax);
@@ -178,7 +190,7 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
       else if (priceMax > 0) precoAtual = priceMax;
 
       // 3. Lógica de Preço Original ("De")
-      // Se priceMax for maior que atual, usa ele. Senão inventa um markup de 40% (padrão de afiliado)
+      // Se priceMax for maior que atual, usa ele. Senão aplica markup fictício de 40%
       const precoOrig = (priceMax > precoAtual) ? priceMax : (precoAtual * 1.4);
       
       // 4. Cálculo de Desconto
@@ -190,12 +202,12 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
       return {
         id: `prod_${Date.now()}_${i}`,
         titulo: n.productName || 'Produto Shopee',
-        precoPromocional: Number(precoAtual), // Cast explícito final
-        precoOriginal: Number(precoOrig),     // Cast explícito final
+        precoPromocional: precoAtual, // Já garantido como number pelo safeParseFloat
+        precoOriginal: precoOrig,     // Já garantido como number
         desconto: `${descontoVal}%`,
         descontoValor: descontoVal,
-        imagem: n.imageUrl,
-        linkAfiliado: n.offerLink
+        imagem: n.imageUrl || '',
+        linkAfiliado: n.offerLink || ''
       };
     });
 
@@ -217,15 +229,19 @@ function filterProducts(products: ShopeeProduct[]) {
 
 // --- Montar Mensagem ---
 function buildMessage(template: string, p: ShopeeProduct): string {
-  // AQUI OCORRIA O ERRO ANTES. 
-  // Agora usamos safeFormatCurrency que blinda contra strings/nulos.
-  
+  // Conversão de segurança na hora de montar a string
+  const titulo = p.titulo || 'Oferta Imperdível';
+  const precoFormatado = safeFormatCurrency(p.precoPromocional);
+  const precoOriginalFormatado = safeFormatCurrency(p.precoOriginal);
+  const desconto = p.desconto || '0%';
+  const link = p.linkAfiliado || '';
+
   return template
-    .replace(/{{titulo}}/g, p.titulo)
-    .replace(/{{preco}}/g, safeFormatCurrency(p.precoPromocional))
-    .replace(/{{precoOriginal}}/g, safeFormatCurrency(p.precoOriginal))
-    .replace(/{{desconto}}/g, String(p.desconto))
-    .replace(/{{link}}/g, p.linkAfiliado);
+    .replace(/{{titulo}}/g, titulo)
+    .replace(/{{preco}}/g, precoFormatado)
+    .replace(/{{precoOriginal}}/g, precoOriginalFormatado)
+    .replace(/{{desconto}}/g, String(desconto))
+    .replace(/{{link}}/g, link);
 }
 
 // --- Enviar para Grupos ---
