@@ -1,30 +1,8 @@
-
 import { MessageLog } from '../types';
 import * as crypto from 'crypto';
 
-/**
- * SQL SCHEMA DEFINITION (PostgreSQL):
- * 
- * CREATE TABLE message_logs (
- *   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
- *   grupo_id VARCHAR(255) NOT NULL,
- *   grupo_nome VARCHAR(255) NOT NULL,
- *   whatsapp_link TEXT NOT NULL,
- *   categoria VARCHAR(50) NOT NULL,
- *   produto_id VARCHAR(255) NOT NULL,
- *   titulo TEXT NOT NULL,
- *   preco_original DECIMAL(10, 2),
- *   preco DECIMAL(10, 2) NOT NULL,
- *   desconto_percentual DECIMAL(5, 2),
- *   link_afiliado TEXT NOT NULL,
- *   mensagem_enviada TEXT NOT NULL,
- *   enviado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
- * );
- */
-
 // In-memory storage simulation for Vercel Serverless
 // NOTE: This will reset when the lambda creates a new instance. 
-// In production, replace the contents of functions below with real SQL queries.
 let MEMORY_LOGS: MessageLog[] = [];
 
 // Seed with some dummy data for UI testing if empty
@@ -54,8 +32,8 @@ export async function saveMessageLog(logData: Omit<MessageLog, 'id'>): Promise<s
         ...logData
     };
 
-    // Simulate Insert
-    MEMORY_LOGS.unshift(newRecord); // Add to top
+    // Simulate Insert: Add to top
+    MEMORY_LOGS.unshift(newRecord); 
     
     // Keep memory clean (limit 100 items)
     if (MEMORY_LOGS.length > 100) MEMORY_LOGS.pop();

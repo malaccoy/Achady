@@ -1,11 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as crypto from 'crypto';
-
-// --- Fake DB Logger (substitui o _db!)
-async function saveMessageLog(log: any) {
-  console.log("🔵 LOG SALVO (FAKE):", JSON.stringify(log).substring(0, 200));
-  return true;
-}
+import { saveMessageLog } from './_db';
 
 // --- Types & Interfaces ---
 
@@ -56,6 +51,7 @@ const CATEGORY_KEYWORDS: Record<string, string> = {
 
 // --- Mock DB Groups ---
 async function getActiveGroupsWithCategory(): Promise<Grupo[]> {
+  // In production, fetch from your real DB
   return [
     {
       id: 'grp01',
@@ -203,14 +199,25 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
 
       sent++;
 
+      // Salva no banco de logs compartilhado
       await saveMessageLog({
         grupoId: g.id,
+        grupoNome: g.nome,
+        whatsappLink: g.linkWhatsapp,
+        categoria: g.categoria,
+        produtoId: product.id,
         titulo: product.titulo,
-        enviado: new Date().toISOString()
+        precoOriginal: product.precoOriginal,
+        preco: product.precoPromocional,
+        descontoPercentual: product.descontoValor,
+        linkAfiliado: product.linkAfiliado,
+        mensagemEnviada: message,
+        enviadoEm: new Date().toISOString()
       });
 
     } catch (err: any) {
       errors.push({ local: g.nome, msg: err.message });
+      console.error(err);
     }
   }
 
