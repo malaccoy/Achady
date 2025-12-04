@@ -40,6 +40,22 @@ const CONFIG = {
   BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post',
 };
 
+// --- Helper Seguro para Números ---
+// Transforma qualquer entrada (string, undefined, null) em number. Retorna 0 se falhar.
+const safeParseFloat = (val: any): number => {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (typeof val === 'string') {
+    // Remove tudo que não for dígito, ponto, vírgula ou sinal de menos
+    const clean = val.replace(/[^0-9.,-]/g, '');
+    // Substitui vírgula por ponto para parsear
+    const dotDecimal = clean.replace(',', '.');
+    const parsed = parseFloat(dotDecimal);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
 // --- Map categorias -> keywords Shopee ---
 const CATEGORY_KEYWORDS: Record<string, string> = {
   moda: 'moda feminina roupas',
@@ -129,24 +145,15 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      // FIX: Helper robusto para converter qualquer coisa em número
-      const parseNumber = (val: any): number => {
-        if (typeof val === 'number') return val;
-        if (typeof val === 'string') {
-          // Troca vírgula por ponto e tenta parsear
-          const parsed = parseFloat(val.replace(',', '.'));
-          return isNaN(parsed) ? 0 : parsed;
-        }
-        return 0;
-      };
-
-      const price = parseNumber(n.price);
-      const priceMin = parseNumber(n.priceMin);
-      const priceMax = parseNumber(n.priceMax);
+      // Usa o helper seguro para extrair preços
+      const price = safeParseFloat(n.price);
+      const priceMin = safeParseFloat(n.priceMin);
+      const priceMax = safeParseFloat(n.priceMax);
 
       // Lógica de fallback de preço
       const precoAtual = price || priceMin || 0;
-      // Se não tiver preço "de", cria um fake basedo em 40% a mais ou usa 0
+      
+      // Se não tiver preço "de" (original), cria um fake baseado em 40% a mais ou usa 0
       const precoOrig = priceMax > precoAtual ? priceMax : (precoAtual * 1.4);
       
       const descontoVal = (precoOrig > 0 && precoAtual > 0)
@@ -156,8 +163,8 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
       return {
         id: `prod_${Date.now()}_${i}`,
         titulo: n.productName || 'Produto Shopee',
-        precoPromocional: precoAtual,
-        precoOriginal: precoOrig,
+        precoPromocional: precoAtual, // Garantido ser number
+        precoOriginal: precoOrig,     // Garantido ser number
         desconto: `${descontoVal}%`,
         descontoValor: descontoVal,
         imagem: n.imageUrl,
@@ -183,18 +190,17 @@ function filterProducts(products: ShopeeProduct[]) {
 
 // --- Montar Mensagem ---
 function buildMessage(template: string, p: ShopeeProduct): string {
-  // Safe formatting helpers - Ensure val is treated as number
+  // Helper de formatação seguro: converte para float de novo só para garantir
   const fmt = (val: any) => {
-      const num = Number(val);
-      // Se não for número válido, retorna 0,00 para não quebrar
-      return !isNaN(num) ? num.toFixed(2).replace('.', ',') : '0,00';
+      const num = safeParseFloat(val);
+      return num.toFixed(2).replace('.', ',');
   };
 
   return template
     .replace(/{{titulo}}/g, p.titulo)
     .replace(/{{preco}}/g, fmt(p.precoPromocional))
     .replace(/{{precoOriginal}}/g, fmt(p.precoOriginal))
-    .replace(/{{desconto}}/g, String(p.desconto)) // Garantir string
+    .replace(/{{desconto}}/g, String(p.desconto))
     .replace(/{{link}}/g, p.linkAfiliado);
 }
 
