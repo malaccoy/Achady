@@ -1,3 +1,4 @@
+
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as crypto from 'crypto';
 import { saveMessageLog } from './_db';
@@ -42,8 +43,8 @@ const CONFIG = {
   // BASE_URL definida como raiz do domínio
   WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
   WPP_SESSION: 'Caio', // Sessão atualizada conforme solicitado
-  // Token corrigido para o padrão oficial do WPPConnect (com SECURE)
-  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSECURETOKEN', 
+  // Token específico fornecido pelo usuário (Bcrypt Hash)
+  WPP_TOKEN: '$2b$10$EnDJPCLWDLfyLFwN_8jvmuNZl_x34JO66c1Xw_iQIngx3EBuubJwO', 
 };
 
 // --- Helpers de Segurança de Tipos (Definitivos) ---
