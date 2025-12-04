@@ -40,51 +40,44 @@ const CONFIG = {
   BOT_URL: process.env.WHATSAPP_WEBHOOK_URL || 'https://httpbin.org/post',
 };
 
-// --- Helpers de Segurança de Tipos (Anti-Crash) ---
+// --- Helpers de Segurança de Tipos (Definitivos) ---
 
 /**
- * Converte qualquer entrada para number de forma segura.
- * Nunca lança erro. Retorna 0 em caso de falha.
+ * Converte QUALQUER valor para número.
+ * Resolve problemas com null, undefined, strings com vírgula, etc.
  */
-const safeParseFloat = (val: any): number => {
-  try {
-    if (typeof val === 'number') {
-      return isNaN(val) ? 0 : val;
-    }
-    
-    if (val === null || val === undefined) return 0;
-
-    if (typeof val === 'string') {
-      // Remove tudo que não for dígito, ponto, vírgula ou sinal de menos
-      const clean = val.replace(/[^0-9.,-]/g, '');
-      if (!clean.trim()) return 0;
-      
-      // Substitui vírgula por ponto para parsear corretamente
-      const normalized = clean.replace(',', '.');
-      const parsed = parseFloat(normalized);
-      
-      return isNaN(parsed) ? 0 : parsed;
-    }
-    
-    // Tenta conversão direta como fallback
-    const fallback = Number(val);
-    return isNaN(fallback) ? 0 : fallback;
-  } catch (e) {
-    return 0;
+const toNumber = (val: any): number => {
+  if (val === null || val === undefined) return 0;
+  
+  if (typeof val === 'number') {
+    return isNaN(val) ? 0 : val;
   }
+  
+  // Tenta conversão direta (ex: "19.90")
+  const direct = Number(val);
+  if (!isNaN(direct)) return direct;
+  
+  // Tratamento de string mais suja (ex: "R$ 1.200,50")
+  if (typeof val === 'string') {
+    const clean = val
+      .replace(/[^0-9.,-]/g, '') // Remove letras e R$
+      .replace(',', '.');        // Troca vírgula por ponto
+      
+    const parsed = parseFloat(clean);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  
+  return 0;
 };
 
 /**
- * Formata um valor como moeda BRL (ex: 12,50).
- * Garante que toFixed seja chamado apenas em number.
+ * Formata um valor para moeda BRL (ex: 12,50).
+ * Blinda contra erros de .toFixed() convertendo para número antes.
  */
-const safeFormatCurrency = (val: any): string => {
-  try {
-    const num = safeParseFloat(val);
-    return num.toFixed(2).replace('.', ',');
-  } catch (e) {
-    return "0,00";
-  }
+const formatMoney = (val: any): string => {
+  const num = toNumber(val);
+  // Usa toFixed para garantir 2 casas decimais e troca ponto por vírgula
+  return num.toFixed(2).replace('.', ',');
 };
 
 // --- Map categorias -> keywords Shopee ---
@@ -178,19 +171,20 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      // 1. Conversão Segura de Valores da API
-      const price = safeParseFloat(n.price);
-      const priceMin = safeParseFloat(n.priceMin);
-      const priceMax = safeParseFloat(n.priceMax);
+      // 1. Conversão Segura (Definitiva) usando toNumber
+      const price = toNumber(n.price);
+      const priceMin = toNumber(n.priceMin);
+      const priceMax = toNumber(n.priceMax);
 
       // 2. Lógica de Preço Atual
+      // Prioriza 'price', depois 'priceMin'.
       let precoAtual = 0;
       if (price > 0) precoAtual = price;
       else if (priceMin > 0) precoAtual = priceMin;
-      else if (priceMax > 0) precoAtual = priceMax;
+      else if (priceMax > 0) precoAtual = priceMax; // Fallback extremo
 
       // 3. Lógica de Preço Original ("De")
-      // Se priceMax for maior que atual, usa ele. Senão aplica markup fictício de 40%
+      // Se priceMax for maior, usa ele. Se não, simula um "De" (markup de 40%)
       const precoOrig = (priceMax > precoAtual) ? priceMax : (precoAtual * 1.4);
       
       // 4. Cálculo de Desconto
@@ -202,8 +196,8 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
       return {
         id: `prod_${Date.now()}_${i}`,
         titulo: n.productName || 'Produto Shopee',
-        precoPromocional: precoAtual, // Já garantido como number pelo safeParseFloat
-        precoOriginal: precoOrig,     // Já garantido como number
+        precoPromocional: precoAtual, // GARANTIDO NUMBER
+        precoOriginal: precoOrig,     // GARANTIDO NUMBER
         desconto: `${descontoVal}%`,
         descontoValor: descontoVal,
         imagem: n.imageUrl || '',
@@ -231,8 +225,11 @@ function filterProducts(products: ShopeeProduct[]) {
 function buildMessage(template: string, p: ShopeeProduct): string {
   // Conversão de segurança na hora de montar a string
   const titulo = p.titulo || 'Oferta Imperdível';
-  const precoFormatado = safeFormatCurrency(p.precoPromocional);
-  const precoOriginalFormatado = safeFormatCurrency(p.precoOriginal);
+  
+  // AQUI OCORRIA O ERRO: Agora usamos formatMoney que usa toNumber internamente
+  const precoFormatado = formatMoney(p.precoPromocional); 
+  const precoOriginalFormatado = formatMoney(p.precoOriginal);
+  
   const desconto = p.desconto || '0%';
   const link = p.linkAfiliado || '';
 
@@ -257,10 +254,10 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
   }
 
   for (const g of groups) {
-    // Monta mensagem segura
-    const message = buildMessage(template, product);
-
     try {
+      // Monta mensagem segura
+      const message = buildMessage(template, product);
+    
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
       // Verifica se é simulação ou envio real
