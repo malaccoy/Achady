@@ -267,12 +267,13 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
       // Determinar Endpoint WPPConnect (Imagem ou Texto)
-      // Ajustado para usar prefixo messages/ conforme solicitação
+      // Ajuste: Rotas oficiais geralmente são 'send-image' (raiz) e 'send-message' (ou messages/send-text customizado).
+      // Como 'messages/send-image' deu 404, usamos 'send-image'.
       const hasImage = !!product.imagem;
-      const route = hasImage ? 'messages/send-image' : 'messages/send-text';
+      const route = hasImage ? 'send-image' : 'messages/send-text';
       
       // Constroi URL: BASE_URL + /api/ + SESSION + / + route
-      // Ex: https://.../api/Caio/messages/send-text
+      // Ex: https://.../api/Caio/send-image
       const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
 
       // Montar Payload WPPConnect
