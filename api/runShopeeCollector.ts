@@ -129,9 +129,17 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      const precoAtual = n.price || n.priceMin || 0;
-      const precoOrig = n.priceMax || precoAtual * 1.4;
-      const descontoVal = Math.round(((precoOrig - precoAtual) / precoOrig) * 100);
+      // FIX: Ensure prices are numbers, as API returns strings often
+      const price = parseFloat(n.price) || 0;
+      const priceMin = parseFloat(n.priceMin) || 0;
+      const priceMax = parseFloat(n.priceMax) || 0;
+
+      const precoAtual = price || priceMin || 0;
+      const precoOrig = priceMax || (precoAtual * 1.4);
+      
+      const descontoVal = precoOrig > 0 
+        ? Math.round(((precoOrig - precoAtual) / precoOrig) * 100)
+        : 0;
 
       return {
         id: `prod_${Date.now()}_${i}`,
@@ -163,10 +171,13 @@ function filterProducts(products: ShopeeProduct[]) {
 
 // --- Montar Mensagem ---
 function buildMessage(template: string, p: ShopeeProduct): string {
+  // Safe formatting helpers
+  const fmt = (val: number) => (typeof val === 'number' ? val.toFixed(2).replace('.', ',') : '0,00');
+
   return template
     .replace(/{{titulo}}/g, p.titulo)
-    .replace(/{{preco}}/g, p.precoPromocional.toFixed(2))
-    .replace(/{{precoOriginal}}/g, p.precoOriginal.toFixed(2))
+    .replace(/{{preco}}/g, fmt(p.precoPromocional))
+    .replace(/{{precoOriginal}}/g, fmt(p.precoOriginal))
     .replace(/{{desconto}}/g, p.desconto)
     .replace(/{{link}}/g, p.linkAfiliado);
 }
