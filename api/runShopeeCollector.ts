@@ -39,7 +39,8 @@ const CONFIG = {
   APP_SECRET: process.env.SHOPEE_SECRET || '',
   
   // WPPConnect Configuration (Ngrok)
-  WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev/api',
+  // BASE_URL definida como raiz do domínio
+  WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
   WPP_SESSION: 'achady', // Sessão padrão do robô
   WPP_TOKEN: process.env.WPP_TOKEN || 'seu-token-aqui', // Token Bearer
 };
@@ -267,9 +268,11 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
 
       // Determinar Endpoint WPPConnect (Imagem ou Texto)
       const hasImage = !!product.imagem;
-      // WPPConnect Endpoints: /api/{session}/messages/send-image OR /api/{session}/messages/send-text
       const route = hasImage ? 'messages/send-image' : 'messages/send-text';
-      const url = `${CONFIG.WPP_BASE_URL}/${CONFIG.WPP_SESSION}/${route}`;
+      
+      // Constroi URL: BASE_URL + /api/ + SESSION + / + route
+      // Ex: https://carmel-liturgical-degressively.ngrok-free.dev/api/achady/messages/send-image
+      const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
 
       // Montar Payload WPPConnect
       const payload = hasImage 
