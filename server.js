@@ -26,11 +26,14 @@ function createSession(sessionId) {
         authStrategy: new LocalAuth({ clientId: sessionId }),
         puppeteer: {
             headless: true,
+            // Importante para Railway/Docker: usa o Chrome instalado na imagem se a var de ambiente existir
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--disable-extensions"
             ]
         }
     });
@@ -124,6 +127,7 @@ app.get("/", (req, res) => {
 // =======================================================
 // 🚀 INICIAR SERVIDOR
 // =======================================================
-app.listen(3000, () => {
-    console.log("🌐 Servidor rodando na porta 3000");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🌐 Servidor rodando na porta ${PORT}`);
 });
