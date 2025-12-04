@@ -129,15 +129,27 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      // FIX: Ensure prices are numbers, as API returns strings often
-      const price = parseFloat(n.price) || 0;
-      const priceMin = parseFloat(n.priceMin) || 0;
-      const priceMax = parseFloat(n.priceMax) || 0;
+      // FIX: Helper robusto para converter qualquer coisa em número
+      const parseNumber = (val: any): number => {
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+          // Troca vírgula por ponto e tenta parsear
+          const parsed = parseFloat(val.replace(',', '.'));
+          return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+      };
 
+      const price = parseNumber(n.price);
+      const priceMin = parseNumber(n.priceMin);
+      const priceMax = parseNumber(n.priceMax);
+
+      // Lógica de fallback de preço
       const precoAtual = price || priceMin || 0;
-      const precoOrig = priceMax || (precoAtual * 1.4);
+      // Se não tiver preço "de", cria um fake basedo em 40% a mais ou usa 0
+      const precoOrig = priceMax > precoAtual ? priceMax : (precoAtual * 1.4);
       
-      const descontoVal = precoOrig > 0 
+      const descontoVal = (precoOrig > 0 && precoAtual > 0)
         ? Math.round(((precoOrig - precoAtual) / precoOrig) * 100)
         : 0;
 
@@ -171,14 +183,18 @@ function filterProducts(products: ShopeeProduct[]) {
 
 // --- Montar Mensagem ---
 function buildMessage(template: string, p: ShopeeProduct): string {
-  // Safe formatting helpers
-  const fmt = (val: number) => (typeof val === 'number' ? val.toFixed(2).replace('.', ',') : '0,00');
+  // Safe formatting helpers - Ensure val is treated as number
+  const fmt = (val: any) => {
+      const num = Number(val);
+      // Se não for número válido, retorna 0,00 para não quebrar
+      return !isNaN(num) ? num.toFixed(2).replace('.', ',') : '0,00';
+  };
 
   return template
     .replace(/{{titulo}}/g, p.titulo)
     .replace(/{{preco}}/g, fmt(p.precoPromocional))
     .replace(/{{precoOriginal}}/g, fmt(p.precoOriginal))
-    .replace(/{{desconto}}/g, p.desconto)
+    .replace(/{{desconto}}/g, String(p.desconto)) // Garantir string
     .replace(/{{link}}/g, p.linkAfiliado);
 }
 
