@@ -1,7 +1,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as crypto from 'crypto';
-import { saveMessageLog } from './_db';
+import { saveMessageLog } from './_db.js';
 
 // --- Types & Interfaces ---
 
