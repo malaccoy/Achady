@@ -1,4 +1,5 @@
 
+
 // View Models (UI)
 export interface WhatsAppGroup {
   id: string;
@@ -19,6 +20,7 @@ export interface AppSettings {
   shopeeApiKey: string;
   shopeeApiSecret: string;
   shopeeConnected: boolean;
+  whatsappConnected: boolean; // Added
   messageTemplate: string;
   automationEnabled: boolean;
   checkIntervalMinutes: number;
@@ -68,6 +70,7 @@ export interface TabelaAutomacao {
   userId: string;
   estado: boolean; // ON/OFF
   intervalo: number; // Minutos
+  whatsappStatus?: 'CONNECTED' | 'DISCONNECTED'; // New field
 }
 
 export interface TabelaLogs {

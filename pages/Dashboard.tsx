@@ -1,8 +1,7 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
-import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, ExternalLink, Key, Tag } from 'lucide-react';
+import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, X } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
 
@@ -10,16 +9,22 @@ const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
 
+const API_URL = "https://achady-whatsapp-server.onrender.com";
+
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  
+  // Ref for polling
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // State
   const [settings, setSettings] = useState<AppSettings>({
     shopeeApiKey: '',
     shopeeApiSecret: '',
     shopeeConnected: false,
+    whatsappConnected: false,
     messageTemplate: '',
     automationEnabled: false,
     checkIntervalMinutes: 15,
@@ -33,6 +38,19 @@ export const Dashboard: React.FC = () => {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiSecretInput, setApiSecretInput] = useState('');
   const [isSavingKey, setIsSavingKey] = useState(false);
+
+  // WhatsApp QR Modal State
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [statusText, setStatusText] = useState('Aguardando...');
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const userId = db.getCurrentUserId();
@@ -51,6 +69,7 @@ export const Dashboard: React.FC = () => {
       shopeeApiKey: shopeeData?.apiKey || '',
       shopeeApiSecret: shopeeData?.apiSecret || '',
       shopeeConnected: shopeeData?.status === 'conectado',
+      whatsappConnected: automacaoData?.whatsappStatus === 'CONNECTED',
       messageTemplate: modeloData?.modeloTexto || '',
       automationEnabled: automacaoData?.estado || false,
       checkIntervalMinutes: automacaoData?.intervalo || 15,
@@ -83,6 +102,77 @@ export const Dashboard: React.FC = () => {
       }));
       setIsSavingKey(false);
     }, 800);
+  };
+
+  const handleConnectWhatsapp = async () => {
+    if (!currentUserId) return;
+    setQrLoading(true);
+    setShowQrModal(true);
+    setQrCodeUrl('');
+    setStatusText('Gerando QR...');
+
+    try {
+      // 1. Iniciar sessão no servidor
+      await fetch(`${API_URL}/generate-qr/${currentUserId}`);
+      
+      // 2. Começar a buscar QR continuamente
+      pollQrCode();
+    } catch (error) {
+      console.error("Erro ao iniciar conexão WhatsApp:", error);
+      setStatusText('Erro ao conectar servidor.');
+      setQrLoading(false);
+    }
+  };
+
+  const pollQrCode = async () => {
+    // If user is missing or modal closed (though difficult to check stale state in closure), try fetch
+    // Real check for modal open state would require a ref or verifying component mounted
+    if (!currentUserId) return;
+
+    try {
+      const res = await fetch(`${API_URL}/qr/${currentUserId}`);
+      const data = await res.json();
+
+      // Caso venha QR → exibir imagem
+      if (data.status === 'qr' && data.qr) {
+        setQrCodeUrl(data.qr);
+        setQrLoading(false);
+        setStatusText('Escaneie o QR com seu WhatsApp');
+        // Continue polling
+        pollRef.current = setTimeout(pollQrCode, 2000);
+      } 
+      // Caso esteja conectado
+      else if (data.status === 'ready') {
+        setStatusText('✅ WhatsApp conectado!');
+        db.setWhatsappStatus(currentUserId, 'CONNECTED');
+        setSettings(prev => ({ ...prev, whatsappConnected: true }));
+        // Pequeno delay para usuário ver a mensagem de sucesso
+        setTimeout(() => {
+          handleCloseModal();
+        }, 1500);
+      } else {
+        // Ainda aguardando ou inicializando
+        pollRef.current = setTimeout(pollQrCode, 2000);
+      }
+    } catch (error) {
+      console.error("Erro no polling do QR Code:", error);
+      // Tenta novamente em caso de erro de rede momentâneo
+      pollRef.current = setTimeout(pollQrCode, 2000);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setShowQrModal(false);
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const handleDisconnectWhatsapp = () => {
+    if (!currentUserId) return;
+    db.setWhatsappStatus(currentUserId, 'DISCONNECTED');
+    setSettings(prev => ({ ...prev, whatsappConnected: false }));
   };
 
   const handleAutomationChange = (enabled: boolean, interval: number) => {
@@ -155,7 +245,43 @@ export const Dashboard: React.FC = () => {
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Card 1: Shopee Integration */}
+        {/* Card 1: WhatsApp Integration */}
+        <Card title="Conexão WhatsApp" icon={<Smartphone className="w-5 h-5" />}>
+          <div className="space-y-5">
+            <div className={`p-4 rounded-xl border flex items-center gap-3 ${settings.whatsappConnected ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+              {settings.whatsappConnected ? (
+                 <div className="p-1.5 bg-emerald-200 rounded-full"><Check className="w-4 h-4 text-emerald-700" /></div>
+              ) : (
+                 <div className="p-1.5 bg-slate-200 rounded-full"><QrCode className="w-4 h-4 text-slate-600" /></div>
+              )}
+              <div className="flex-1">
+                <p className="text-sm font-bold">{settings.whatsappConnected ? 'Sessão Ativa' : 'Desconectado'}</p>
+                <p className="text-xs opacity-90">{settings.whatsappConnected ? 'Seu WhatsApp está pronto para enviar ofertas.' : 'Escaneie o QR Code para conectar seu número.'}</p>
+              </div>
+            </div>
+
+            {settings.whatsappConnected ? (
+              <Button 
+                variant="danger" 
+                fullWidth 
+                onClick={handleDisconnectWhatsapp}
+                className="opacity-90 hover:opacity-100"
+              >
+                Desconectar Sessão
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleConnectWhatsapp} 
+                fullWidth
+                id="btnConnect"
+              >
+                Conectar WhatsApp
+              </Button>
+            )}
+          </div>
+        </Card>
+
+        {/* Card 2: Shopee Integration */}
         <Card title="Integração Shopee" icon={<ShoppingBag className="w-5 h-5" />}>
           <div className="space-y-5">
             <div className={`p-4 rounded-xl border flex items-center gap-3 ${settings.shopeeConnected ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
@@ -199,7 +325,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        {/* Card 2: Automation Controls */}
+        {/* Card 3: Automation Controls */}
         <Card title="Controle de Automação" icon={<Zap className="w-5 h-5" />}>
           <div className="space-y-6">
             <div className="p-5 bg-slate-50 rounded-xl border border-slate-100">
@@ -234,10 +360,10 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        {/* Card 3: Message Template */}
-        <Card title="Modelo de Mensagem" icon={<MessageSquare className="w-5 h-5" />} className="lg:col-span-2">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-4">
+        {/* Card 4: Message Template */}
+        <Card title="Modelo de Mensagem" icon={<MessageSquare className="w-5 h-5" />} className="lg:col-span-1">
+          <div className="grid grid-cols-1 gap-6 h-full">
+            <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 {['{{titulo}}', '{{preco}}', '{{cupom}}', '{{link}}'].map(variable => (
                   <button
@@ -257,15 +383,6 @@ export const Dashboard: React.FC = () => {
                 value={settings.messageTemplate}
                 onChange={(e) => setSettings(s => ({ ...s, messageTemplate: e.target.value }))}
               />
-            </div>
-            
-            <div className="space-y-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 h-full">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Pré-visualização</h4>
-                <div className="bg-[#DCF8C6] p-3 rounded-lg rounded-tl-none shadow-sm text-sm text-slate-800 whitespace-pre-line border border-slate-200/50">
-                  {settings.messageTemplate || 'Sua mensagem aparecerá assim...'}
-                </div>
-              </div>
               <Button onClick={handleSaveTemplate} variant="secondary" fullWidth>
                 <Save className="w-4 h-4 mr-2" /> Salvar Modelo
               </Button>
@@ -273,7 +390,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        {/* Card 4: Groups */}
+        {/* Card 5: Groups */}
         <Card 
           title="Grupos de Destino" 
           icon={<Users className="w-5 h-5" />} 
@@ -358,6 +475,59 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
       </div>
+
+      {/* QR Code Modal Overlay */}
+      {showQrModal && (
+        <div id="qrModal" className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
+               <h2 className="font-display font-semibold text-slate-800">Conecte seu WhatsApp</h2>
+               <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+               </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-8 flex flex-col items-center justify-center text-center">
+              
+              {qrLoading ? (
+                <div className="py-12 flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-achady-purple/30 border-t-achady-purple rounded-full animate-spin"></div>
+                  <p className="text-sm text-slate-500 font-medium">{statusText || 'Gerando sessão segura...'}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-6 relative">
+                    <img 
+                      id="qrImage"
+                      src={qrCodeUrl} 
+                      alt="WhatsApp QR Code" 
+                      className="w-[260px] h-[260px] rounded-xl border-2 border-slate-100 shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-3 max-w-xs">
+                    <h3 className="font-medium text-slate-900">Escaneie o QR Code acima</h3>
+                    <ol className="text-sm text-slate-500 text-left space-y-2 list-decimal list-inside bg-slate-50 p-4 rounded-lg">
+                      <li>Abra o WhatsApp no seu celular</li>
+                      <li>Toque em <strong>Configurações</strong> ou menu</li>
+                      <li>Selecione <strong>Aparelhos conectados</strong></li>
+                      <li>Aponte a câmera para esta tela</li>
+                    </ol>
+                  </div>
+                  
+                  <p id="statusText" className="mt-6 text-xs text-achady-purple font-semibold animate-pulse">
+                    {statusText}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

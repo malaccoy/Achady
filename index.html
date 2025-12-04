@@ -75,6 +75,74 @@
 </head>
   <body>
     <div id="root"></div>
+
+    <!-- BOTÃO DE CONEXÃO DO WHATSAPP -->
+    <button id="btnConnectWhatsApp" 
+    style="
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10000;
+    background:#25D366;
+    color:white;
+    padding:12px 18px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    font-size:16px;
+    font-weight:600;
+    margin-top:20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    ">
+    📲 Conectar WhatsApp
+    </button>
+
+    <!-- MODAL DO QR -->
+    <div id="qrModal" style="
+        display:none;
+        position:fixed;
+        top:0; left:0; right:0; bottom:0;
+        background-color:rgba(0,0,0,0.55);
+        justify-content:center;
+        align-items:center;
+        z-index:99999;
+    ">
+        <div style="
+            background:white;
+            padding:20px;
+            border-radius:10px;
+            text-align:center;
+            width:320px;
+            box-shadow:0 0 20px rgba(0,0,0,0.4);
+        ">
+            <h2 style="margin-bottom:10px;">Conectar WhatsApp</h2>
+            <p id="statusText">Gerando QR...</p>
+
+            <img id="qrImage" width="260" style="margin-top:10px;" />
+
+            <button onclick="document.getElementById('qrModal').style.display='none'" style="
+                margin-top:15px;
+                padding:10px 18px;
+                border-radius:6px;
+                border:none;
+                cursor:pointer;
+                background: #f0f0f0;
+            ">
+                Fechar
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE CONEXÃO -->
+    <script type="module">
+        import { iniciarConexaoWhatsApp } from "./connect-whatsapp.js";
+
+        document.getElementById("btnConnectWhatsApp").onclick = () => {
+            document.getElementById("qrModal").style.display = "flex";
+            iniciarConexaoWhatsApp();
+        };
+    </script>
+
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

@@ -1,4 +1,5 @@
 
+
 import { 
   TabelaUsuario, 
   TabelaShopee, 
@@ -189,16 +190,33 @@ https://s.shopee.com.br/9fDVlcSL5R
     let table = getTable<TabelaAutomacao>(KEYS.AUTOMACAO);
     const index = table.findIndex(r => r.userId === userId);
 
-    const record: TabelaAutomacao = {
-      userId,
-      estado,
-      intervalo: intervaloMinutos
-    };
+    if (index >= 0) {
+      // Preserve existing WhatsApp Status
+      table[index] = { ...table[index], estado, intervalo: intervaloMinutos };
+    } else {
+      table.push({ 
+        userId, 
+        estado, 
+        intervalo: intervaloMinutos,
+        whatsappStatus: 'DISCONNECTED'
+      });
+    }
+    setTable(KEYS.AUTOMACAO, table);
+  },
+
+  setWhatsappStatus: (userId: string, status: 'CONNECTED' | 'DISCONNECTED') => {
+    let table = getTable<TabelaAutomacao>(KEYS.AUTOMACAO);
+    const index = table.findIndex(r => r.userId === userId);
 
     if (index >= 0) {
-      table[index] = record;
+      table[index] = { ...table[index], whatsappStatus: status };
     } else {
-      table.push(record);
+      table.push({ 
+        userId, 
+        estado: false, 
+        intervalo: 15,
+        whatsappStatus: status 
+      });
     }
     setTable(KEYS.AUTOMACAO, table);
   },
