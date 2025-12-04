@@ -41,8 +41,8 @@ const CONFIG = {
   // WPPConnect Configuration (Ngrok)
   // BASE_URL definida como raiz do domínio
   WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
-  WPP_SESSION: 'achady', // Sessão padrão do robô
-  WPP_TOKEN: process.env.WPP_TOKEN || 'seu-token-aqui', // Token Bearer
+  WPP_SESSION: 'Caio', // Sessão atualizada conforme solicitado
+  WPP_TOKEN: process.env.WPP_TOKEN || 'THISISMYSURETOKEN', // Token Bearer atualizado
 };
 
 // --- Helpers de Segurança de Tipos (Definitivos) ---
@@ -267,12 +267,12 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
       // Determinar Endpoint WPPConnect (Imagem ou Texto)
-      // CORREÇÃO: Usar rotas padrão do WPPConnect Server (sem prefixo messages/)
+      // Ajustado para usar prefixo messages/ conforme solicitação
       const hasImage = !!product.imagem;
-      const route = hasImage ? 'send-image' : 'send-message';
+      const route = hasImage ? 'messages/send-image' : 'messages/send-text';
       
       // Constroi URL: BASE_URL + /api/ + SESSION + / + route
-      // Ex: https://carmel-liturgical-degressively.ngrok-free.dev/api/achady/send-image
+      // Ex: https://.../api/Caio/messages/send-text
       const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
 
       // Montar Payload WPPConnect
