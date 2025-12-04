@@ -7,8 +7,8 @@ import { saveMessageLog } from './_db';
 interface ShopeeProduct {
   id: string;
   titulo: string;
-  precoPromocional: number;
-  precoOriginal: number;
+  precoPromocional: number; // Sempre number
+  precoOriginal: number;    // Sempre number
   desconto: string;
   descontoValor: number;
   imagem: string;
@@ -41,19 +41,38 @@ const CONFIG = {
 };
 
 // --- Helper Seguro para Números ---
-// Transforma qualquer entrada (string, undefined, null) em number. Retorna 0 se falhar.
+// Transforma qualquer entrada (string, undefined, null, objeto) em number primitivo.
+// Retorna 0.00 se falhar. Nunca lança erro.
 const safeParseFloat = (val: any): number => {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return isNaN(val) ? 0 : val;
-  if (typeof val === 'string') {
-    // Remove tudo que não for dígito, ponto, vírgula ou sinal de menos
-    const clean = val.replace(/[^0-9.,-]/g, '');
-    // Substitui vírgula por ponto para parsear
-    const dotDecimal = clean.replace(',', '.');
-    const parsed = parseFloat(dotDecimal);
-    return isNaN(parsed) ? 0 : parsed;
+  try {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    
+    if (typeof val === 'string') {
+      // Remove caracteres monetários (R$, $, etc) e espaços
+      const clean = val.replace(/[^0-9.,-]/g, '');
+      if (!clean) return 0;
+      
+      // Substitui vírgula por ponto se for decimal BR
+      // Ex: "1.250,50" -> remove ponto milhar, troca virgula por ponto?
+      // Simplificação: substitui virgula por ponto para parsear float padrão
+      const dotDecimal = clean.replace(',', '.');
+      const parsed = parseFloat(dotDecimal);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    
+    // Fallback para objetos ou outros tipos inesperados
+    return 0;
+  } catch (e) {
+    return 0;
   }
-  return 0;
+};
+
+// --- Helper de Formatação Defensivo ---
+// Garante que o toFixed seja chamado em um number, independente do input
+const safeFormatCurrency = (val: any): string => {
+  const num = safeParseFloat(val);
+  return num.toFixed(2).replace('.', ',');
 };
 
 // --- Map categorias -> keywords Shopee ---
@@ -67,7 +86,7 @@ const CATEGORY_KEYWORDS: Record<string, string> = {
 
 // --- Mock DB Groups ---
 async function getActiveGroupsWithCategory(): Promise<Grupo[]> {
-  // In production, fetch from your real DB
+  // Em produção, buscar do banco real
   return [
     {
       id: 'grp01',
@@ -103,7 +122,6 @@ function generateSignature(payload: string, timestamp: number): string {
 // --- Buscar Ofertas Shopee ---
 async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProduct[]> {
   const keyword = CATEGORY_KEYWORDS[category] || CATEGORY_KEYWORDS['geral'];
-
   const endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
 
   const query = `
@@ -139,32 +157,41 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
       body: payload
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[Shopee] API Error ${res.status}`);
+      return [];
+    }
 
     const json = await res.json();
     const nodes = json.data?.productOfferV2?.nodes || [];
 
     return nodes.map((n: any, i: number) => {
-      // Usa o helper seguro para extrair preços
+      // 1. Conversão Agressiva para Number
       const price = safeParseFloat(n.price);
       const priceMin = safeParseFloat(n.priceMin);
       const priceMax = safeParseFloat(n.priceMax);
 
-      // Lógica de fallback de preço
-      const precoAtual = price || priceMin || 0;
+      // 2. Lógica de Preço Atual
+      let precoAtual = 0;
+      if (price > 0) precoAtual = price;
+      else if (priceMin > 0) precoAtual = priceMin;
+      else if (priceMax > 0) precoAtual = priceMax;
+
+      // 3. Lógica de Preço Original ("De")
+      // Se priceMax for maior que atual, usa ele. Senão inventa um markup de 40% (padrão de afiliado)
+      const precoOrig = (priceMax > precoAtual) ? priceMax : (precoAtual * 1.4);
       
-      // Se não tiver preço "de" (original), cria um fake baseado em 40% a mais ou usa 0
-      const precoOrig = priceMax > precoAtual ? priceMax : (precoAtual * 1.4);
-      
-      const descontoVal = (precoOrig > 0 && precoAtual > 0)
-        ? Math.round(((precoOrig - precoAtual) / precoOrig) * 100)
-        : 0;
+      // 4. Cálculo de Desconto
+      let descontoVal = 0;
+      if (precoOrig > 0 && precoAtual > 0) {
+        descontoVal = Math.round(((precoOrig - precoAtual) / precoOrig) * 100);
+      }
 
       return {
         id: `prod_${Date.now()}_${i}`,
         titulo: n.productName || 'Produto Shopee',
-        precoPromocional: precoAtual, // Garantido ser number
-        precoOriginal: precoOrig,     // Garantido ser number
+        precoPromocional: Number(precoAtual), // Cast explícito final
+        precoOriginal: Number(precoOrig),     // Cast explícito final
         desconto: `${descontoVal}%`,
         descontoValor: descontoVal,
         imagem: n.imageUrl,
@@ -173,7 +200,7 @@ async function fetchShopeeOffersByCategory(category: string): Promise<ShopeeProd
     });
 
   } catch (err: any) {
-    console.error("Shopee API error:", err);
+    console.error("Shopee API execution error:", err);
     return [];
   }
 }
@@ -190,16 +217,13 @@ function filterProducts(products: ShopeeProduct[]) {
 
 // --- Montar Mensagem ---
 function buildMessage(template: string, p: ShopeeProduct): string {
-  // Helper de formatação seguro: converte para float de novo só para garantir
-  const fmt = (val: any) => {
-      const num = safeParseFloat(val);
-      return num.toFixed(2).replace('.', ',');
-  };
-
+  // AQUI OCORRIA O ERRO ANTES. 
+  // Agora usamos safeFormatCurrency que blinda contra strings/nulos.
+  
   return template
     .replace(/{{titulo}}/g, p.titulo)
-    .replace(/{{preco}}/g, fmt(p.precoPromocional))
-    .replace(/{{precoOriginal}}/g, fmt(p.precoOriginal))
+    .replace(/{{preco}}/g, safeFormatCurrency(p.precoPromocional))
+    .replace(/{{precoOriginal}}/g, safeFormatCurrency(p.precoOriginal))
     .replace(/{{desconto}}/g, String(p.desconto))
     .replace(/{{link}}/g, p.linkAfiliado);
 }
@@ -209,15 +233,21 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
   let sent = 0;
   const errors: any[] = [];
 
-  for (const g of groups) {
-    const product = products[0];
-    if (!product) continue;
+  // Enviar apenas o melhor produto para evitar spam
+  const product = products[0];
+  
+  if (!product) {
+    return { sent: 0, errors: [] };
+  }
 
+  for (const g of groups) {
+    // Monta mensagem segura
     const message = buildMessage(template, product);
 
     try {
-      console.log(`🔵 Enviando para grupo ${g.nome}...`);
+      console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (${g.categoria})...`);
 
+      // Verifica se é simulação ou envio real
       if (!CONFIG.BOT_URL.includes("httpbin")) {
         await fetch(CONFIG.BOT_URL, {
           method: "POST",
@@ -228,11 +258,13 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
             imageUrl: product.imagem
           })
         });
+      } else {
+        console.log(`[DRY RUN] Mensagem não enviada (URL padrão httpbin): \n${message}`);
       }
 
       sent++;
 
-      // Salva no banco de logs compartilhado
+      // Salva log compartilhado
       await saveMessageLog({
         grupoId: g.id,
         grupoNome: g.nome,
@@ -250,7 +282,7 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
 
     } catch (err: any) {
       errors.push({ local: g.nome, msg: err.message });
-      console.error(err);
+      console.error(`[Erro Envio] Grupo ${g.nome}:`, err);
     }
   }
 
@@ -270,13 +302,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const groups = await getActiveGroupsWithCategory();
-    if (groups.length === 0) return res.json(result);
+    if (groups.length === 0) {
+      result.errors.push({ local: "init", msg: "Nenhum grupo ativo encontrado." });
+      return res.json(result);
+    }
 
-    const productsRaw = await fetchShopeeOffersByCategory(groups[0].categoria);
+    // Para MVP, pegamos a categoria do primeiro grupo. 
+    // Idealmente faria um loop por categorias únicas.
+    const categoriaAlvo = groups[0].categoria;
+    
+    console.log(` Iniciando coleta para categoria: ${categoriaAlvo}`);
+
+    const productsRaw = await fetchShopeeOffersByCategory(categoriaAlvo);
     result.totalFound = productsRaw.length;
 
     const products = filterProducts(productsRaw);
     result.totalFiltered = products.length;
+
+    if (products.length === 0) {
+      console.log(" Nenhum produto passou no filtro (>30% desconto).");
+      result.ok = true; // Execução ok, só não achou produtos
+      return res.json(result);
+    }
 
     const template = await getMessageTemplate();
 
@@ -289,7 +336,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.json(result);
 
   } catch (err: any) {
-    console.error("Critical error:", err);
+    console.error("Critical error in handler:", err);
     result.errors.push({ local: "general", msg: err.message });
     return res.status(500).json(result);
   }
