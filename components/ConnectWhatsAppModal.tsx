@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useWhatsappStatus } from "../hooks/useWhatsappStatus";
 
 interface Props {
   isOpen: boolean;
@@ -7,67 +8,62 @@ interface Props {
 
 export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   const [qrImage, setQrImage] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("idle");
-  const [loading, setLoading] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  
+  // Polling rápido (2s) enquanto modal está aberto
+  const { status, loading } = useWhatsappStatus(isOpen ? 2000 : 60000);
 
   // Iniciar sessão
   async function iniciarSessao() {
-    setLoading(true);
+    setIsStarting(true);
     try {
       await fetch('/api/whatsapp/start', { method: "POST" });
-      setStatus("starting");
     } catch (e) {
       console.error(e);
       alert("Erro ao comunicar com servidor.");
     } finally {
-      setLoading(false);
+      setIsStarting(false);
     }
   }
 
-  // Polling a cada 2s
+  // Buscar QR separado (o endpoint de status não retorna a imagem para não pesar)
   useEffect(() => {
-    if (!isOpen || status === "idle") return;
-
-    // Se abriu e ainda não começou, inicia
-    if (status === "idle") {
-        iniciarSessao();
+    if (!isOpen) return;
+    
+    // Se desconectado, busca QR
+    if (!status.connected) {
+        const fetchQr = async () => {
+            try {
+                const res = await fetch('/api/whatsapp/qr');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.imageUrl) setQrImage(data.imageUrl);
+                }
+            } catch(e) { console.log(e); }
+        };
+        fetchQr();
+        const interval = setInterval(fetchQr, 2000);
+        return () => clearInterval(interval);
     }
+  }, [isOpen, status.connected]);
 
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/whatsapp/qr');
-        
-        if (res.ok) {
-            const data = await res.json();
-            
-            // 1. Se já conectou
-            if (data.status === "ready" || data.status === "connected") {
-                setStatus("ready");
-                setQrImage(null);
-                clearInterval(interval);
-                setTimeout(() => {
-                    onClose();
-                    // Opcional: recarregar para atualizar status na dashboard
-                    window.location.reload();
-                }, 1500);
-            }
-            // 2. Se tem QR (agora vem como imageUrl)
-            else if (data.imageUrl) {
-                setQrImage(data.imageUrl);
-                setStatus("qr");
-            }
-            // 3. Se está iniciando ou aguardando
-            else if (data.status) {
-                setStatus(data.status);
-            }
-        }
-      } catch (err) {
-        console.error("Erro polling QR", err);
+  // Efeito para fechar modal automaticamente se conectar
+  useEffect(() => {
+      if (isOpen && status.connected) {
+          // Pequeno delay para usuário ver o sucesso
+          setTimeout(() => {
+              onClose();
+              // Opcional: toast de sucesso
+          }, 1500);
       }
-    }, 2000);
+  }, [isOpen, status.connected, onClose]);
 
-    return () => clearInterval(interval);
-  }, [isOpen, status]);
+  // Se abriu e está idle/offline, tenta start automático
+  useEffect(() => {
+      if (isOpen && !status.connected && !qrImage && !loading) {
+          iniciarSessao();
+      }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -76,35 +72,29 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
       <div className="bg-white rounded-xl p-6 w-[350px] text-center shadow-2xl">
         <h2 className="text-lg font-bold mb-4 text-slate-800">Conectar WhatsApp</h2>
 
-        {loading && <p className="text-slate-500">Conectando à VPS...</p>}
-
-        {!loading && (status === "idle" || status === "offline") && (
-           <button
-             onClick={iniciarSessao}
-             className="bg-achady-purple text-white px-4 py-2 rounded-lg hover:bg-achady-blue transition-colors"
-           >
-             Gerar QR Code
-           </button>
-        )}
-
-        {status === "starting" && <p className="text-slate-500 animate-pulse">⏳ Aguardando QR Code da VPS...</p>}
-        
-        {status === "qr" && qrImage && (
-          <div className="space-y-3">
-            <div className="p-2 bg-white border border-slate-200 rounded-lg inline-block">
-                <img src={qrImage} className="w-48 h-48 mx-auto" alt="WhatsApp QR Code" />
-            </div>
-            <p className="text-sm text-slate-600">Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar</p>
-          </div>
-        )}
-
-        {status === "ready" && (
-          <div className="py-4">
-             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                 <span className="text-2xl">✅</span>
+        {status.connected ? (
+             <div className="py-4">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <span className="text-2xl">✅</span>
+                </div>
+                <p className="text-green-600 font-bold">Conectado com sucesso!</p>
+                <p className="text-xs text-slate-400 mt-2">Fechando janela...</p>
              </div>
-             <p className="text-green-600 font-bold">Conectado com sucesso!</p>
-          </div>
+        ) : (
+            <>
+                {isStarting && <p className="text-slate-500 mb-4 animate-pulse">Iniciando sessão na VPS...</p>}
+                
+                {qrImage ? (
+                  <div className="space-y-3">
+                    <div className="p-2 bg-white border border-slate-200 rounded-lg inline-block">
+                        <img src={qrImage} className="w-48 h-48 mx-auto" alt="WhatsApp QR Code" />
+                    </div>
+                    <p className="text-sm text-slate-600">Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar</p>
+                  </div>
+                ) : (
+                    !isStarting && <p className="text-slate-500 py-8">Carregando QR Code...</p>
+                )}
+            </>
         )}
 
         <button

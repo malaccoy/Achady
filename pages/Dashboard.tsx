@@ -2,21 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
 import ConnectWhatsAppModal from '../components/ConnectWhatsAppModal';
-import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send } from 'lucide-react';
+import { Check, Trash2, Plus, Zap, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send, AlertTriangle, Save } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
+import { useWhatsappStatus } from '../hooks/useWhatsappStatus';
 
 const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
 
-const FIXED_USER_ID = "1";
-
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
+  // Real-time Status Hook (Polling every 5s)
+  const { status: whatsappStatus, loading: loadingStatus } = useWhatsappStatus(5000);
+
   // State
   const [settings, setSettings] = useState<AppSettings>({
     shopeeApiKey: '',
@@ -63,50 +64,33 @@ export const Dashboard: React.FC = () => {
       category: g.categoria || 'geral'
     })));
 
-    // 2. Sincronizar com o Servidor (VPS)
-    const syncWithServer = async () => {
-      try {
-        // Checar Status do WhatsApp na VPS
-        try {
-            const res = await fetch('/api/whatsapp/qr');
-            if (res.ok) {
-              const data = await res.json();
-              // Se status for 'ready', está conectado
-              if (data.status === 'ready') {
-                setSettings(prev => ({ ...prev, whatsappConnected: true }));
-              } else {
-                setSettings(prev => ({ ...prev, whatsappConnected: false }));
-              }
-            }
-        } catch(e) { console.log("Erro checking status WhatsApp", e); }
-        
-        // Carrega config local de automação
-        const automacao = db.getAutomacao(userId);
-        if(automacao) {
-             setSettings(prev => ({
-                ...prev,
-                automationEnabled: automacao.estado,
-                checkIntervalMinutes: automacao.intervalo
-            }));
-        }
-
-      } catch (err) {
-        console.error("Erro ao sincronizar com servidor:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    syncWithServer();
+    // Carrega config local de automação
+    const automacao = db.getAutomacao(userId);
+    if(automacao) {
+            setSettings(prev => ({
+            ...prev,
+            automationEnabled: automacao.estado,
+            checkIntervalMinutes: automacao.intervalo
+        }));
+    }
   }, [navigate]);
+
+  // Sync settings with Real-time Status
+  useEffect(() => {
+      if (!loadingStatus) {
+          setSettings(prev => ({
+              ...prev,
+              whatsappConnected: whatsappStatus.connected,
+              // If server reports automation status, we could sync it here too
+          }));
+      }
+  }, [whatsappStatus, loadingStatus]);
 
   const handleSaveShopeeCreds = async () => {
     if (!currentUserId) return;
     setIsSavingKey(true);
     
     try {
-      // Salvar apenas localmente por enquanto, pois a VPS roda o scraper
-      // Futuro: enviar para VPS se implementar API oficial lá
       db.salvarApiKeyShopee(currentUserId, apiKeyInput, apiSecretInput);
       
       setSettings(prev => ({ 
@@ -116,7 +100,7 @@ export const Dashboard: React.FC = () => {
         shopeeConnected: !!(apiKeyInput && apiSecretInput) 
       }));
       
-      alert("Configuração Shopee salva!");
+      alert("Configuração Shopee salva! (Nota: A VPS usa variáveis de ambiente .env para conexão real)");
 
     } catch (e) {
       alert("Erro ao salvar configuração.");
@@ -126,8 +110,9 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleDisconnectWhatsapp = () => {
+    // A desconexão real acontece no celular, aqui apenas limpamos o estado visual
     setSettings(prev => ({ ...prev, whatsappConnected: false }));
-    alert("Desconectado. (Nota: Para desconectar realmente, use o App do WhatsApp > Aparelhos Conectados)");
+    alert("Para desconectar completamente, vá no WhatsApp do celular > Aparelhos Conectados > Desconectar.");
   };
 
   const handleAutomationChange = async (enabled: boolean, interval: number) => {
@@ -175,7 +160,6 @@ export const Dashboard: React.FC = () => {
     }
     
     try {
-        // Manda VPS entrar no grupo
         const res = await fetch('/api/whatsapp/join', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -252,7 +236,7 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-12 text-center text-slate-500 animate-pulse">Sincronizando VPS...</div>;
+  if (loadingStatus && !settings.whatsappConnected) return <div className="p-12 text-center text-slate-500 animate-pulse">Carregando status...</div>;
 
   return (
     <div className="space-y-8 pb-12">
@@ -281,15 +265,35 @@ export const Dashboard: React.FC = () => {
         {/* Card WhatsApp */}
         <Card title="Conexão WhatsApp" icon={<Smartphone className="w-5 h-5" />}>
           <div className="space-y-5">
-            <div className={`p-4 rounded-xl border flex items-center gap-3 ${settings.whatsappConnected ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-              {settings.whatsappConnected ? (
-                 <div className="p-1.5 bg-emerald-200 rounded-full"><Check className="w-4 h-4 text-emerald-700" /></div>
-              ) : (
-                 <div className="p-1.5 bg-slate-200 rounded-full"><QrCode className="w-4 h-4 text-slate-600" /></div>
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-bold">{settings.whatsappConnected ? 'Sessão Ativa' : 'Desconectado'}</p>
-                <p className="text-xs opacity-90">{settings.whatsappConnected ? 'Pronto para enviar.' : 'Conecte para iniciar.'}</p>
+            {/* Status Visual Completo */}
+            <div className={`p-4 rounded-xl border flex flex-col gap-3 ${settings.whatsappConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
+              
+              <div className="flex items-center gap-3">
+                 {settings.whatsappConnected ? (
+                    <div className="p-1.5 bg-emerald-200 rounded-full"><Check className="w-4 h-4 text-emerald-700" /></div>
+                 ) : (
+                    <div className="p-1.5 bg-red-100 rounded-full"><AlertTriangle className="w-4 h-4 text-red-500" /></div>
+                 )}
+                 <div className="flex-1">
+                   <p className={`text-sm font-bold ${settings.whatsappConnected ? 'text-emerald-800' : 'text-slate-700'}`}>
+                       {settings.whatsappConnected ? 'Conectado (Ready)' : 'Desconectado'}
+                   </p>
+                 </div>
+              </div>
+
+              {/* Status Indicators */}
+              <div className="flex flex-wrap gap-2 mt-1 pl-10">
+                  {/* Shopee Indicator */}
+                  <div className={`text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${whatsappStatus.shopeeConfigured ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-200 text-amber-700'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${whatsappStatus.shopeeConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      {whatsappStatus.shopeeConfigured ? 'Shopee Configurada' : 'Shopee Não Configurada'}
+                  </div>
+                  
+                  {/* Group Indicator */}
+                  <div className={`text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${whatsappStatus.groupConfigured ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-200 text-amber-700'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${whatsappStatus.groupConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      {whatsappStatus.groupConfigured ? 'Grupo Configurado' : 'Grupo Não Configurado'}
+                  </div>
               </div>
             </div>
 
@@ -349,7 +353,7 @@ export const Dashboard: React.FC = () => {
                 isLoading={isSavingKey} 
                 fullWidth
               >
-                Salvar Configuração
+                Salvar Configuração (Local)
               </Button>
             </div>
           </div>

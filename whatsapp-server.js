@@ -17,6 +17,7 @@ const INTERVAL_MINUTES = parseInt(process.env.INTERVAL_MINUTES || '5', 10);
 let isAutomationOn = true;
 let ultimoQR = null;
 let connectionStatus = 'disconnected'; // disconnected, qr, ready
+let isWhatsappReady = false; // Tracks actual readiness
 
 // === Configuração do WhatsApp ===
 const client = new Client({
@@ -34,22 +35,26 @@ client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
   ultimoQR = qr;
   connectionStatus = 'qr';
+  isWhatsappReady = false;
 });
 
 client.on('ready', () => {
   console.log('✅ WhatsApp conectado e pronto!');
   ultimoQR = null;
   connectionStatus = 'ready';
+  isWhatsappReady = true;
 });
 
 client.on('auth_failure', (msg) => {
   console.error('❌ Falha na autenticação:', msg);
   connectionStatus = 'disconnected';
+  isWhatsappReady = false;
 });
 
 client.on('disconnected', (reason) => {
   console.log('⚠️ Cliente desconectado:', reason);
   connectionStatus = 'disconnected';
+  isWhatsappReady = false;
   ultimoQR = null;
   // Opcional: tentar reconectar
   client.initialize();
@@ -64,6 +69,23 @@ app.get('/qr', (req, res) => {
   res.json({ 
     qr: ultimoQR, 
     status: connectionStatus 
+  });
+});
+
+// GET /status: Retorna status detalhado (Conexão e Configs)
+app.get('/status', (req, res) => {
+  const connected = isWhatsappReady;
+  // Verifica se existe URL da Shopee configurada (mesmo que seja default)
+  const shopeeConfigured = Boolean(process.env.SHOPEE_URL || process.env.SHOPEE_KEYWORD);
+  // Verifica se existe ID de grupo configurado
+  const groupConfigured = Boolean(process.env.WHATSAPP_GROUP_ID);
+
+  return res.json({
+    connected,
+    connectionStatus,
+    shopeeConfigured,
+    groupConfigured,
+    automationEnabled: isAutomationOn
   });
 });
 
