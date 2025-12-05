@@ -154,6 +154,13 @@ export const Dashboard: React.FC = () => {
   const handleAddGroup = async () => {
     if (!newGroupLink || !currentUserId) return;
     
+    // ✅ VALIDAÇÃO DO LINK (UI)
+    const linkRegex = /chat\.whatsapp\.com\/[A-Za-z0-9]{5,}/;
+    if (!linkRegex.test(newGroupLink)) {
+        alert("Link inválido! Use um link de convite do WhatsApp válido (ex: https://chat.whatsapp.com/...).");
+        return;
+    }
+    
     // Join Group on Server
     try {
         const res = await fetch(`/api/join/${FIXED_USER_ID}`, {
@@ -166,11 +173,15 @@ export const Dashboard: React.FC = () => {
             })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
         
-    } catch (e) {
+        if (!res.ok) {
+           throw new Error(data.error || "Erro ao adicionar grupo no servidor");
+        }
+        
+    } catch (e: any) {
         console.error("Aviso: Falha ao entrar automaticamente no grupo via servidor", e);
-        // Continue to add locally anyway
+        alert(`Não foi possível adicionar o grupo: ${e.message}`);
+        return; 
     }
 
     const novoGrupoDb = db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory);

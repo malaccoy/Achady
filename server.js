@@ -165,17 +165,9 @@ function buildShopeeAuthHeader(appId, appSecret, payload) {
 async function fetchShopeeOffers(userConfig) {
   const { appId, appSecret, keyword } = userConfig;
   if (!appId || !appSecret || !keyword) {
-    // If no config, return dummy data for testing instead of crashing
-    console.log("⚠️ Config Shopee incompleta. Retornando dados mockados.");
-    return [{
-        productName: "Produto Teste (Sem API Key)",
-        priceMin: 50.00,
-        priceMax: 100.00,
-        priceDiscountRate: 50,
-        productLink: "https://shopee.com.br",
-        offerLink: "https://shopee.com.br",
-        imageUrl: "",
-    }];
+    // Retorna mock se não configurado para não quebrar a demo
+    console.log("⚠️ Config Shopee incompleta (appId, appSecret ou keyword ausente).");
+    return [];
   }
 
   const body = {
@@ -234,9 +226,9 @@ async function fetchShopeeOffers(userConfig) {
 
     const nodes = resp.data?.data?.productOfferV2?.nodes || [];
     return nodes;
-  } catch (e) {
-      console.error("Erro na requisição Shopee:", e.message);
-      return [];
+  } catch (error) {
+    console.error("Erro requisição Shopee:", error.message);
+    return [];
   }
 }
 
@@ -316,9 +308,6 @@ async function startAutomation(userId) {
     `🤖 Iniciando automação para user ${userId} a cada ${user.intervalMinutes} min`
   );
 
-  // Executa imediatamente uma vez
-  runCycle(userId).catch(err => console.error("Erro no primeiro ciclo:", err));
-
   automationTimers[userId] = setInterval(async () => {
     try {
       await runCycle(userId);
@@ -355,7 +344,7 @@ async function runCycle(userId) {
     return;
   }
 
-  console.log(`🔎 Buscando ofertas Shopee para user ${userId} (${user.keyword || 'geral'})`);
+  console.log(`🔎 Buscando ofertas Shopee para user ${userId} (${user.keyword})`);
   const offers = await fetchShopeeOffers(user);
   if (offers.length === 0) {
     console.log("⚠️ Nenhuma oferta retornada");
@@ -378,16 +367,15 @@ async function runCycle(userId) {
           // tenta pegar pelo link (caso não tenha salvo ainda)
           const inviteCode = group.inviteLink.split("/").pop();
           try {
-            const chat = await client.acceptInvite(inviteCode);
-            chatId = chat.id._serialized;
-            await runAsync(
+              const chat = await client.acceptInvite(inviteCode);
+              chatId = chat.id._serialized;
+    
+              await runAsync(
                 "UPDATE groups SET wid = ? WHERE id = ?",
                 [chatId, group.id]
               );
-          } catch (e) {
-              console.log("Falha ao entrar no grupo via invite:", e.message);
-              // Tenta usar o inviteLink como ID se for um teste ou se já for o ID
-              chatId = group.inviteLink.includes('@') ? group.inviteLink : null;
+          } catch(e) {
+              console.log("Erro ao entrar no grupo via invite:", e.message);
           }
         }
 
@@ -396,7 +384,7 @@ async function runCycle(userId) {
             `📤 Enviando oferta para grupo "${group.name}" (user ${userId})`
             );
             await client.sendMessage(chatId, msg);
-
+    
             await runAsync(
             `INSERT INTO logs
                 (userId, groupName, productName, offerLink, priceMin, priceOriginal, discountRate)
@@ -491,34 +479,46 @@ app.post("/join/:userId", async (req, res) => {
     if (!invite) {
       return res.status(400).json({ error: "invite (link do grupo) é obrigatório" });
     }
+    
+    // VALIDACAO DO LINK NO BACKEND
+    const linkRegex = /chat\.whatsapp\.com\/[A-Za-z0-9]{5,}/;
+    if (!linkRegex.test(invite)) {
+        return res.status(400).json({ error: "Link inválido. Forneça um link de convite do WhatsApp (chat.whatsapp.com/CÓDIGO)." });
+    }
 
     const sess = sessions[userId];
-    // Adiciona logica de salvar mesmo se nao estiver ready, para processar depois
     const groupName = name || "Grupo Novo";
-    
-    await runAsync(
-        `INSERT INTO groups (userId, name, inviteLink, category)
-            VALUES (?, ?, ?, ?)`,
-        [userId, groupName, invite, category || "Geral"]
-    );
+    const groupCategory = category || "Geral"; // Garante categoria
 
+    // Insere no banco primeiro
+    await runAsync(
+      `INSERT INTO groups (userId, name, inviteLink, wid, category)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, groupName, invite, null, groupCategory]
+    );
+    
+    // Tenta entrar se a sessão estiver pronta
     if (sess && sess.status === "ready") {
         try {
             const client = sess.client;
             const inviteCode = invite.split("/").pop();
             const chat = await client.acceptInvite(inviteCode);
+    
             const wid = chat.id._serialized;
-            
-            // Atualiza com o WID real
-            await runAsync("UPDATE groups SET wid = ? WHERE inviteLink = ?", [wid, invite]);
-        } catch(e) {
-            console.log("Não foi possível entrar no grupo agora (talvez já esteja dentro):", e.message);
+            const realName = chat.name || groupName;
+    
+            await runAsync(
+                "UPDATE groups SET wid = ?, name = ? WHERE inviteLink = ?",
+                [wid, realName, invite]
+            );
+        } catch (e) {
+            console.log("Ainda não foi possível entrar no grupo (ou já está dentro).", e.message);
         }
     }
 
     res.json({
       ok: true,
-      message: "Grupo salvo com sucesso",
+      message: "Grupo salvo",
       groupName,
     });
   } catch (err) {
@@ -558,21 +558,21 @@ app.post("/config/:userId", async (req, res) => {
         ]
       );
     } else {
-        // Atualiza apenas campos enviados
+        // Update parcial
         const current = exists;
         await runAsync(
-        `UPDATE users
+            `UPDATE users
             SET appId = ?, appSecret = ?, keyword = ?, messageTemplate = ?, intervalMinutes = ?, isActive = ?
             WHERE id = ?`,
-        [
-            appId !== undefined ? appId : (current.appId || null),
-            appSecret !== undefined ? appSecret : (current.appSecret || null),
-            keyword !== undefined ? keyword : (current.keyword || 'ofertas'),
-            messageTemplate !== undefined ? messageTemplate : (current.messageTemplate || null),
-            intervalMinutes !== undefined ? intervalMinutes : (current.intervalMinutes || 15),
-            isActive !== undefined ? (isActive ? 1 : 0) : (current.isActive || 0),
+            [
+            appId !== undefined ? appId : current.appId,
+            appSecret !== undefined ? appSecret : current.appSecret,
+            keyword !== undefined ? keyword : current.keyword,
+            messageTemplate !== undefined ? messageTemplate : current.messageTemplate,
+            intervalMinutes !== undefined ? intervalMinutes : current.intervalMinutes,
+            isActive !== undefined ? (isActive ? 1 : 0) : current.isActive,
             userId,
-        ]
+            ]
         );
     }
 
@@ -594,10 +594,9 @@ app.post("/config/:userId", async (req, res) => {
     }
 
     // Reinicia automação conforme isActive
-    // Fetch updated user to be sure
-    const updatedUser = await getAsync("SELECT * FROM users WHERE id = ?", [userId]);
-    
-    if (updatedUser.isActive) {
+    // Busca user atualizado
+    const updated = await getAsync("SELECT * FROM users WHERE id = ?", [userId]);
+    if (updated.isActive) {
       await startAutomation(userId);
     } else {
       clearAutomation(userId);
@@ -605,7 +604,7 @@ app.post("/config/:userId", async (req, res) => {
 
     res.json({
       ok: true,
-      config: updatedUser,
+      config: updated,
     });
   } catch (err) {
     console.error("Erro /config:", err.message);
@@ -628,27 +627,36 @@ app.get("/logs/:userId", async (req, res) => {
   }
 });
 
-// Endpoint manual de envio (Compatibilidade Dashboard)
+// Rota manual de envio (para teste no painel e compatibilidade)
 app.post("/send/:userId", async (req, res) => {
-    const { groupId, message, number } = req.body;
-    const target = groupId || number;
-    const userId = req.params.userId;
+  try {
+    const { userId } = req.params;
+    const { number, message, groupId } = req.body;
+    
+    // Suporta number ou groupId
+    const target = number || groupId;
 
-    const session = sessions[userId];
-    if (!session || session.status !== 'ready') {
-      return res.status(400).json({ error: 'Sessão WhatsApp não está pronta.' });
+    if (!target || !message) {
+      return res.status(400).json({ error: "Número/Grupo e mensagem são obrigatórios" });
     }
 
-    try {
-       // Se for número direto, adiciona sufixo. Se for link/grupo já salvo, precisaria do ID serialized.
-       // Aqui vamos assumir envio direto para número ou ID já formatado
-       const chatId = target.includes('@') ? target : `${target}@c.us`;
-       await session.client.sendMessage(chatId, message);
-       res.json({ok: true});
-    } catch(e) {
-       console.error("Erro envio manual:", e);
-       res.status(500).json({error: e.message});
+    const sess = sessions[userId];
+    if (!sess || sess.status !== "ready") {
+      return res.status(400).json({ error: "Sessão WhatsApp não está pronta ou conectada." });
     }
+
+    let chatId = target;
+    // Se não tiver @, assume número pessoal BR
+    if (!chatId.includes("@")) {
+      chatId = `${chatId.replace(/\D/g, "")}@c.us`;
+    }
+
+    await sess.client.sendMessage(chatId, message);
+    res.json({ ok: true, message: "Enviado com sucesso" });
+  } catch (err) {
+    console.error("Erro /send:", err);
+    res.status(500).json({ error: "Erro ao enviar mensagem" });
+  }
 });
 
 // Homepage de teste
