@@ -64,34 +64,40 @@ export const Dashboard: React.FC = () => {
       category: g.categoria || 'geral'
     })));
 
-    // 2. Sincronizar com o Servidor (Fonte da Verdade)
+    // 2. Sincronizar com o Servidor (Fonte da Verdade - Configs Shopee/Robô)
     const syncWithServer = async () => {
       try {
-        const res = await fetch(`/api/config/${FIXED_USER_ID}`);
-        if (res.ok) {
-          const config = await res.json();
-          
-          setSettings(prev => ({
-            ...prev,
-            shopeeApiKey: config.appId || '',
-            shopeeApiSecret: config.appSecret || '',
-            shopeeConnected: !!(config.appId && config.appSecret),
-            messageTemplate: config.messageTemplate || '',
-            automationEnabled: !!config.isActive,
-            checkIntervalMinutes: config.intervalMinutes || 15
-          }));
-
-          setApiKeyInput(config.appId || '');
-          setApiSecretInput(config.appSecret || '');
-          setKeywordInput(config.keyword || 'promoção');
-          
-          // Checar status da sessão WhatsApp
-          const qrRes = await fetch(`/api/qr/${FIXED_USER_ID}`);
-          const qrData = await qrRes.json();
-          if (qrData.status === 'ready' || qrData.status === 'connected') {
-            setSettings(prev => ({ ...prev, whatsappConnected: true }));
-          }
+        // Tenta buscar config da Shopee do server antigo (3000) se ainda existir
+        // ou mantém o estado local. Para o MVP vamos focar em carregar o status do WhatsApp.
+        
+        // Verifica status da conexão WhatsApp via novo Endpoint
+        try {
+            const qrRes = await fetch('/api/whatsapp/qr');
+            if (qrRes.status === 404) {
+               // Se retornar 404 no QR, pode significar que não tem QR gerado ou já está conectado?
+               // Na implementação atual do whatsapp-server.js, /qr retorna 404 se "QR ainda não gerado".
+               // Não temos um endpoint explícito de status "conectado" no server simples, 
+               // mas vamos assumir desconectado se não tiver sucesso explícito por enquanto.
+               // TODO: Melhorar endpoint de status no backend.
+            } else {
+               const qrData = await qrRes.json();
+               // Se retornou QR, não está conectado
+               if (qrData.qr) {
+                  setSettings(prev => ({ ...prev, whatsappConnected: false }));
+               }
+            }
+        } catch(e) { console.log("Erro checking status", e); }
+        
+        // Carrega configurações salvas localmente ou do DB antigo
+        const automacao = db.getAutomacao(userId);
+        if(automacao) {
+             setSettings(prev => ({
+                ...prev,
+                automationEnabled: automacao.estado,
+                checkIntervalMinutes: automacao.intervalo
+            }));
         }
+
       } catch (err) {
         console.error("Erro ao sincronizar com servidor:", err);
       } finally {
@@ -107,7 +113,8 @@ export const Dashboard: React.FC = () => {
     setIsSavingKey(true);
     
     try {
-      // Salvar no servidor (Upsert)
+      // Salvar apenas localmente e no server antigo para Shopee (já que o novo server foca no WhatsApp)
+      // Futuramente migrar tudo para o novo server.
       await fetch(`/api/config/${FIXED_USER_ID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,37 +135,45 @@ export const Dashboard: React.FC = () => {
       
       // Backup Local
       db.salvarApiKeyShopee(currentUserId, apiKeyInput, apiSecretInput);
+      alert("Configuração Shopee salva!");
 
     } catch (e) {
-      alert("Erro ao salvar no servidor.");
+      alert("Erro ao salvar configuração.");
     } finally {
       setIsSavingKey(false);
     }
   };
 
   const handleDisconnectWhatsapp = () => {
-    // Para MVP, apenas resetamos visualmente, idealmente chamaria logout na API
+    // Para MVP, apenas resetamos visualmente
     setSettings(prev => ({ ...prev, whatsappConnected: false }));
-    alert("Sessão desconectada visualmente. Para desconectar totalmente, encerre a sessão no seu aparelho celular.");
+    alert("Sessão desconectada visualmente.");
   };
 
+  // ✅ NOVA INTEGRAÇÃO: Controle do Robô (VPS 3001)
   const handleAutomationChange = async (enabled: boolean, interval: number) => {
     if (!currentUserId) return;
     
     setSettings(prev => ({ ...prev, automationEnabled: enabled, checkIntervalMinutes: interval }));
+    db.alternarAutomacao(currentUserId, enabled, interval); // Save local backup
     
     try {
-        await fetch(`/api/config/${FIXED_USER_ID}`, {
+        const res = await fetch('/api/whatsapp/automation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                intervalMinutes: interval,
-                isActive: enabled
+                status: enabled,
+                intervalMinutes: interval
             })
         });
+
+        if (!res.ok) throw new Error("Falha na VPS");
+
     } catch (e) {
         console.error("Erro ao comunicar com servidor de automação:", e);
-        alert("Erro ao conectar com o robô.");
+        alert("Erro ao enviar comando para o robô na VPS. Verifique se o servidor está online.");
+        // Reverter UI em caso de erro
+        setSettings(prev => ({ ...prev, automationEnabled: !enabled }));
     }
   };
 
@@ -166,21 +181,19 @@ export const Dashboard: React.FC = () => {
     if (!currentUserId) return;
     
     try {
-      await fetch(`/api/config/${FIXED_USER_ID}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messageTemplate: settings.messageTemplate })
-      });
-      alert('Modelo salvo e atualizado no robô!');
+      // Salva no server antigo por enquanto (pois o novo whatsapp-server.js usa hardcoded format)
+      // TODO: Migrar template para o novo server
+      db.salvarModeloMensagem(currentUserId, settings.messageTemplate);
+      alert('Modelo salvo localmente!');
     } catch (e) {
       alert("Erro ao salvar modelo.");
     }
   };
 
+  // ✅ NOVA INTEGRAÇÃO: Entrar no Grupo (VPS 3001)
   const handleAddGroup = async () => {
     if (!newGroupLink || !currentUserId) return;
     
-    // Validação Regex
     const linkRegex = /chat\.whatsapp\.com\/[A-Za-z0-9]{5,}/;
     if (!linkRegex.test(newGroupLink)) {
         alert("Link inválido! Use um link de convite do WhatsApp válido (ex: https://chat.whatsapp.com/...).");
@@ -188,16 +201,15 @@ export const Dashboard: React.FC = () => {
     }
     
     try {
-        // Enviar para Servidor entrar no grupo
-        const res = await fetch(`/api/join/${FIXED_USER_ID}`, {
+        const res = await fetch('/api/whatsapp/join', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                invite: newGroupLink,
-                name: `Grupo ${groups.length + 1}`,
+                inviteLink: newGroupLink,
                 category: newGroupCategory
             })
         });
+        
         const data = await res.json();
         
         if (!res.ok) {
@@ -213,10 +225,11 @@ export const Dashboard: React.FC = () => {
         };
         
         setGroups([...groups, newGroupView]);
-        db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory); // Backup local
+        db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory);
         
         setNewGroupLink('');
         setNewGroupCategory('geral');
+        alert(`Entrou no grupo: ${data.groupName}`);
         
     } catch (e: any) {
         alert(`Falha ao entrar no grupo: ${e.message}`);
@@ -224,7 +237,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleDeleteGroup = (id: string) => {
-    // Apenas visual no MVP, pois server não tem rota delete group especificada no prompt
     db.deletarGrupo(id);
     setGroups(groups.filter(g => g.id !== id));
   };
@@ -236,6 +248,7 @@ export const Dashboard: React.FC = () => {
     }));
   };
 
+  // ✅ NOVA INTEGRAÇÃO: Mensagem de Teste (VPS 3001)
   const handleSendTestMessage = async () => {
     if (!testPhone) {
       alert("Digite um número de telefone para teste (ex: 5511999999999)");
@@ -245,7 +258,7 @@ export const Dashboard: React.FC = () => {
     setSendingTest(true);
 
     try {
-      const response = await fetch(`/api/send/${FIXED_USER_ID}`, {
+      const response = await fetch('/api/whatsapp/send', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -256,20 +269,20 @@ export const Dashboard: React.FC = () => {
 
       const data = await response.json();
       
-      if (response.ok && data.ok) {
-        alert("✅ Mensagem enviada com sucesso!");
+      if (response.ok && data.success) {
+        alert("✅ Mensagem enviada com sucesso pela VPS!");
       } else {
         alert("❌ Erro: " + (data.error || "Falha desconhecida"));
       }
 
     } catch (e) {
-      alert("❌ Erro de conexão com o servidor local");
+      alert("❌ Erro de conexão com a API Vercel/VPS");
     } finally {
       setSendingTest(false);
     }
   };
 
-  if (loading) return <div className="p-12 text-center text-slate-500 font-medium animate-pulse">Sincronizando Painel ACHADY com VPS...</div>;
+  if (loading) return <div className="p-12 text-center text-slate-500 font-medium animate-pulse">Sincronizando Painel ACHADY...</div>;
 
   return (
     <div className="space-y-8 pb-12">
@@ -278,7 +291,7 @@ export const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-900 tracking-tight">Painel Achady</h1>
-          <p className="text-slate-500 mt-1">Gerencie seu robô de ofertas Shopee.</p>
+          <p className="text-slate-500 mt-1">Gerencie seu robô de ofertas Shopee (VPS Conectada).</p>
         </div>
         
         {settings.automationEnabled ? (
@@ -307,7 +320,7 @@ export const Dashboard: React.FC = () => {
               )}
               <div className="flex-1">
                 <p className="text-sm font-bold">{settings.whatsappConnected ? 'Sessão Ativa' : 'Desconectado'}</p>
-                <p className="text-xs opacity-90">{settings.whatsappConnected ? 'Pronto para enviar ofertas.' : 'Necessário conectar para enviar.'}</p>
+                <p className="text-xs opacity-90">{settings.whatsappConnected ? 'Pronto para enviar ofertas.' : 'Conecte para iniciar.'}</p>
               </div>
             </div>
 
@@ -381,7 +394,7 @@ export const Dashboard: React.FC = () => {
                 checked={settings.automationEnabled} 
                 onChange={(val) => handleAutomationChange(val, settings.checkIntervalMinutes)} 
                 label="Ativar Robô Automático"
-                description="Envia ofertas periodicamente."
+                description="Envia ofertas automaticamente via VPS."
               />
             </div>
 
@@ -430,7 +443,7 @@ export const Dashboard: React.FC = () => {
                 onChange={(e) => setSettings(s => ({ ...s, messageTemplate: e.target.value }))}
               />
               <Button onClick={handleSaveTemplate} variant="secondary" fullWidth>
-                <Save className="w-4 h-4 mr-2" /> Salvar Modelo
+                <Save className="w-4 h-4 mr-2" /> Salvar Modelo (Local)
               </Button>
             </div>
           </div>

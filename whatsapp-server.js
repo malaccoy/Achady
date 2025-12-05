@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import qrcode from 'qrcode-terminal';
 import pkg from 'whatsapp-web.js';
-import { buscarOfertas } from './shopee.js';
+import { buscarOfertasShopee } from './shopee.js';
 
 dotenv.config();
 
@@ -18,6 +18,7 @@ let isAutomationOn = true;
 let ultimoQR = null;
 
 // === Configuração do WhatsApp ===
+// Usa 'achady-session-standalone' para não conflitar com a sessão do server.js se rodarem juntos
 const client = new Client({
   authStrategy: new LocalAuth({
     clientId: process.env.WHATSAPP_SESSION_NAME || 'achady-session-standalone',
@@ -78,7 +79,7 @@ app.post('/send-message', async (req, res) => {
   try {
     // Formatar número se vier apenas digitos (ex: 5511999999999 -> 5511999999999@c.us)
     let chatId = to;
-    if (!chatId.includes('@')) {
+    if (!chatId.includes('@') && !chatId.includes('-')) {
       chatId = `${chatId}@c.us`;
     }
 
@@ -123,7 +124,9 @@ async function enviarOfertasPeriodicamente() {
     
     // Fallback de keywords caso não tenha no .env
     const keyword = process.env.SHOPEE_KEYWORD || "ofertas";
-    const ofertas = await buscarOfertas(keyword);
+    
+    // Usa a função importada do shopee.js
+    const ofertas = await buscarOfertasShopee(keyword);
 
     if (!ofertas || !ofertas.length) {
       console.log('Nenhuma oferta encontrada nesse ciclo.');
@@ -142,7 +145,7 @@ async function enviarOfertasPeriodicamente() {
       try {
         await client.sendMessage(groupId, mensagem);
         console.log('✅ Oferta enviada para o grupo:', oferta.productName || oferta.titulo);
-        // Delay 5s
+        // Delay 5s para evitar flood
         await new Promise(r => setTimeout(r, 5000));
       } catch (e) {
         console.error('Erro envio msg:', e.message);
@@ -154,22 +157,28 @@ async function enviarOfertasPeriodicamente() {
 }
 
 function formatarMensagemOferta(oferta) {
-  // Ajuste de campos conforme o retorno do shopee.js (productName vs titulo)
-  const titulo = oferta.productName || oferta.titulo;
-  const preco = oferta.priceMin || oferta.preco;
-  const link = oferta.offerLink || oferta.link;
+  // Ajuste de campos conforme o retorno do shopee.js (pode vir como productName ou titulo)
+  const titulo = oferta.productName || oferta.titulo || "Oferta";
+  const preco = oferta.priceMin || oferta.preco || 0;
+  const link = oferta.offerLink || oferta.link || "";
+  const precoOriginal = oferta.priceMax || oferta.precoOriginal;
+  const desconto = oferta.priceDiscountRate || oferta.desconto;
   
   // Formatação simples de moeda se for número
   const precoFormatado = typeof preco === 'number' 
     ? preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
     : preco;
 
-  return (
-    `🔥 *${titulo}*\n` +
-    `💰 Preço: ${precoFormatado}\n` +
-    `🔗 Link: ${link}\n\n` +
-    `Achady - Ofertas automáticas 💜`
-  );
+  let msg = `🔥 *${titulo}*\n` +
+            `💰 Preço: ${precoFormatado}\n`;
+            
+  if (precoOriginal) msg += `❌ De: ${precoOriginal}\n`;
+  if (desconto) msg += `✅ Desconto: ${desconto}\n`;
+  
+  msg += `🔗 Link: ${link}\n\n` +
+         `Achady - Ofertas automáticas 💜`;
+
+  return msg;
 }
 
 // Inicia Loop

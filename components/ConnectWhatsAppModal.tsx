@@ -10,20 +10,18 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   const [status, setStatus] = useState<string>("idle");
   const [loading, setLoading] = useState(false);
 
-  // Using proxied path /api/start/1 -> localhost:3000/start/1
-  const userId = "1";
-
-  // ✅ INICIAR SESSÃO
+  // ✅ INICIAR SESSÃO (Mock/Check)
   async function iniciarSessao() {
     setLoading(true);
     try {
-      await fetch(`/api/start/${userId}`, {
+      // Chama api/whatsapp/start que é um mock para dar "kickstart" no fluxo da UI
+      await fetch('/api/whatsapp/start', {
         method: "POST",
       });
       setStatus("starting");
     } catch (e) {
       console.error(e);
-      alert("Erro ao conectar com servidor local.");
+      alert("Erro ao comunicar com servidor.");
     } finally {
       setLoading(false);
     }
@@ -31,29 +29,44 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
 
   // ✅ BUSCAR QR E STATUS A CADA 3 SEGUNDOS
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || status === "idle") return;
+
+    // Se acabou de abrir e não iniciou, tenta buscar QR direto para ver se já tem
+    if (status === "idle") {
+        iniciarSessao();
+    }
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/qr/${userId}`);
-        const data = await res.json();
-
-        setStatus(data.status || "idle");
-        setQr(data.qr || null);
-
-        // ✅ SE CONECTOU → FECHA AUTOMATICAMENTE
-        if (data.status === "ready" || data.status === "connected") {
-          alert("✅ WhatsApp conectado com sucesso!");
-          clearInterval(interval);
-          onClose();
+        const res = await fetch('/api/whatsapp/qr');
+        
+        if (res.status === 404) {
+            // QR não gerado ainda ou já conectado (a API retorna 404 se não tiver QR)
+            // Mantém status starting ou muda pra connected se tivéssemos certeza
+            return;
         }
+
+        const data = await res.json();
+        
+        // Se veio QR, mostra
+        if (data.qr) {
+            setQr(data.qr);
+            setStatus("qr");
+        } 
+        // Se a API retornar algum status de sucesso (depende da implementação futura)
+        else if (data.status === "ready") {
+            setStatus("ready");
+            clearInterval(interval);
+            setTimeout(onClose, 2000);
+        }
+
       } catch (err) {
-        console.error("Erro ao buscar status do WhatsApp", err);
+        console.error("Erro polling QR", err);
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isOpen]);
+  }, [isOpen, status]);
 
   if (!isOpen) return null;
 
@@ -62,22 +75,23 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
       <div className="bg-white rounded-xl p-6 w-[350px] text-center">
         <h2 className="text-lg font-bold mb-4">Conectar WhatsApp</h2>
 
-        {loading && <p>Iniciando sessão...</p>}
+        {loading && <p>Verificando servidor...</p>}
 
         {!loading && (status === "idle" || status === "offline") && (
-          <button
-            onClick={iniciarSessao}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            Iniciar Conexão
-          </button>
+           <button
+             onClick={iniciarSessao}
+             className="bg-blue-600 text-white px-4 py-2 rounded"
+           >
+             Iniciar Conexão
+           </button>
         )}
 
-        {status === "starting" && <p>⏳ Preparando QR Code...</p>}
+        {status === "starting" && <p>⏳ Buscando QR Code na VPS...</p>}
+        
         {status === "qr" && qr && (
           <>
-            <img src={qr} className="mx-auto w-48 border-2 border-slate-200 rounded-lg p-2" />
-            <p className="text-sm mt-2">Aguardando leitura...</p>
+            <img src={qr} className="mx-auto w-48 border-2 border-slate-200 rounded-lg p-2" alt="WhatsApp QR Code" />
+            <p className="text-sm mt-2">Escaneie com seu WhatsApp</p>
           </>
         )}
 

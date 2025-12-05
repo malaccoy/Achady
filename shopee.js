@@ -149,3 +149,6 @@ export async function buscarOfertas(keyword = "ofertas", config = {}) {
   // 2. Fallback para Scraper
   return await buscarOfertasScraper(keyword);
 }
+
+// Alias para satisfazer o requisito do whatsapp-server.js
+export const buscarOfertasShopee = buscarOfertas;
