@@ -10,8 +10,7 @@ const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
 
-// ✅ CONFIGURAÇÃO DA API (BASE URL APENAS)
-const API_BASE_URL = "http://72.60.228.212:3000";
+// ✅ USER ID FIXO PARA O MVP
 const FIXED_USER_ID = "1";
 
 export const Dashboard: React.FC = () => {
@@ -150,7 +149,7 @@ export const Dashboard: React.FC = () => {
     }));
   };
 
-  // ✅ ETAPA 4 - FUNÇÃO DE TESTE DE ENVIO
+  // ✅ ETAPA 4 - FUNÇÃO DE TESTE DE ENVIO (USANDO PROXY)
   const handleSendTestMessage = async () => {
     if (!testPhone) {
       alert("Digite um número de telefone para teste (ex: 5511999999999)");
@@ -160,8 +159,8 @@ export const Dashboard: React.FC = () => {
     setSendingTest(true);
 
     try {
-      // Usa API_BASE_URL concatenado com o endpoint /send
-      const response = await fetch(`${API_BASE_URL}/send`, {
+      // Usa o proxy interno /api/whatsapp/send em vez de chamar o IP direto
+      const response = await fetch(`/api/whatsapp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -173,7 +172,7 @@ export const Dashboard: React.FC = () => {
 
       const data = await response.json();
       
-      if (data.ok) {
+      if (response.ok && data.ok) {
         alert("✅ Mensagem enviada com sucesso!");
       } else {
         alert("❌ Erro: " + (data.error || "Falha desconhecida"));
@@ -299,8 +298,6 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        {/* ... Resto do Dashboard mantido igual ... */}
-        
         {/* Card 3: Automation Controls */}
         <Card title="Controle de Automação" icon={<Zap className="w-5 h-5" />}>
           <div className="space-y-6">

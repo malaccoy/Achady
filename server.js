@@ -58,7 +58,10 @@ function createSession(sessionId) {
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--disable-extensions"
+                "--disable-extensions",
+                "--no-zygote",
+                "--single-process",
+                "--no-first-run"
             ]
         }
     });
@@ -92,9 +95,14 @@ function createSession(sessionId) {
     client.on("disconnected", () => {
         sessions[sessionId].status = "disconnected";
         console.log(`❌ Sessão ${sessionId} desconectada`);
+        delete sessions[sessionId];
     });
 
-    client.initialize();
+    client.initialize().catch(err => {
+        console.error("Erro ao inicializar cliente:", err);
+        sessions[sessionId].status = "error";
+    });
+    
     return sessions[sessionId];
 }
 
@@ -105,6 +113,13 @@ function createSession(sessionId) {
 // 1. Iniciar Sessão
 app.post("/start/:userId", (req, res) => {
     const { userId } = req.params;
+    
+    // Se a sessão existe mas está com erro ou desconectada, recria
+    if (sessions[userId] && (sessions[userId].status === 'disconnected' || sessions[userId].status === 'error')) {
+         console.log(`♻️ Reiniciando sessão falha para ${userId}`);
+         delete sessions[userId];
+    }
+    
     createSession(userId);
     res.json({ ok: true, message: "Sessão iniciada" });
 });

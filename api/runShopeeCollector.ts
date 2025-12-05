@@ -39,10 +39,10 @@ const CONFIG = {
   APP_ID: process.env.SHOPEE_APP_ID || '',
   APP_SECRET: process.env.SHOPEE_SECRET || '',
   
-  // WPPConnect Configuration (Ngrok ou URL fixa)
-  WPP_BASE_URL: 'https://carmel-liturgical-degressively.ngrok-free.dev',
-  WPP_SESSION: 'Caio', 
-  WPP_TOKEN: process.env.WPP_TOKEN || '$2b$10$EnDJPCLWDLfyLFwN_8jvmuNZl_x34JO66c1Xw_iQIngx3EBuubJwO', 
+  // ✅ CORREÇÃO: Usando o IP da VPS fornecido
+  WPP_BASE_URL: 'http://72.60.228.212:3000',
+  WPP_SESSION: '1',  // Usando ID 1 fixo conforme Dashboard
+  WPP_TOKEN: process.env.WPP_TOKEN || '', 
 };
 
 // --- Helpers de Segurança de Tipos ---
@@ -251,41 +251,29 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
     
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (Cat: ${g.categoria})...`);
 
-      const hasImage = !!product.imagem;
-      const route = hasImage ? 'send-image' : 'send-message';
-      const url = `${CONFIG.WPP_BASE_URL}/api/${CONFIG.WPP_SESSION}/${route}`;
+      // Como o servidor é próprio, usamos o endpoint /send
+      const url = `${CONFIG.WPP_BASE_URL}/send`;
 
-      const payload = hasImage 
-        ? {
-            phone: g.linkWhatsapp,
-            path: product.imagem,
-            caption: message,
-            isGroup: true,
-            filename: 'oferta.jpg'
-          }
-        : {
-            phone: g.linkWhatsapp,
-            message: message,
-            isGroup: true
-          };
+      const payload = {
+        userId: CONFIG.WPP_SESSION,
+        grupo: g.linkWhatsapp,
+        mensagem: message,
+        number: g.linkWhatsapp, // Compatibilidade
+        isGroup: true
+      };
 
       // Disparo real
-      if (CONFIG.WPP_BASE_URL.includes("ngrok") || !url.includes("httpbin")) {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${CONFIG.WPP_TOKEN}`
-          },
-          body: JSON.stringify(payload)
-        });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
 
-        if (!response.ok) {
+      if (!response.ok) {
            const errText = await response.text();
-           throw new Error(`WPPConnect Error ${response.status}: ${errText}`);
-        }
-      } else {
-        console.log(`[DRY RUN] Mensagem simulada para ${g.nome}`);
+           throw new Error(`WPP Server Error ${response.status}: ${errText}`);
       }
 
       sent++;
