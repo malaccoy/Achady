@@ -19,6 +19,9 @@ let ultimoQR = null;
 let connectionStatus = 'disconnected'; // disconnected, qr, ready
 let isWhatsappReady = false; // Tracks actual readiness
 
+// Global variable for the active group ID (defaults to .env if available)
+let currentGroupId = process.env.WHATSAPP_GROUP_ID || null;
+
 // === Configuração do WhatsApp ===
 const client = new Client({
   authStrategy: new LocalAuth({
@@ -77,15 +80,34 @@ app.get('/status', (req, res) => {
   const connected = isWhatsappReady;
   // Verifica se existe URL da Shopee configurada (mesmo que seja default)
   const shopeeConfigured = Boolean(process.env.SHOPEE_URL || process.env.SHOPEE_KEYWORD);
-  // Verifica se existe ID de grupo configurado
-  const groupConfigured = Boolean(process.env.WHATSAPP_GROUP_ID);
+  
+  // Verifica se o grupo está configurado na memória
+  const groupConfigured = Boolean(currentGroupId);
 
   return res.json({
     connected,
     connectionStatus,
     shopeeConfigured,
     groupConfigured,
-    automationEnabled: isAutomationOn
+    automationEnabled: isAutomationOn,
+    currentGroupId // Debug info
+  });
+});
+
+// POST /config/group: Define manualmente qual grupo será usado pelo robô
+app.post('/config/group', (req, res) => {
+  const { groupId } = req.body;
+
+  if (!groupId || typeof groupId !== 'string') {
+    return res.status(400).json({ error: 'groupId obrigatório' });
+  }
+
+  currentGroupId = groupId;
+  console.log('⚙️ Grupo padrão atualizado via API para:', currentGroupId);
+
+  return res.json({
+    success: true,
+    groupId: currentGroupId,
   });
 });
 
@@ -144,7 +166,7 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
-// POST /join-group: Entrar em grupo
+// POST /join-group: Entrar em grupo via link e retornar ID
 app.post('/join-group', async (req, res) => {
   const { inviteLink } = req.body;
 
@@ -156,8 +178,21 @@ app.post('/join-group', async (req, res) => {
 
   try {
     const chat = await client.acceptInvite(inviteCode);
-    console.log('✅ Entrou no grupo:', chat.name);
-    res.json({ success: true, groupName: chat.name });
+    const groupId = chat.id._serialized;
+    
+    console.log('✅ Entrou no grupo:', chat.name, 'ID:', groupId);
+    
+    // Se não houver grupo configurado ainda, define este como padrão
+    if (!currentGroupId) {
+        currentGroupId = groupId;
+        console.log('⚙️ Auto-configurado como grupo padrão:', currentGroupId);
+    }
+
+    res.json({ 
+        success: true, 
+        groupName: chat.name,
+        groupId: groupId
+    });
   } catch (err) {
     console.error('Erro ao entrar no grupo:', err.message);
     res.status(500).json({ error: 'Erro ao entrar no grupo' });
@@ -176,8 +211,13 @@ async function enviarOfertasPeriodicamente() {
 
     if (!ofertas || !ofertas.length) return;
 
-    const groupId = process.env.WHATSAPP_GROUP_ID;
-    if (!groupId) return;
+    // Usa a variável global atualizada em tempo real
+    const groupId = currentGroupId;
+
+    if (!groupId) {
+        // console.log('⚠️ Nenhum grupo configurado para envio.');
+        return;
+    }
 
     for (const oferta of ofertas.slice(0, 5)) {
       const mensagem = formatarMensagemOferta(oferta);
