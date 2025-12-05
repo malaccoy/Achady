@@ -1,3 +1,5 @@
+
+
 import { MessageLog } from '../types';
 import * as crypto from 'crypto';
 
@@ -18,9 +20,26 @@ if (MEMORY_LOGS.length === 0) {
         precoOriginal: 129.90,
         preco: 89.90,
         descontoPercentual: 31,
+        imagem: 'https://down-br.img.susercontent.com/file/br-11134207-7r98o-lxn1q7j4j4z5a8', // Imagem de exemplo
         linkAfiliado: 'https://shope.ee/fake-link',
         mensagemEnviada: 'Oferta imperdível...',
         enviadoEm: new Date(Date.now() - 1000 * 60 * 30).toISOString() // 30 mins ago
+    });
+    MEMORY_LOGS.push({
+        id: 'mock-uuid-2',
+        grupoId: 'grp_02',
+        grupoNome: 'Promoções Tech',
+        whatsappLink: 'https://chat.whatsapp.com/ExemploLink2',
+        categoria: 'eletronicos',
+        produtoId: 'shp_67890',
+        titulo: 'Fone de Ouvido Bluetooth TWS Pro',
+        precoOriginal: 89.90,
+        preco: 45.90,
+        descontoPercentual: 49,
+        imagem: 'https://down-br.img.susercontent.com/file/br-11134207-7qukw-lk6j6j6j6j6j6j',
+        linkAfiliado: 'https://shope.ee/fake-link-2',
+        mensagemEnviada: 'Fone top em promoção...',
+        enviadoEm: new Date(Date.now() - 1000 * 60 * 120).toISOString() // 2 hours ago
     });
 }
 

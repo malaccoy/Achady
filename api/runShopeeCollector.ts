@@ -1,4 +1,5 @@
 
+
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as crypto from 'crypto';
 import { saveMessageLog } from './_db';
@@ -328,6 +329,7 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
         precoOriginal: product.precoOriginal,
         preco: product.precoPromocional,
         descontoPercentual: product.descontoValor,
+        imagem: product.imagem, // Passando imagem para o log
         linkAfiliado: product.linkAfiliado,
         mensagemEnviada: message,
         enviadoEm: new Date().toISOString()

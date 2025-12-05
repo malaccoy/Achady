@@ -104,6 +104,7 @@ export interface MessageLog {
   precoOriginal?: number;
   preco: number;
   descontoPercentual?: number;
+  imagem?: string; // Added field for visual logs
   linkAfiliado: string;
   mensagemEnviada: string;
   enviadoEm: string; // ISO String
