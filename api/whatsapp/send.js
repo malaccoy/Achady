@@ -9,8 +9,7 @@ export default async function handler(req, res) {
     const { number, message } = req.body;
     const baseUrl = process.env.VPS_WHATSAPP_BASE_URL || 'http://72.60.228.212:3001';
 
-    // O whatsapp-server.js espera { to, message }
-    // O frontend manda { number, message }
+    // Mapeia { number } do front para { to } da VPS
     const payload = {
       to: number,
       message: message

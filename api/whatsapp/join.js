@@ -9,13 +9,9 @@ export default async function handler(req, res) {
     const { inviteLink, category } = req.body;
     const baseUrl = process.env.VPS_WHATSAPP_BASE_URL || 'http://72.60.228.212:3001';
 
-    // Chama o endpoint /join-group na VPS
     const response = await axios.post(`${baseUrl}/join-group`, {
       inviteLink: inviteLink
     });
-
-    // Opcional: Se quiser salvar a categoria no banco local ou enviar para outro lugar
-    // por enquanto só proxy direto para entrar no grupo
     
     return res.status(200).json(response.data);
   } catch (error) {

@@ -6,16 +6,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Usa a variável de ambiente ou fallback para o IP fixo conhecido (porta 3001)
     const baseUrl = process.env.VPS_WHATSAPP_BASE_URL || 'http://72.60.228.212:3001';
     
-    // Chama o endpoint /qr do whatsapp-server.js
+    // Chama o endpoint /qr da VPS que retorna { qr, status }
     const response = await axios.get(`${baseUrl}/qr`);
     
     return res.status(200).json(response.data);
   } catch (error) {
     console.error('Erro proxy QR:', error.message);
-    // Se der 404 lá (QR não gerado ou já conectado), repassa
     if (error.response) {
        return res.status(error.response.status).json(error.response.data);
     }

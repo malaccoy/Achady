@@ -16,9 +16,9 @@ const INTERVAL_MINUTES = parseInt(process.env.INTERVAL_MINUTES || '5', 10);
 
 let isAutomationOn = true;
 let ultimoQR = null;
+let connectionStatus = 'disconnected'; // disconnected, qr, ready
 
 // === Configuração do WhatsApp ===
-// Usa 'achady-session-standalone' para não conflitar com a sessão do server.js se rodarem juntos
 const client = new Client({
   authStrategy: new LocalAuth({
     clientId: process.env.WHATSAPP_SESSION_NAME || 'achady-session-standalone',
@@ -33,31 +33,41 @@ client.on('qr', (qr) => {
   console.log('QR RECEBIDO, escaneie com o WhatsApp:');
   qrcode.generate(qr, { small: true });
   ultimoQR = qr;
+  connectionStatus = 'qr';
 });
 
 client.on('ready', () => {
   console.log('✅ WhatsApp conectado e pronto!');
+  ultimoQR = null;
+  connectionStatus = 'ready';
 });
 
 client.on('auth_failure', (msg) => {
   console.error('❌ Falha na autenticação:', msg);
+  connectionStatus = 'disconnected';
 });
 
 client.on('disconnected', (reason) => {
   console.log('⚠️ Cliente desconectado:', reason);
+  connectionStatus = 'disconnected';
+  ultimoQR = null;
+  // Opcional: tentar reconectar
+  client.initialize();
 });
 
 client.initialize();
 
 // === Rotas API ===
 
-// QR atual (para painel consumir depois)
+// GET /qr: Retorna QR e Status atual
 app.get('/qr', (req, res) => {
-  if (!ultimoQR) return res.status(404).json({ error: 'QR ainda não gerado' });
-  res.json({ qr: ultimoQR });
+  res.json({ 
+    qr: ultimoQR, 
+    status: connectionStatus 
+  });
 });
 
-// Liga/desliga automação
+// POST /automation: Liga/desliga automação
 app.post('/automation', (req, res) => {
   const { status } = req.body;
   if (typeof status !== 'boolean') {
@@ -68,7 +78,7 @@ app.post('/automation', (req, res) => {
   res.json({ success: true, isAutomationOn });
 });
 
-// Envio manual de mensagem (teste)
+// POST /send-message: Envio manual
 app.post('/send-message', async (req, res) => {
   const { to, message } = req.body;
 
@@ -77,7 +87,6 @@ app.post('/send-message', async (req, res) => {
   }
 
   try {
-    // Formatar número se vier apenas digitos (ex: 5511999999999 -> 5511999999999@c.us)
     let chatId = to;
     if (!chatId.includes('@') && !chatId.includes('-')) {
       chatId = `${chatId}@c.us`;
@@ -91,7 +100,7 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
-// Entrar em grupo via link de convite
+// POST /join-group: Entrar em grupo
 app.post('/join-group', async (req, res) => {
   const { inviteLink } = req.body;
 
@@ -111,60 +120,43 @@ app.post('/join-group', async (req, res) => {
   }
 });
 
-// === Loop de automação: ofertas Shopee -> grupo WhatsApp ===
-
+// === Loop de automação ===
 async function enviarOfertasPeriodicamente() {
-  if (!isAutomationOn) {
-    console.log('⏸ Automação pausada, pulando ciclo.');
+  if (!isAutomationOn || connectionStatus !== 'ready') {
     return;
   }
 
   try {
-    console.log('🔍 Buscando ofertas da Shopee...');
-    
-    // Fallback de keywords caso não tenha no .env
     const keyword = process.env.SHOPEE_KEYWORD || "ofertas";
-    
-    // Usa a função importada do shopee.js
     const ofertas = await buscarOfertasShopee(keyword);
 
-    if (!ofertas || !ofertas.length) {
-      console.log('Nenhuma oferta encontrada nesse ciclo.');
-      return;
-    }
+    if (!ofertas || !ofertas.length) return;
 
-    const groupId = process.env.WHATSAPP_GROUP_ID; // exemplo: 120363025225@g.us
-    if (!groupId) {
-      console.log('⚠️ WHATSAPP_GROUP_ID não definido no .env, não enviando mensagens.');
-      return;
-    }
+    const groupId = process.env.WHATSAPP_GROUP_ID;
+    if (!groupId) return;
 
-    // Pega até 5 ofertas
     for (const oferta of ofertas.slice(0, 5)) {
       const mensagem = formatarMensagemOferta(oferta);
       try {
         await client.sendMessage(groupId, mensagem);
-        console.log('✅ Oferta enviada para o grupo:', oferta.productName || oferta.titulo);
-        // Delay 5s para evitar flood
-        await new Promise(r => setTimeout(r, 5000));
+        console.log('✅ Oferta enviada:', oferta.titulo);
+        await new Promise(r => setTimeout(r, 8000));
       } catch (e) {
         console.error('Erro envio msg:', e.message);
       }
     }
   } catch (err) {
-    console.error('Erro no envio automático de ofertas:', err.message);
+    console.error('Erro automação:', err.message);
   }
 }
 
 function formatarMensagemOferta(oferta) {
-  // Ajuste de campos conforme o retorno do shopee.js (pode vir como productName ou titulo)
   const titulo = oferta.productName || oferta.titulo || "Oferta";
   const preco = oferta.priceMin || oferta.preco || 0;
   const link = oferta.offerLink || oferta.link || "";
   const precoOriginal = oferta.priceMax || oferta.precoOriginal;
   const desconto = oferta.priceDiscountRate || oferta.desconto;
   
-  // Formatação simples de moeda se for número
   const precoFormatado = typeof preco === 'number' 
     ? preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
     : preco;
@@ -175,13 +167,10 @@ function formatarMensagemOferta(oferta) {
   if (precoOriginal) msg += `❌ De: ${precoOriginal}\n`;
   if (desconto) msg += `✅ Desconto: ${desconto}\n`;
   
-  msg += `🔗 Link: ${link}\n\n` +
-         `Achady - Ofertas automáticas 💜`;
-
+  msg += `🔗 Link: ${link}\n\nAchady - Ofertas automáticas 💜`;
   return msg;
 }
 
-// Inicia Loop
 setInterval(enviarOfertasPeriodicamente, INTERVAL_MINUTES * 60 * 1000);
 
 app.listen(PORT, () => {

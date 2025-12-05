@@ -9,11 +9,8 @@ export default async function handler(req, res) {
     const { status, intervalMinutes } = req.body;
     const baseUrl = process.env.VPS_WHATSAPP_BASE_URL || 'http://72.60.228.212:3001';
 
-    // Chama o endpoint /automation na VPS
     const response = await axios.post(`${baseUrl}/automation`, {
       status: status,
-      // O whatsapp-server.js atual pode não ler intervalMinutes dinamicamente ainda,
-      // mas já enviamos para garantir compatibilidade futura ou atualização do backend.
       intervalMinutes: intervalMinutes 
     });
 

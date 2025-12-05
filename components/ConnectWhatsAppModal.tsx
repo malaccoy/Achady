@@ -10,14 +10,11 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   const [status, setStatus] = useState<string>("idle");
   const [loading, setLoading] = useState(false);
 
-  // ✅ INICIAR SESSÃO (Mock/Check)
+  // Iniciar sessão
   async function iniciarSessao() {
     setLoading(true);
     try {
-      // Chama api/whatsapp/start que é um mock para dar "kickstart" no fluxo da UI
-      await fetch('/api/whatsapp/start', {
-        method: "POST",
-      });
+      await fetch('/api/whatsapp/start', { method: "POST" });
       setStatus("starting");
     } catch (e) {
       console.error(e);
@@ -27,11 +24,10 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
     }
   }
 
-  // ✅ BUSCAR QR E STATUS A CADA 3 SEGUNDOS
+  // Polling a cada 2s
   useEffect(() => {
     if (!isOpen || status === "idle") return;
 
-    // Se acabou de abrir e não iniciou, tenta buscar QR direto para ver se já tem
     if (status === "idle") {
         iniciarSessao();
     }
@@ -40,30 +36,31 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
       try {
         const res = await fetch('/api/whatsapp/qr');
         
-        if (res.status === 404) {
-            // QR não gerado ainda ou já conectado (a API retorna 404 se não tiver QR)
-            // Mantém status starting ou muda pra connected se tivéssemos certeza
-            return;
+        // Se a API retornar sucesso (mesmo que sem QR, pode ter status)
+        if (res.ok) {
+            const data = await res.json();
+            
+            // Se já conectou
+            if (data.status === "ready" || data.status === "connected") {
+                setStatus("ready");
+                setQr(null);
+                clearInterval(interval);
+                setTimeout(() => {
+                    onClose();
+                    // Opcional: recarregar a página para atualizar o dashboard
+                    window.location.reload();
+                }, 1500);
+            }
+            // Se tem QR
+            else if (data.qr) {
+                setQr(data.qr);
+                setStatus("qr");
+            }
         }
-
-        const data = await res.json();
-        
-        // Se veio QR, mostra
-        if (data.qr) {
-            setQr(data.qr);
-            setStatus("qr");
-        } 
-        // Se a API retornar algum status de sucesso (depende da implementação futura)
-        else if (data.status === "ready") {
-            setStatus("ready");
-            clearInterval(interval);
-            setTimeout(onClose, 2000);
-        }
-
       } catch (err) {
         console.error("Erro polling QR", err);
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [isOpen, status]);
@@ -71,37 +68,44 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 w-[350px] text-center">
-        <h2 className="text-lg font-bold mb-4">Conectar WhatsApp</h2>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-xl p-6 w-[350px] text-center shadow-2xl">
+        <h2 className="text-lg font-bold mb-4 text-slate-800">Conectar WhatsApp</h2>
 
-        {loading && <p>Verificando servidor...</p>}
+        {loading && <p className="text-slate-500">Conectando à VPS...</p>}
 
         {!loading && (status === "idle" || status === "offline") && (
            <button
              onClick={iniciarSessao}
-             className="bg-blue-600 text-white px-4 py-2 rounded"
+             className="bg-achady-purple text-white px-4 py-2 rounded-lg hover:bg-achady-blue transition-colors"
            >
-             Iniciar Conexão
+             Gerar QR Code
            </button>
         )}
 
-        {status === "starting" && <p>⏳ Buscando QR Code na VPS...</p>}
+        {status === "starting" && <p className="text-slate-500 animate-pulse">⏳ Aguardando QR Code...</p>}
         
         {status === "qr" && qr && (
-          <>
-            <img src={qr} className="mx-auto w-48 border-2 border-slate-200 rounded-lg p-2" alt="WhatsApp QR Code" />
-            <p className="text-sm mt-2">Escaneie com seu WhatsApp</p>
-          </>
+          <div className="space-y-3">
+            <div className="p-2 bg-white border border-slate-200 rounded-lg inline-block">
+                <img src={qr} className="w-48 h-48" alt="WhatsApp QR Code" />
+            </div>
+            <p className="text-sm text-slate-600">Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar</p>
+          </div>
         )}
 
         {status === "ready" && (
-          <p className="text-green-600 font-bold">✅ Conectado!</p>
+          <div className="py-4">
+             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                 <span className="text-2xl">✅</span>
+             </div>
+             <p className="text-green-600 font-bold">Conectado com sucesso!</p>
+          </div>
         )}
 
         <button
           onClick={onClose}
-          className="mt-4 text-sm text-gray-500 underline"
+          className="mt-6 text-sm text-slate-400 hover:text-slate-600 underline"
         >
           Fechar
         </button>
