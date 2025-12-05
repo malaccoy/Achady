@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useState } from 'react';
 import { Card, Button, Input } from '../components/UI';
 import { RefreshCw, FileText, Search, ExternalLink, Filter, TrendingUp, Tag, Calendar, Image as ImageIcon, Copy, CheckCheck } from 'lucide-react';
@@ -22,13 +20,16 @@ export const Logs: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/logs/list');
+      // Changed from /api/logs/list to /api/logs to match new server
+      const res = await fetch('/api/logs');
       const data = await res.json();
       
       if (data.ok && Array.isArray(data.logs)) {
         setLogs(data.logs);
       } else {
-        setError('Não foi possível carregar os logs do servidor.');
+        // Fallback or empty if server hasn't implemented it fully
+        setLogs([]);
+        if (!data.ok) console.warn("Logs response error:", data);
       }
     } catch (err) {
       setError('Erro de conexão com o servidor.');
@@ -43,7 +44,10 @@ export const Logs: React.FC = () => {
   }, []);
 
   const formatCurrency = (val: number) => {
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (!val) return 'R$ 0,00';
+    // Backend returns string sometimes in sqlite, ensure number
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
   const getTimeAgo = (dateStr: string) => {
@@ -61,7 +65,7 @@ export const Logs: React.FC = () => {
   // Lógica de Filtragem
   const filteredLogs = logs.filter(log => {
     const matchesSearch = log.titulo.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          log.grupoNome.toLowerCase().includes(searchTerm.toLowerCase());
+                          (log.grupoNome && log.grupoNome.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = filterCategory === 'todos' || log.categoria === filterCategory;
     const matchesGroup = filterGroup === 'todos' || log.grupoNome === filterGroup;
 
@@ -76,8 +80,8 @@ export const Logs: React.FC = () => {
     : 0;
 
   // Listas Únicas para Dropdowns
-  const uniqueCategories = Array.from(new Set(logs.map(l => l.categoria)));
-  const uniqueGroups = Array.from(new Set(logs.map(l => l.grupoNome)));
+  const uniqueCategories = Array.from(new Set(logs.map(l => l.categoria || 'Geral')));
+  const uniqueGroups = Array.from(new Set(logs.map(l => l.grupoNome || 'Desconhecido')));
 
   return (
     <div className="space-y-8">
@@ -204,7 +208,7 @@ export const Logs: React.FC = () => {
                          <div className="flex flex-col">
                            <span className="text-sm text-slate-700 font-medium">{log.grupoNome}</span>
                            <span className="inline-flex items-center mt-1 w-fit px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase tracking-wide border border-indigo-100">
-                             {log.categoria}
+                             {log.categoria || 'Geral'}
                            </span>
                          </div>
                       </td>
@@ -268,9 +272,11 @@ export const Logs: React.FC = () => {
                  )}
               </div>
               <h3 className="font-semibold text-slate-900 text-sm line-clamp-2 mb-2">{selectedLog.titulo}</h3>
-              <div className="inline-block bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold mb-4">
-                 {selectedLog.descontoPercentual}% OFF
-              </div>
+              {selectedLog.descontoPercentual && (
+                <div className="inline-block bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold mb-4">
+                   {selectedLog.descontoPercentual}% OFF
+                </div>
+              )}
               <a 
                  href={selectedLog.linkAfiliado} 
                  target="_blank" 
@@ -304,7 +310,7 @@ export const Logs: React.FC = () => {
                     </div>
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                       <p className="text-xs font-bold text-slate-400 uppercase">Categoria</p>
-                      <p className="font-medium text-slate-800 capitalize">{selectedLog.categoria}</p>
+                      <p className="font-medium text-slate-800 capitalize">{selectedLog.categoria || 'Geral'}</p>
                     </div>
                   </div>
 

@@ -26,7 +26,7 @@ export const Dashboard: React.FC = () => {
     whatsappConnected: false,
     messageTemplate: '',
     automationEnabled: false,
-    checkIntervalMinutes: 15,
+    checkIntervalMinutes: 30,
   });
   
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
@@ -65,7 +65,7 @@ export const Dashboard: React.FC = () => {
       whatsappConnected: automacaoData?.whatsappStatus === 'CONNECTED',
       messageTemplate: modeloData?.modeloTexto || '',
       automationEnabled: automacaoData?.estado || false,
-      checkIntervalMinutes: automacaoData?.intervalo || 15,
+      checkIntervalMinutes: automacaoData?.intervalo || 30,
     });
 
     setApiKeyInput(shopeeData?.apiKey || '');
@@ -94,6 +94,19 @@ export const Dashboard: React.FC = () => {
         shopeeConnected: isConnected 
       }));
       setIsSavingKey(false);
+      
+      // Also update config on server if possible, though backend doesn't take keys yet
+      // This sends the default keyword "cozinha" logic if not specified
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            tempo: settings.checkIntervalMinutes,
+            // Assuming we might want to allow keyword config later
+            palavra: 'cozinha' 
+        })
+      }).catch(console.error);
+      
     }, 800);
   };
 
@@ -103,20 +116,71 @@ export const Dashboard: React.FC = () => {
     setSettings(prev => ({ ...prev, whatsappConnected: false }));
   };
 
-  const handleAutomationChange = (enabled: boolean, interval: number) => {
+  const handleAutomationChange = async (enabled: boolean, interval: number) => {
     if (!currentUserId) return;
     setSettings(prev => ({ ...prev, automationEnabled: enabled, checkIntervalMinutes: interval }));
     db.alternarAutomacao(currentUserId, enabled, interval);
+    
+    // Call Server
+    try {
+        if (enabled) {
+            // Update Config First
+            await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    tempo: interval,
+                    mensagem: settings.messageTemplate.replace(/{{titulo}}/g, '{produto}').replace(/{{preco}}/g, '{preco}').replace(/{{link}}/g, '{link}') // Map template format if needed
+                })
+            });
+            await fetch('/api/ativar', { method: 'POST' });
+        } else {
+            await fetch('/api/parar', { method: 'POST' });
+        }
+    } catch (e) {
+        console.error("Erro ao comunicar com servidor de automação:", e);
+        alert("Erro ao conectar com o robô. Verifique se o server.js está rodando.");
+    }
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if (!currentUserId) return;
     db.salvarModeloMensagem(currentUserId, settings.messageTemplate);
-    alert('Modelo salvo com sucesso!');
+    
+    // Convert generic {{var}} to backend specific {var} if needed or just send as is
+    // The new backend uses {produto}, {preco}, {link}
+    let backendTemplate = settings.messageTemplate
+        .replace(/{{titulo}}/g, '{produto}')
+        .replace(/{{preco}}/g, '{preco}')
+        .replace(/{{link}}/g, '{link}');
+        
+    await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensagem: backendTemplate })
+    });
+    
+    alert('Modelo salvo e atualizado no robô!');
   };
 
-  const handleAddGroup = () => {
+  const handleAddGroup = async () => {
     if (!newGroupLink || !currentUserId) return;
+    
+    // Join Group on Server
+    try {
+        const res = await fetch(`/api/join/${FIXED_USER_ID}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invite: newGroupLink })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        
+    } catch (e) {
+        console.error("Aviso: Falha ao entrar automaticamente no grupo via servidor", e);
+        // Continue to add locally anyway
+    }
+
     const novoGrupoDb = db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory);
     
     const newGroupView: WhatsAppGroup = {
@@ -143,7 +207,7 @@ export const Dashboard: React.FC = () => {
     }));
   };
 
-  // ✅ ETAPA 4 - FUNÇÃO DE TESTE DE ENVIO (USANDO PROXY)
+  // ✅ TESTE DE ENVIO (USANDO NOVO BACKEND LOCAL)
   const handleSendTestMessage = async () => {
     if (!testPhone) {
       alert("Digite um número de telefone para teste (ex: 5511999999999)");
@@ -153,14 +217,13 @@ export const Dashboard: React.FC = () => {
     setSendingTest(true);
 
     try {
-      // Usa o proxy interno /api/whatsapp/send em vez de chamar o IP direto
-      const response = await fetch(`/api/whatsapp/send`, {
+      // Proxied to localhost:3000/send/1
+      const response = await fetch(`/api/send/${FIXED_USER_ID}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: FIXED_USER_ID,
-          number: testPhone,
-          message: "Mensagem enviada com sucesso pelo Achady 🚀"
+          number: testPhone, // Backend supports 'number' or 'groupId'
+          message: settings.messageTemplate || "Mensagem de teste Achady 🚀"
         })
       });
 
@@ -173,7 +236,7 @@ export const Dashboard: React.FC = () => {
       }
 
     } catch (e) {
-      alert("❌ Erro de conexão com o servidor");
+      alert("❌ Erro de conexão com o servidor local");
       console.error(e);
     } finally {
       setSendingTest(false);
@@ -288,6 +351,7 @@ export const Dashboard: React.FC = () => {
               >
                 {settings.shopeeConnected ? 'Atualizar Credenciais' : 'Conectar Shopee'}
               </Button>
+              <p className="text-[10px] text-slate-400 text-center">Nota: Atualize também o arquivo shopee.js se necessário.</p>
             </div>
           </div>
         </Card>
@@ -307,7 +371,7 @@ export const Dashboard: React.FC = () => {
             <div className={settings.automationEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}>
               <label className="block text-sm font-medium text-slate-600 mb-2">Frequência de Busca</label>
               <div className="grid grid-cols-3 gap-3">
-                {[5, 15, 60].map((mins) => (
+                {[15, 30, 60].map((mins) => (
                   <div 
                     key={mins}
                     onClick={() => handleAutomationChange(settings.automationEnabled, mins)}
@@ -332,7 +396,7 @@ export const Dashboard: React.FC = () => {
           <div className="grid grid-cols-1 gap-6 h-full">
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                {['{{titulo}}', '{{preco}}', '{{cupom}}', '{{link}}'].map(variable => (
+                {['{{titulo}}', '{{preco}}', '{{link}}'].map(variable => (
                   <button
                     key={variable}
                     onClick={() => insertVariable(variable)}
@@ -351,7 +415,7 @@ export const Dashboard: React.FC = () => {
                 onChange={(e) => setSettings(s => ({ ...s, messageTemplate: e.target.value }))}
               />
               <Button onClick={handleSaveTemplate} variant="secondary" fullWidth>
-                <Save className="w-4 h-4 mr-2" /> Salvar Modelo
+                <Save className="w-4 h-4 mr-2" /> Salvar Modelo e Atualizar Robô
               </Button>
             </div>
           </div>

@@ -10,16 +10,23 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   const [status, setStatus] = useState<string>("idle");
   const [loading, setLoading] = useState(false);
 
-  const userId = "1"; // pode manter assim por enquanto
+  // Using proxied path /api/start/1 -> localhost:3000/start/1
+  const userId = "1";
 
   // ✅ INICIAR SESSÃO
   async function iniciarSessao() {
     setLoading(true);
-    await fetch(`/api/whatsapp/start`, {
-      method: "POST",
-    });
-    setLoading(false);
-    setStatus("starting");
+    try {
+      await fetch(`/api/start/${userId}`, {
+        method: "POST",
+      });
+      setStatus("starting");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao conectar com servidor local.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // ✅ BUSCAR QR E STATUS A CADA 3 SEGUNDOS
@@ -28,14 +35,14 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/whatsapp/qr`);
+        const res = await fetch(`/api/qr/${userId}`);
         const data = await res.json();
 
         setStatus(data.status || "idle");
         setQr(data.qr || null);
 
         // ✅ SE CONECTOU → FECHA AUTOMATICAMENTE
-        if (data.status === "ready") {
+        if (data.status === "ready" || data.status === "connected") {
           alert("✅ WhatsApp conectado com sucesso!");
           clearInterval(interval);
           onClose();
@@ -57,7 +64,7 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
 
         {loading && <p>Iniciando sessão...</p>}
 
-        {!loading && status === "idle" && (
+        {!loading && (status === "idle" || status === "offline") && (
           <button
             onClick={iniciarSessao}
             className="bg-blue-600 text-white px-4 py-2 rounded"
@@ -69,8 +76,8 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
         {status === "starting" && <p>⏳ Preparando QR Code...</p>}
         {status === "qr" && qr && (
           <>
-            <img src={qr} className="mx-auto w-48" />
-            <p className="text-sm mt-2">Aguardando leitura…</p>
+            <img src={qr} className="mx-auto w-48 border-2 border-slate-200 rounded-lg p-2" />
+            <p className="text-sm mt-2">Aguardando leitura...</p>
           </>
         )}
 
