@@ -14,9 +14,9 @@ app.use(express.json());
 const PORT = process.env.WHATSAPP_PORT || 3001;
 const INTERVAL_MINUTES = parseInt(process.env.INTERVAL_MINUTES || '5', 10);
 
+// Global State
 let isAutomationOn = true;
 let ultimoQR = null;
-let connectionStatus = 'disconnected'; 
 
 // 1.1) Adicionar variáveis globais de estado
 let isWhatsappReady = false;
@@ -36,32 +36,24 @@ client.on('qr', (qr) => {
   console.log('QR RECEBIDO, escaneie com o WhatsApp:');
   qrcode.generate(qr, { small: true });
   ultimoQR = qr;
-  connectionStatus = 'qr';
-  isWhatsappReady = false;
 });
 
 // 1.2) Marcar quando o WhatsApp conecta
 client.on('ready', () => {
   isWhatsappReady = true;
-  connectionStatus = 'ready';
   console.log('✅ WhatsApp conectado e pronto!');
   ultimoQR = null;
 });
 
 client.on('auth_failure', (msg) => {
   console.error('❌ Falha na autenticação:', msg);
-  connectionStatus = 'disconnected';
   isWhatsappReady = false;
 });
 
-// 1.2) Marcar quando o WhatsApp desconecta
+// 1.3) Marcar quando o WhatsApp desconecta
 client.on('disconnected', (reason) => {
   isWhatsappReady = false;
-  connectionStatus = 'disconnected';
   console.log('⚠️ Cliente desconectado:', reason);
-  ultimoQR = null;
-  // Opcional: tentar reconectar
-  client.initialize();
 });
 
 client.initialize();
@@ -71,7 +63,7 @@ client.initialize();
 app.get('/qr', (req, res) => {
   res.json({ 
     qr: ultimoQR, 
-    status: connectionStatus 
+    status: isWhatsappReady ? 'connected' : (ultimoQR ? 'qr' : 'disconnected')
   });
 });
 
@@ -88,7 +80,6 @@ app.get('/status', (req, res) => {
   });
 });
 
-// Rota auxiliar para debug/listar grupos
 app.get('/groups', async (req, res) => {
   if (!isWhatsappReady) {
     return res.status(503).json({ error: 'WhatsApp ainda não está pronto.' });
