@@ -8,6 +8,7 @@ import pkg from "whatsapp-web.js";
 import qrcode from "qrcode";
 import fs from "fs/promises";
 import dotenv from "dotenv";
+import axios from "axios"; // Added for VPS proxy
 import { buscarOfertas } from "./shopee.js"; // Importa lógica de busca unificada
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const DB_FILE = "./achady_db.json";
+const VPS_URL = process.env.VPS_WHATSAPP_BASE_URL || 'http://72.60.228.212:3001';
 
 // ========================
 // 📦 JSON DATABASE
@@ -66,7 +68,7 @@ const setUserConfig = async (userId, data) => {
 };
 
 // ========================
-// 🤖 WHATSAPP MANAGER
+// 🤖 WHATSAPP MANAGER (LOCAL LEGACY)
 // ========================
 const sessions = {}; // Armazena clientes em memória
 
@@ -227,6 +229,66 @@ function startAutomation(userId) {
 // ========================
 
 app.get("/", (req, res) => res.send("Achady Server Online 🚀"));
+
+// --- VPS PROXY ROUTES (New Architecture) ---
+
+// Status
+app.get('/whatsapp/status', async (req, res) => {
+  try {
+    const response = await axios.get(`${VPS_URL}/status`);
+    res.json(response.data);
+  } catch (e) {
+    console.error("VPS Unreachable (Status):", e.message);
+    res.json({ connected: false, error: "VPS Unreachable" });
+  }
+});
+
+// Start (Mock for VPS as it's always on)
+app.post('/whatsapp/start', async (req, res) => {
+    res.json({ message: "Connecting to VPS...", status: "starting" });
+});
+
+// QR Code
+app.get('/whatsapp/qr', async (req, res) => {
+  try {
+    const response = await axios.get(`${VPS_URL}/qr`);
+    const { qr, status } = response.data;
+    let imageUrl = null;
+    if (qr && typeof qr === 'string') {
+       imageUrl = await qrcode.toDataURL(qr);
+    }
+    res.json({ imageUrl, status });
+  } catch (e) {
+    console.error("VPS Unreachable (QR):", e.message);
+    res.status(500).json({ error: "VPS Unreachable" });
+  }
+});
+
+// Add Group & Config
+app.post('/whatsapp/add-group', async (req, res) => {
+   try {
+     // 1. Join
+     const respJoin = await axios.post(`${VPS_URL}/join-group`, req.body);
+     const { groupId, groupName } = respJoin.data;
+
+     // 2. Config as default
+     if(groupId) {
+         await axios.post(`${VPS_URL}/config/group`, { groupId });
+     }
+     
+     res.json({ 
+         success: true, 
+         groupId, 
+         groupName, 
+         message: "Grupo configurado na VPS." 
+     });
+   } catch(e) {
+     console.error("VPS Add Group Error:", e.message);
+     res.status(500).json({ error: e.response?.data?.error || e.message });
+   }
+});
+
+// --- LOCAL ROUTES (Legacy / Local Dev) ---
 
 // 1. WhatsApp Status/Start/QR
 app.post("/start/:userId", async (req, res) => {

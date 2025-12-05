@@ -16,13 +16,12 @@ const INTERVAL_MINUTES = parseInt(process.env.INTERVAL_MINUTES || '5', 10);
 
 let isAutomationOn = true;
 let ultimoQR = null;
-let connectionStatus = 'disconnected'; // disconnected, qr, ready
-let isWhatsappReady = false; // Tracks actual readiness
+let connectionStatus = 'disconnected'; 
 
-// Global variable for the active group ID (defaults to .env if available)
+// 1.1) Adicionar variáveis globais de estado
+let isWhatsappReady = false;
 let currentGroupId = process.env.WHATSAPP_GROUP_ID || null;
 
-// === Configuração do WhatsApp ===
 const client = new Client({
   authStrategy: new LocalAuth({
     clientId: process.env.WHATSAPP_SESSION_NAME || 'achady-session-standalone',
@@ -41,11 +40,12 @@ client.on('qr', (qr) => {
   isWhatsappReady = false;
 });
 
+// 1.2) Marcar quando o WhatsApp conecta
 client.on('ready', () => {
+  isWhatsappReady = true;
+  connectionStatus = 'ready';
   console.log('✅ WhatsApp conectado e pronto!');
   ultimoQR = null;
-  connectionStatus = 'ready';
-  isWhatsappReady = true;
 });
 
 client.on('auth_failure', (msg) => {
@@ -54,10 +54,11 @@ client.on('auth_failure', (msg) => {
   isWhatsappReady = false;
 });
 
+// 1.2) Marcar quando o WhatsApp desconecta
 client.on('disconnected', (reason) => {
-  console.log('⚠️ Cliente desconectado:', reason);
-  connectionStatus = 'disconnected';
   isWhatsappReady = false;
+  connectionStatus = 'disconnected';
+  console.log('⚠️ Cliente desconectado:', reason);
   ultimoQR = null;
   // Opcional: tentar reconectar
   client.initialize();
@@ -67,7 +68,6 @@ client.initialize();
 
 // === Rotas API ===
 
-// GET /qr: Retorna QR e Status atual
 app.get('/qr', (req, res) => {
   res.json({ 
     qr: ultimoQR, 
@@ -75,147 +75,99 @@ app.get('/qr', (req, res) => {
   });
 });
 
-// GET /status: Retorna status detalhado (Conexão e Configs)
+// 1.4) Criar a rota GET /status
 app.get('/status', (req, res) => {
   const connected = isWhatsappReady;
-  // Verifica se existe URL da Shopee configurada (mesmo que seja default)
-  const shopeeConfigured = Boolean(process.env.SHOPEE_URL || process.env.SHOPEE_KEYWORD);
-  
-  // Verifica se o grupo está configurado na memória ou no ENV
+  const shopeeConfigured = Boolean(process.env.SHOPEE_URL);
   const groupConfigured = Boolean(currentGroupId || process.env.WHATSAPP_GROUP_ID);
 
   return res.json({
     connected,
     shopeeConfigured,
     groupConfigured,
-    automationEnabled: isAutomationOn,
-    currentGroupId // Debug info
   });
 });
 
-// POST /config/group: Define manualmente qual grupo será usado pelo robô
-app.post('/config/group', (req, res) => {
-  const { groupId } = req.body;
-
-  if (!groupId || typeof groupId !== 'string') {
-    return res.status(400).json({ error: 'groupId obrigatório' });
-  }
-
-  currentGroupId = groupId;
-  console.log('⚙️ Grupo padrão atualizado via API para:', currentGroupId);
-
-  return res.json({
-    success: true,
-    groupId: currentGroupId,
-  });
-});
-
-// GET /groups: Listar grupos e IDs
+// Rota auxiliar para debug/listar grupos
 app.get('/groups', async (req, res) => {
   if (!isWhatsappReady) {
     return res.status(503).json({ error: 'WhatsApp ainda não está pronto.' });
   }
-
   try {
     const chats = await client.getChats();
-    const groups = chats
-      .filter((chat) => chat.isGroup)
-      .map((g) => ({
-        id: g.id._serialized,
-        name: g.name,
-      }));
-
+    const groups = chats.filter((chat) => chat.isGroup).map((g) => ({ id: g.id._serialized, name: g.name }));
     res.json(groups);
   } catch (err) {
-    console.error('Erro ao listar grupos:', err.message);
     res.status(500).json({ error: 'Erro ao listar grupos' });
   }
 });
 
-// POST /automation: Liga/desliga automação
+app.post('/config/group', (req, res) => {
+  const { groupId } = req.body;
+  if (!groupId || typeof groupId !== 'string') {
+    return res.status(400).json({ error: 'groupId obrigatório' });
+  }
+  currentGroupId = groupId;
+  console.log('⚙️ Grupo padrão atualizado via API para:', currentGroupId);
+  return res.json({ success: true, groupId: currentGroupId });
+});
+
 app.post('/automation', (req, res) => {
   const { status } = req.body;
-  if (typeof status !== 'boolean') {
-    return res.status(400).json({ error: 'status deve ser boolean (true/false)' });
-  }
+  if (typeof status !== 'boolean') return res.status(400).json({ error: 'status deve ser boolean' });
   isAutomationOn = status;
-  console.log('⚙️ Automação agora está:', isAutomationOn ? 'LIGADA' : 'DESLIGADA');
+  console.log('⚙️ Automação:', isAutomationOn ? 'LIGADA' : 'DESLIGADA');
   res.json({ success: true, isAutomationOn });
 });
 
-// POST /send-message: Envio manual
 app.post('/send-message', async (req, res) => {
   const { to, message } = req.body;
-
-  if (!to || !message) {
-    return res.status(400).json({ error: 'to e message são obrigatórios' });
-  }
-
+  if (!to || !message) return res.status(400).json({ error: 'Obrigatório: to, message' });
   try {
     let chatId = to;
-    if (!chatId.includes('@') && !chatId.includes('-')) {
-      chatId = `${chatId}@c.us`;
-    }
-
+    if (!chatId.includes('@') && !chatId.includes('-')) chatId = `${chatId}@c.us`;
     await client.sendMessage(chatId, message);
     res.json({ success: true });
   } catch (err) {
-    console.error('Erro ao enviar mensagem:', err.message);
+    console.error('Erro envio manual:', err);
     res.status(500).json({ error: 'Erro ao enviar mensagem' });
   }
 });
 
-// POST /join-group: Entrar em grupo via link e retornar ID
 app.post('/join-group', async (req, res) => {
   const { inviteLink } = req.body;
-
-  if (!inviteLink || !inviteLink.includes('chat.whatsapp.com/')) {
-    return res.status(400).json({ error: 'inviteLink inválido' });
-  }
-
-  const inviteCode = inviteLink.split('chat.whatsapp.com/')[1];
-
+  if (!inviteLink || !inviteLink.includes('chat.whatsapp.com/')) return res.status(400).json({ error: 'Link inválido' });
   try {
-    const chat = await client.acceptInvite(inviteCode);
+    const code = inviteLink.split('chat.whatsapp.com/')[1];
+    const chat = await client.acceptInvite(code);
     const groupId = chat.id._serialized;
-    
-    console.log('✅ Entrou no grupo:', chat.name, 'ID:', groupId);
-    
-    // Auto-configura como padrão se ainda não houver um, OU sempre (conforme preferência do usuário de não editar ENV)
+    console.log('✅ Entrou no grupo:', chat.name, groupId);
     if (!currentGroupId) {
-        currentGroupId = groupId;
-        console.log('⚙️ Auto-configurado como grupo padrão (Join):', currentGroupId);
+      currentGroupId = groupId;
+      console.log('⚙️ Auto-configurado como padrão:', currentGroupId);
     }
-
-    res.json({ 
-        success: true, 
-        groupName: chat.name,
-        groupId: groupId
-    });
+    res.json({ success: true, groupName: chat.name, groupId });
   } catch (err) {
-    console.error('Erro ao entrar no grupo:', err.message);
+    console.error('Erro join:', err);
     res.status(500).json({ error: 'Erro ao entrar no grupo' });
   }
 });
 
-// === Loop de automação ===
+// 1.3) Garantir que o envio automático usa currentGroupId
 async function enviarOfertasPeriodicamente() {
-  if (!isAutomationOn || connectionStatus !== 'ready') {
-    return;
-  }
+  if (!isAutomationOn || !isWhatsappReady) return;
 
   try {
+    console.log('🔍 Buscando ofertas da Shopee...');
     const keyword = process.env.SHOPEE_KEYWORD || "ofertas";
     const ofertas = await buscarOfertasShopee(keyword);
 
     if (!ofertas || !ofertas.length) return;
 
-    // Usa a variável global atualizada em tempo real, ou fallback para ENV
-    const groupId = currentGroupId || process.env.WHATSAPP_GROUP_ID;
-
+    const groupId = currentGroupId;
     if (!groupId) {
-        console.log('⚠️ Nenhum WHATSAPP_GROUP_ID configurado (currentGroupId vazio), não enviando mensagens.');
-        return;
+      console.log('⚠️ WHATSAPP_GROUP_ID não definido no .env ou currentGroupId vazio, não enviando mensagens.');
+      return;
     }
 
     for (const oferta of ofertas.slice(0, 5)) {
