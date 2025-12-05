@@ -1,17 +1,15 @@
 // server.js
 // ACHADY – BOT WHATSAPP + SHOPEE (MVP VALIDAÇÃO)
+// Versão: JSON DB (Sem dependência de SQLite nativo)
 
-// ========================
-// IMPORTS
-// ========================
 import express from "express";
 import cors from "cors";
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode";
 import axios from "axios";
 import crypto from "crypto";
-import sqlite3 from "sqlite3";
-import { open } from "sqlite"; // MÉTODO CORRETO
+import fs from "fs/promises";
+import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -26,74 +24,69 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = 3000;
+const DB_FILE = "./achady_db.json";
 
 // 1 usuário padrão (MVP)
 const DEFAULT_USER_ID = process.env.USER_ID_PADRAO || "1";
 
-// Shopee – credenciais via .env (MVP)
+// Shopee Defaults
 const SHOPEE_APP_ID = process.env.SHOPEE_APP_ID || "";
 const SHOPEE_APP_SECRET = process.env.SHOPEE_APP_SECRET || "";
 
-// Automações
+// Automação Defaults
 const DEFAULT_KEYWORD = process.env.KEYWORD_PADRAO || "promoção relâmpago";
 const DEFAULT_INTERVAL_MINUTES = Number(process.env.INTERVALO_MINUTOS || 5);
 
 // ========================
-// BANCO – SQLITE (achady.db)
+// JSON DATABASE SYSTEM
 // ========================
+let dbData = {
+  shopee_credentials: [], // { userId, appId, appSecret }
+  groups: [],             // { id, userId, invite, name, groupId, category }
+  automation: [],         // { userId, enabled, frequency, keyword, template }
+  logs: []                // { id, userId, groupName, productName, ... }
+};
 
-// Inicialização do Banco com Wrapper Promise-based
-let db;
-
-(async () => {
+// Carrega ou cria o banco de dados JSON
+async function initDB() {
   try {
-    db = await open({
-      filename: './achady.db',
-      driver: sqlite3.Database
-    });
+    const data = await fs.readFile(DB_FILE, "utf-8");
+    dbData = JSON.parse(data);
+    
+    // Garante estrutura
+    if (!dbData.shopee_credentials) dbData.shopee_credentials = [];
+    if (!dbData.groups) dbData.groups = [];
+    if (!dbData.automation) dbData.automation = [];
+    if (!dbData.logs) dbData.logs = [];
+    
+    console.log("📦 Banco de dados JSON carregado.");
+    
+    // Configura padrão se não existir
+    await ensureDefaults();
 
-    console.log("📦 Banco de dados SQLite conectado.");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.log("⚠️ DB não encontrado, criando novo...");
+      await ensureDefaults();
+      await saveDB();
+    } else {
+      console.error("❌ Erro ao ler DB:", err);
+    }
+  }
+}
 
-    // Cria tabelas
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS shopee_credentials (
-        user_id TEXT PRIMARY KEY,
-        app_id TEXT NOT NULL,
-        app_secret TEXT NOT NULL
-      );
+async function saveDB() {
+  try {
+    await fs.writeFile(DB_FILE, JSON.stringify(dbData, null, 2));
+  } catch (err) {
+    console.error("❌ Erro ao salvar DB:", err);
+  }
+}
 
-      CREATE TABLE IF NOT EXISTS groups (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        group_invite TEXT,
-        group_name TEXT,
-        group_id TEXT,
-        category TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS automation (
-        user_id TEXT PRIMARY KEY,
-        enabled INTEGER NOT NULL,
-        frequency_minutes INTEGER NOT NULL,
-        keyword TEXT NOT NULL,
-        template TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        group_id TEXT NOT NULL,
-        group_name TEXT, 
-        product_title TEXT,
-        product_link TEXT,
-        price REAL,
-        original_price REAL,
-        discount_percent REAL,
-        sent_at INTEGER NOT NULL
-      );
-    `);
-
-    // Configuração Inicial Padrão
+async function ensureDefaults() {
+  // Automação Padrão
+  const autoIndex = dbData.automation.findIndex(a => a.userId === DEFAULT_USER_ID);
+  if (autoIndex === -1) {
     const defaultTemplate = `
 🔥 OFERTA IMPERDÍVEL! 🔥
 
@@ -106,28 +99,32 @@ let db;
 🛒 Compre aqui: {{link}}
     `.trim();
 
-    await db.run(
-      `INSERT OR IGNORE INTO automation (user_id, enabled, frequency_minutes, keyword, template) VALUES (?, ?, ?, ?, ?)`,
-      [DEFAULT_USER_ID, 0, DEFAULT_INTERVAL_MINUTES, DEFAULT_KEYWORD, defaultTemplate]
-    );
-
-    if (SHOPEE_APP_ID && SHOPEE_APP_SECRET) {
-      await db.run(
-        `INSERT OR REPLACE INTO shopee_credentials (user_id, app_id, app_secret) VALUES (?, ?, ?)`,
-        [DEFAULT_USER_ID, SHOPEE_APP_ID, SHOPEE_APP_SECRET]
-      );
-    }
-
-  } catch (error) {
-    console.error("❌ Erro ao inicializar banco de dados:", error);
+    dbData.automation.push({
+      userId: DEFAULT_USER_ID,
+      enabled: 0,
+      frequency: DEFAULT_INTERVAL_MINUTES,
+      keyword: DEFAULT_KEYWORD,
+      template: defaultTemplate
+    });
   }
-})();
 
-// Helpers de compatibilidade (usando o objeto db inicializado)
-const dbGet = async (sql, params) => db.get(sql, params);
-const dbAll = async (sql, params) => db.all(sql, params);
-const dbRun = async (sql, params) => db.run(sql, params);
+  // Credenciais Shopee Padrão (se env vars existirem)
+  if (SHOPEE_APP_ID && SHOPEE_APP_SECRET) {
+    const credIndex = dbData.shopee_credentials.findIndex(c => c.userId === DEFAULT_USER_ID);
+    if (credIndex === -1) {
+      dbData.shopee_credentials.push({
+        userId: DEFAULT_USER_ID,
+        appId: SHOPEE_APP_ID,
+        appSecret: SHOPEE_APP_SECRET
+      });
+    }
+  }
+  
+  await saveDB();
+}
 
+// Inicializa DB ao arrancar
+initDB();
 
 // ========================
 // MULTI-SESSÕES WHATSAPP
@@ -196,20 +193,14 @@ function buildShopeeAuthHeader(appId, appSecret, payload) {
 }
 
 async function fetchShopeeOffers(userId) {
-  const cred = await dbGet(
-    `SELECT app_id, app_secret FROM shopee_credentials WHERE user_id = ?`,
-    [userId]
-  );
+  const cred = dbData.shopee_credentials.find(c => c.userId === userId);
 
   if (!cred) {
-    console.error("❌ Credenciais Shopee não encontradas no banco.");
+    console.error("❌ Credenciais Shopee não encontradas no DB.");
     return [];
   }
 
-  const automation = await dbGet(
-    `SELECT keyword FROM automation WHERE user_id = ?`,
-    [userId]
-  );
+  const automation = dbData.automation.find(a => a.userId === userId);
   const keyword = automation?.keyword || DEFAULT_KEYWORD;
 
   const query = `
@@ -238,7 +229,7 @@ async function fetchShopeeOffers(userId) {
     variables: { keyword, page: 1, limit: 5 },
   });
 
-  const authHeader = buildShopeeAuthHeader(cred.app_id, cred.app_secret, payload);
+  const authHeader = buildShopeeAuthHeader(cred.appId, cred.appSecret, payload);
 
   try {
     const response = await axios.post(SHOPEE_ENDPOINT, payload, {
@@ -281,12 +272,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function buildMessageFromTemplate(userId, offer) {
-  const config = await dbGet(
-    `SELECT template FROM automation WHERE user_id = ?`,
-    [userId]
-  );
-
+function buildMessageFromTemplate(userId, offer) {
+  const config = dbData.automation.find(a => a.userId === userId);
   const template = config?.template || `🔥 {{titulo}} por {{preco}}! Link: {{link}}`;
   
   return template
@@ -302,11 +289,11 @@ async function runAutomationCycle(userId) {
     const session = sessions[userId];
     if (!session || session.status !== "ready") return;
 
-    const automation = await dbGet(`SELECT * FROM automation WHERE user_id = ?`, [userId]);
+    const automation = dbData.automation.find(a => a.userId === userId);
     if (!automation || !automation.enabled) return;
 
     // Busca grupos
-    const groups = await dbAll(`SELECT group_id, group_name FROM groups WHERE user_id = ?`, [userId]);
+    const groups = dbData.groups.filter(g => g.userId === userId);
     if (!groups.length) {
        console.log("⚠️ Nenhum grupo cadastrado.");
        return;
@@ -316,20 +303,33 @@ async function runAutomationCycle(userId) {
     if (!offers.length) return;
 
     const offer = offers[0];
-    const message = await buildMessageFromTemplate(userId, offer);
+    const message = buildMessageFromTemplate(userId, offer);
 
     for (const group of groups) {
-      if (!group.group_id) continue;
+      if (!group.groupId) continue;
       
-      console.log(`📨 Enviando oferta para ${group.group_name} (${group.group_id})`);
-      await session.client.sendMessage(group.group_id, message);
+      console.log(`📨 Enviando oferta para ${group.name} (${group.groupId})`);
+      await session.client.sendMessage(group.groupId, message);
 
-      await dbRun(
-        `INSERT INTO logs (user_id, group_id, group_name, product_title, product_link, price, original_price, discount_percent, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, group.group_id, group.group_name, offer.title, offer.link, offer.price, offer.originalPrice, offer.discountPercent, Math.floor(Date.now() / 1000)]
-      );
+      // Save Log
+      dbData.logs.unshift({
+        id: Date.now(),
+        userId,
+        groupName: group.name,
+        productName: offer.title,
+        offerLink: offer.link,
+        priceMin: offer.price,
+        priceOriginal: offer.originalPrice,
+        discountRate: offer.discountPercent,
+        sentAt: Math.floor(Date.now() / 1000) // timestamp seconds
+      });
+      
+      // Limita logs a 100
+      if (dbData.logs.length > 200) dbData.logs = dbData.logs.slice(0, 200);
+      
+      await saveDB();
 
-      await sleep(5000 + Math.random() * 5000); // Delay entre grupos
+      await sleep(5000 + Math.random() * 5000); // Delay
     }
   } catch (err) {
     console.error("❌ Erro ciclo automação:", err.message);
@@ -342,11 +342,11 @@ async function startAutomationTimer(userId) {
     delete automationTimers[userId];
   }
 
-  const automation = await dbGet(`SELECT enabled, frequency_minutes FROM automation WHERE user_id = ?`, [userId]);
+  const automation = dbData.automation.find(a => a.userId === userId);
   if (!automation || !automation.enabled) return;
 
-  const intervalMs = (automation.frequency_minutes || 5) * 60 * 1000;
-  console.log(`⏱️ Automação iniciada (User ${userId}, cada ${automation.frequency_minutes} min)`);
+  const intervalMs = (automation.frequency || 5) * 60 * 1000;
+  console.log(`⏱️ Automação iniciada (User ${userId}, cada ${automation.frequency} min)`);
   
   // Executa o primeiro ciclo imediatamente
   runAutomationCycle(userId);
@@ -358,7 +358,7 @@ async function startAutomationTimer(userId) {
 // ROTAS HTTP
 // ========================
 
-app.get("/", (req, res) => res.send("Servidor WhatsApp Achady (SQLite + Promise) rodando. 🚀"));
+app.get("/", (req, res) => res.send("Servidor WhatsApp Achady (JSON DB) rodando. 🚀"));
 
 app.get("/status", (req, res) => {
   const users = Object.keys(sessions);
@@ -396,10 +396,18 @@ app.post("/join/:userId", async (req, res) => {
     const groupId = chat.id._serialized;
     const groupName = name || chat.name || "Grupo Achady";
 
-    await dbRun(
-      `INSERT INTO groups (user_id, group_invite, group_name, group_id, category) VALUES (?, ?, ?, ?, ?)`,
-      [userId, invite, groupName, groupId, category || 'geral']
-    );
+    // Adiciona grupo ao DB
+    const newGroup = {
+      id: Date.now(),
+      userId,
+      invite,
+      name: groupName,
+      groupId,
+      category: category || 'geral'
+    };
+    
+    dbData.groups.push(newGroup);
+    await saveDB();
 
     res.json({ ok: true, message: "Grupo adicionado", groupId });
   } catch (err) {
@@ -407,7 +415,7 @@ app.post("/join/:userId", async (req, res) => {
   }
 });
 
-// COMPATIBILIDADE: Rota unificada de Configuração (usada pelo Dashboard)
+// Configuração Geral (Dashboard)
 app.post("/config/:userId", async (req, res) => {
     const { userId } = req.params;
     const { 
@@ -416,31 +424,42 @@ app.post("/config/:userId", async (req, res) => {
     } = req.body;
 
     try {
-        // Atualiza Credenciais se fornecidas
+        // 1. Atualiza Credenciais
         if (appId !== undefined || appSecret !== undefined) {
-            const current = await dbGet("SELECT * FROM shopee_credentials WHERE user_id = ?", [userId]);
-            await dbRun(
-                `INSERT OR REPLACE INTO shopee_credentials (user_id, app_id, app_secret) VALUES (?, ?, ?)`,
-                [userId, appId || current?.app_id || "", appSecret || current?.app_secret || ""]
-            );
+            const index = dbData.shopee_credentials.findIndex(c => c.userId === userId);
+            if (index > -1) {
+                if (appId) dbData.shopee_credentials[index].appId = appId;
+                if (appSecret) dbData.shopee_credentials[index].appSecret = appSecret;
+            } else {
+                dbData.shopee_credentials.push({ userId, appId: appId || "", appSecret: appSecret || "" });
+            }
         }
 
-        // Atualiza Automação se fornecidos
+        // 2. Atualiza Automação
         if (keyword !== undefined || messageTemplate !== undefined || intervalMinutes !== undefined || isActive !== undefined) {
-             const currentAuto = await dbGet("SELECT * FROM automation WHERE user_id = ?", [userId]);
+             const index = dbData.automation.findIndex(a => a.userId === userId);
              
-             const newEnabled = isActive !== undefined ? (isActive ? 1 : 0) : (currentAuto?.enabled || 0);
-             const newFreq = intervalMinutes || currentAuto?.frequency_minutes || 15;
-             const newKw = keyword || currentAuto?.keyword || DEFAULT_KEYWORD;
-             const newTpl = messageTemplate || currentAuto?.template || "";
+             if (index > -1) {
+                const auto = dbData.automation[index];
+                if (isActive !== undefined) auto.enabled = isActive ? 1 : 0;
+                if (intervalMinutes !== undefined) auto.frequency = intervalMinutes;
+                if (keyword !== undefined) auto.keyword = keyword;
+                if (messageTemplate !== undefined) auto.template = messageTemplate;
+                
+                dbData.automation[index] = auto;
+             } else {
+                dbData.automation.push({
+                   userId,
+                   enabled: isActive ? 1 : 0,
+                   frequency: intervalMinutes || 15,
+                   keyword: keyword || DEFAULT_KEYWORD,
+                   template: messageTemplate || ""
+                });
+             }
 
-             await dbRun(
-                 `INSERT OR REPLACE INTO automation (user_id, enabled, frequency_minutes, keyword, template) VALUES (?, ?, ?, ?, ?)`,
-                 [userId, newEnabled, newFreq, newKw, newTpl]
-             );
-
-             // Reinicia timer se o status mudou ou frequencia mudou
-             if (newEnabled) {
+             // Reinicia Timer
+             const auto = dbData.automation.find(a => a.userId === userId);
+             if (auto.enabled) {
                  await startAutomationTimer(userId);
              } else {
                  if (automationTimers[userId]) {
@@ -450,6 +469,7 @@ app.post("/config/:userId", async (req, res) => {
              }
         }
 
+        await saveDB();
         res.json({ ok: true, message: "Configurações salvas" });
     } catch (e) {
         console.error(e);
@@ -457,7 +477,7 @@ app.post("/config/:userId", async (req, res) => {
     }
 });
 
-// Rota Manual de Envio (Dashboard Test Button)
+// Envio Manual (Botão Teste)
 app.post("/send/:userId", async (req, res) => {
     const { userId } = req.params;
     const { number, groupId, message } = req.body;
@@ -477,8 +497,14 @@ app.post("/send/:userId", async (req, res) => {
 
 app.get("/logs/:userId", async (req, res) => {
   try {
-    const logs = await dbAll(`SELECT * FROM logs WHERE user_id = ? ORDER BY sent_at DESC LIMIT 100`, [req.params.userId]);
-    res.json({ ok: true, logs });
+    const userLogs = dbData.logs
+      .filter(l => l.userId === req.params.userId)
+      .sort((a, b) => b.sentAt - a.sentAt) // Mais recente primeiro
+      .slice(0, 100);
+
+    // Mapeamento para garantir compatibilidade com frontend se necessário
+    // Mas as chaves já foram salvas compativeis (productName, etc)
+    res.json({ ok: true, logs: userLogs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
