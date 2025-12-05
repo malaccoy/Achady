@@ -2,13 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
 import { ConnectWhatsAppModal } from '../components/ConnectWhatsAppModal';
-import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode } from 'lucide-react';
+import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
 
 const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
+
+// Configuração fixa conforme solicitado
+const API_BASE_URL = "http://72.60.228.212:3000";
+const FIXED_USER_ID = "1";
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +41,10 @@ export const Dashboard: React.FC = () => {
 
   // WhatsApp QR Modal State
   const [showQrModal, setShowQrModal] = useState(false);
+
+  // Test Message State
+  const [testPhone, setTestPhone] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
 
   useEffect(() => {
     const userId = db.getCurrentUserId();
@@ -116,8 +124,6 @@ export const Dashboard: React.FC = () => {
 
   const handleAddGroup = () => {
     if (!newGroupLink || !currentUserId) return;
-    
-    // Add group with category
     const novoGrupoDb = db.adicionarGrupoWhatsApp(currentUserId, newGroupLink, newGroupCategory);
     
     const newGroupView: WhatsAppGroup = {
@@ -129,7 +135,7 @@ export const Dashboard: React.FC = () => {
     
     setGroups([...groups, newGroupView]);
     setNewGroupLink('');
-    setNewGroupCategory('geral'); // reset to default
+    setNewGroupCategory('geral');
   };
 
   const handleDeleteGroup = (id: string) => {
@@ -142,6 +148,42 @@ export const Dashboard: React.FC = () => {
       ...prev,
       messageTemplate: prev.messageTemplate + ` ${variable}`
     }));
+  };
+
+  // ✅ ETAPA 4 - FUNÇÃO DE TESTE DE ENVIO
+  const handleSendTestMessage = async () => {
+    if (!testPhone) {
+      alert("Digite um número de telefone para teste (ex: 5511999999999)");
+      return;
+    }
+
+    setSendingTest(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: FIXED_USER_ID,
+          number: testPhone,
+          message: "Mensagem enviada com sucesso pelo Achady 🚀"
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.ok) {
+        alert("✅ Mensagem enviada com sucesso!");
+      } else {
+        alert("❌ Erro: " + (data.error || "Falha desconhecida"));
+      }
+
+    } catch (e) {
+      alert("❌ Erro de conexão com o servidor");
+      console.error(e);
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   if (loading) return <div className="p-12 text-center text-slate-500 font-medium animate-pulse">Carregando painel ACHADY...</div>;
@@ -188,20 +230,24 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {settings.whatsappConnected ? (
-              <Button 
-                variant="danger" 
-                fullWidth 
-                onClick={handleDisconnectWhatsapp}
-                className="opacity-90 hover:opacity-100"
-              >
-                Desconectar Sessão
-              </Button>
+              <div className="space-y-3">
+                 <div className="flex gap-2">
+                    <Input 
+                      placeholder="5511999999999" 
+                      value={testPhone} 
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      className="text-sm"
+                    />
+                    <Button onClick={handleSendTestMessage} isLoading={sendingTest} size="sm" variant="secondary">
+                       <Send className="w-4 h-4" />
+                    </Button>
+                 </div>
+                 <Button variant="danger" fullWidth onClick={handleDisconnectWhatsapp}>
+                   Desconectar Sessão
+                 </Button>
+              </div>
             ) : (
-              <Button 
-                onClick={() => setShowQrModal(true)} 
-                fullWidth
-                id="btnConnect"
-              >
+              <Button onClick={() => setShowQrModal(true)} fullWidth id="btnConnect">
                 Conectar WhatsApp
               </Button>
             )}
@@ -252,6 +298,8 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
+        {/* ... Resto do Dashboard mantido igual ... */}
+        
         {/* Card 3: Automation Controls */}
         <Card title="Controle de Automação" icon={<Zap className="w-5 h-5" />}>
           <div className="space-y-6">
@@ -407,7 +455,7 @@ export const Dashboard: React.FC = () => {
       <ConnectWhatsAppModal 
         open={showQrModal} 
         onClose={() => setShowQrModal(false)}
-        userId={currentUserId || ''}
+        userId={FIXED_USER_ID} // Passando USER_ID = "1"
         onConnected={handleWhatsappConnected}
       />
 

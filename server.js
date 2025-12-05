@@ -14,11 +14,21 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Servir frontend
+// Servir frontend (caso esteja rodando junto)
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// Armazenamento em memória
 const sessions = {};
 const qrCodes = {};
+
+// Função auxiliar para formatar número (remove caracteres não numéricos e garante sufixo @c.us)
+function formatPhone(phone) {
+    let clean = phone.replace(/\D/g, '');
+    if (!clean.endsWith('@c.us')) {
+        clean += '@c.us';
+    }
+    return clean;
+}
 
 function createSession(sessionId) {
     if (sessions[sessionId]) return sessions[sessionId];
@@ -55,7 +65,7 @@ function createSession(sessionId) {
 
     client.on("ready", () => {
         console.log(`✅ Sessão ${sessionId} conectada`);
-        sessions[sessionId].status = "ready";
+        sessions[sessionId].status = "connected"; // Ajustado para "connected" conforme pedido
     });
 
     client.on("authenticated", () => {
@@ -63,7 +73,12 @@ function createSession(sessionId) {
     });
 
     client.on("auth_failure", () => {
-        sessions[sessionId].status = "auth_failure";
+        sessions[sessionId].status = "disconnected";
+    });
+
+    client.on("disconnected", () => {
+        sessions[sessionId].status = "disconnected";
+        console.log(`❌ Sessão ${sessionId} desconectada`);
     });
 
     client.initialize();
@@ -71,53 +86,75 @@ function createSession(sessionId) {
 }
 
 // =======================================================
-// 🔥 ROTAS SOLICITADAS PELO SNIPPET (GOOGLE STUDIO)
+// ✅ ROTAS ETAPA 2 e 3 (CONEXÃO)
 // =======================================================
 
 // 1. Iniciar Sessão
-app.post("/start/:sessionId", (req, res) => {
-    const { sessionId } = req.params;
-    createSession(sessionId);
-    // Retorno simplificado conforme solicitado:
-    res.json({ ok: true });
+app.post("/start/:userId", (req, res) => {
+    const { userId } = req.params;
+    createSession(userId);
+    res.json({ ok: true, message: "Sessão iniciada" });
 });
 
 // 2. Buscar QR Code
-app.get("/qr/:sessionId", (req, res) => {
-    const { sessionId } = req.params;
+app.get("/qr/:userId", (req, res) => {
+    const { userId } = req.params;
     
-    if (!sessions[sessionId]) {
-        return res.json({ qr: null, status: "no-session" });
+    if (!sessions[userId]) {
+        return res.json({ status: "disconnected" });
     }
 
-    res.json({
-        qr: qrCodes[sessionId] || null,
-        status: sessions[sessionId].status
-    });
+    const sessao = sessions[userId];
+    const qrCode = qrCodes[userId];
+
+    if (sessao.status === 'connected') {
+        return res.json({ status: 'connected' });
+    }
+
+    if (sessao.status === 'qr' && qrCode) {
+        return res.json({ status: 'qr', qr: qrCode });
+    }
+
+    return res.json({ status: 'starting' });
 });
 
 // =======================================================
+// ✅ ROTA ETAPA 4 (ENVIO DE MENSAGEM)
+// =======================================================
 
-// Rota legado de compatibilidade
-app.get("/generate-qr/:sessionId", (req, res) => {
-    const { sessionId } = req.params;
-    createSession(sessionId);
-    res.json({ ok: true, message: "Sessão iniciada." });
-});
+app.post("/send", async (req, res) => {
+    const { userId, number, message } = req.body;
 
-app.post("/enviarMensagem", async (req, res) => {
-    const { sessionId, grupo, mensagem } = req.body;
-    if (!sessions[sessionId]) return res.status(400).json({ error: "Sessão não encontrada" });
+    if (!sessions[userId] || sessions[userId].status !== 'connected') {
+        return res.status(400).json({ error: "Sessão não conectada ou inexistente" });
+    }
+
     try {
-        await sessions[sessionId].client.sendMessage(grupo, mensagem);
-        res.json({ ok: true });
+        const chatId = formatPhone(number);
+        await sessions[userId].client.sendMessage(chatId, message);
+        console.log(`✅ Mensagem enviada para ${number}`);
+        res.json({ ok: true, message: "Mensagem enviada com sucesso" });
     } catch (e) {
+        console.error("Erro ao enviar mensagem:", e);
         res.status(500).json({ error: "Falha ao enviar mensagem." });
     }
 });
 
+// =======================================================
+// ✅ ROTA ETAPA 5 (STATUS)
+// =======================================================
+
+app.get("/status/:userId", (req, res) => {
+    const { userId } = req.params;
+    if (!sessions[userId]) {
+        return res.json({ status: "disconnected" });
+    }
+    res.json({ status: sessions[userId].status });
+});
+
+// Fallback para React Router
 app.get("*", (req, res) => {
-    if (req.path.startsWith('/qr/') || req.path.startsWith('/start/') || req.path.startsWith('/enviarMensagem')) {
+    if (req.path.startsWith('/qr/') || req.path.startsWith('/start/') || req.path.startsWith('/send') || req.path.startsWith('/status/')) {
         return res.status(404).json({ error: "Endpoint não encontrado" });
     }
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
