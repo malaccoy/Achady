@@ -1,27 +1,37 @@
-// URL do servidor WhatsApp no Render
-const API_URL = "https://achady-whatsapp-server.onrender.com";
+// URL do servidor WhatsApp na VPS (HTTP)
+const API_BASE_URL = "http://72.60.228.212:3000";
 
 export async function iniciarConexaoWhatsApp() {
-    document.getElementById("statusText").innerText = "Gerando QR..."; // Iniciar sessão
-    await fetch(`${API_URL}/generate-qr/1`);
+    const statusText = document.getElementById("statusText");
+    if(statusText) statusText.innerText = "Gerando QR..."; 
 
-    // Buscar QR
+    // 1. Iniciar sessão (POST /start/1)
+    await fetch(`${API_BASE_URL}/start/1`, {
+        method: "POST"
+    });
+
+    // 2. Buscar QR
     buscarQRCode();
 }
 
 async function buscarQRCode() {
-    const res = await fetch(`${API_URL}/qr/1`);
+    // 3. Polling do QR (GET /qr/1)
+    const res = await fetch(`${API_BASE_URL}/qr/1`);
     const data = await res.json();
     
     // Exibir QR
     if (data.status === "qr" && data.qr) {
-        document.getElementById("qrImage").src = data.qr;
-        document.getElementById("statusText").innerText = "Escaneie o QR com o WhatsApp";
+        const qrImage = document.getElementById("qrImage");
+        const statusText = document.getElementById("statusText");
+        
+        if(qrImage) qrImage.src = data.qr;
+        if(statusText) statusText.innerText = "Escaneie o QR com o WhatsApp";
     }
 
     // Conectado
-    if (data.status === "ready") {
-        document.getElementById("statusText").innerText = "WhatsApp conectado!";
+    if (data.status === "connected" || data.status === "ready") {
+        const statusText = document.getElementById("statusText");
+        if(statusText) statusText.innerText = "WhatsApp conectado!";
         return;
     }
 

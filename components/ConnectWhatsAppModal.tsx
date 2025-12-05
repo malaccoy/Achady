@@ -8,9 +8,8 @@ interface ConnectWhatsAppModalProps {
   onConnected: () => void;
 }
 
-// ✅ ETAPA 0 e 1 - CONFIGURAÇÃO GLOBAL
+// ✅ CONFIGURAÇÃO GLOBAL - BASE URL APENAS
 const API_BASE_URL = "http://72.60.228.212:3000";
-// USER_ID vem via props, mas o padrão é "1" se não vier
 
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
   const [status, setStatus] = useState<'starting' | 'qr' | 'connected' | 'disconnected' | 'error'>('starting');
@@ -26,13 +25,14 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     return () => { isMounted.current = false; };
   }, [open]);
 
-  // ✅ ETAPA 2 - INICIAR SESSÃO
+  // ✅ 1. INICIAR SESSÃO
   async function iniciarSessao() {
     if (!isMounted.current) return;
     setStatus("starting");
     setQrCode(null);
 
     try {
+      // POST para a BASE + /start/1
       const res = await fetch(`${API_BASE_URL}/start/${userId}`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' }
@@ -46,11 +46,12 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     }
   }
 
-  // ✅ ETAPA 3 - BUSCAR QR (POLLING 3s)
+  // ✅ 2. BUSCAR QR (POLLING 3s)
   async function buscarQRCode() {
     if (!isMounted.current) return;
 
     try {
+      // GET para a BASE + /qr/1
       const res = await fetch(`${API_BASE_URL}/qr/${userId}`);
       const data = await res.json();
 

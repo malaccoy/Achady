@@ -10,7 +10,7 @@ const CATEGORIES: GroupCategory[] = [
   'geral', 'moda', 'beleza', 'casa', 'esportes', 'eletronicos', 'brinquedos', 'pet', 'cozinha'
 ];
 
-// Configuração fixa conforme solicitado
+// ✅ CONFIGURAÇÃO DA API (BASE URL APENAS)
 const API_BASE_URL = "http://72.60.228.212:3000";
 const FIXED_USER_ID = "1";
 
@@ -160,6 +160,7 @@ export const Dashboard: React.FC = () => {
     setSendingTest(true);
 
     try {
+      // Usa API_BASE_URL concatenado com o endpoint /send
       const response = await fetch(`${API_BASE_URL}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
