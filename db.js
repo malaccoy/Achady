@@ -1,17 +1,5 @@
-import sqlite3 from "sqlite3";
-import { open } from "sqlite";
+// db.js
+// ARQUIVO DESCONTINUADO - O SISTEMA AGORA USA JSON DB (ver server.js)
+// Este arquivo foi esvaziado para evitar erros de dependência (sqlite3).
 
-export const db = await open({
-  filename: "./achady.db",
-  driver: sqlite3.Database
-});
-
-await db.exec(`
-CREATE TABLE IF NOT EXISTS disparos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  grupo TEXT,
-  mensagem TEXT,
-  produto TEXT,
-  data DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-`);
+export const db = {};

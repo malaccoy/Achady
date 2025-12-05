@@ -1,6 +1,6 @@
 // server.js
-// ACHADY – BOT WHATSAPP + SHOPEE (MVP VALIDAÇÃO)
-// Versão: JSON DB (Sem dependência de SQLite nativo)
+// ACHADY – SERVIDOR DE AUTOMAÇÃO WHATSAPP + SHOPEE
+// Arquitetura: Node.js | JSON DB | whatsapp-web.js | Shopee GraphQL
 
 import express from "express";
 import cors from "cors";
@@ -9,7 +9,6 @@ import qrcode from "qrcode";
 import axios from "axios";
 import crypto from "crypto";
 import fs from "fs/promises";
-import path from "path";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -17,7 +16,7 @@ dotenv.config();
 const { Client, LocalAuth } = pkg;
 
 // ========================
-// CONFIG BÁSICA
+// CONFIGURAÇÕES GERAIS
 // ========================
 const app = express();
 app.use(cors());
@@ -25,491 +24,435 @@ app.use(express.json());
 
 const PORT = 3000;
 const DB_FILE = "./achady_db.json";
-
-// 1 usuário padrão (MVP)
-const DEFAULT_USER_ID = process.env.USER_ID_PADRAO || "1";
-
-// Shopee Defaults
-const SHOPEE_APP_ID = process.env.SHOPEE_APP_ID || "";
-const SHOPEE_APP_SECRET = process.env.SHOPEE_APP_SECRET || "";
-
-// Automação Defaults
-const DEFAULT_KEYWORD = process.env.KEYWORD_PADRAO || "promoção relâmpago";
-const DEFAULT_INTERVAL_MINUTES = Number(process.env.INTERVALO_MINUTOS || 5);
+const SHOPEE_ENDPOINT = "https://open-api.affiliate.shopee.com.br/graphql";
 
 // ========================
-// JSON DATABASE SYSTEM
+// JSON DATABASE (Persistência em Arquivo)
 // ========================
+// Estrutura em memória
 let dbData = {
-  shopee_credentials: [], // { userId, appId, appSecret }
-  groups: [],             // { id, userId, invite, name, groupId, category }
-  automation: [],         // { userId, enabled, frequency, keyword, template }
-  logs: []                // { id, userId, groupName, productName, ... }
+  configs: [], // { userId, appId, appSecret, keyword, intervalMinutes, messageTemplate, isActive }
+  groups: [],  // { id, userId, invite, name, groupId, category }
+  logs: []     // { id, userId, sentAt, groupName, productName, price, discount, link }
 };
 
-// Carrega ou cria o banco de dados JSON
+// Carregar DB
 async function initDB() {
   try {
     const data = await fs.readFile(DB_FILE, "utf-8");
     dbData = JSON.parse(data);
     
-    // Garante estrutura
-    if (!dbData.shopee_credentials) dbData.shopee_credentials = [];
+    // Garantir arrays
+    if (!dbData.configs) dbData.configs = [];
     if (!dbData.groups) dbData.groups = [];
-    if (!dbData.automation) dbData.automation = [];
     if (!dbData.logs) dbData.logs = [];
-    
-    console.log("📦 Banco de dados JSON carregado.");
-    
-    // Configura padrão se não existir
-    await ensureDefaults();
 
+    console.log("📦 Banco de dados carregado com sucesso.");
   } catch (err) {
-    if (err.code === "ENOENT") {
-      console.log("⚠️ DB não encontrado, criando novo...");
-      await ensureDefaults();
-      await saveDB();
-    } else {
-      console.error("❌ Erro ao ler DB:", err);
-    }
+    console.log("⚠️ Banco de dados não encontrado, criando novo arquivo vazio.");
+    await saveDB();
   }
 }
 
+// Salvar DB
 async function saveDB() {
   try {
     await fs.writeFile(DB_FILE, JSON.stringify(dbData, null, 2));
   } catch (err) {
-    console.error("❌ Erro ao salvar DB:", err);
+    console.error("❌ Erro ao salvar banco de dados:", err);
   }
 }
 
-async function ensureDefaults() {
-  // Automação Padrão
-  const autoIndex = dbData.automation.findIndex(a => a.userId === DEFAULT_USER_ID);
-  if (autoIndex === -1) {
-    const defaultTemplate = `
-🔥 OFERTA IMPERDÍVEL! 🔥
-
-{{titulo}}
-
-💰 Apenas: {{preco}}
-❌ De: {{precoOriginal}}
-🎯 Desconto: {{desconto}}
-
-🛒 Compre aqui: {{link}}
-    `.trim();
-
-    dbData.automation.push({
-      userId: DEFAULT_USER_ID,
-      enabled: 0,
-      frequency: DEFAULT_INTERVAL_MINUTES,
-      keyword: DEFAULT_KEYWORD,
-      template: defaultTemplate
-    });
-  }
-
-  // Credenciais Shopee Padrão (se env vars existirem)
-  if (SHOPEE_APP_ID && SHOPEE_APP_SECRET) {
-    const credIndex = dbData.shopee_credentials.findIndex(c => c.userId === DEFAULT_USER_ID);
-    if (credIndex === -1) {
-      dbData.shopee_credentials.push({
-        userId: DEFAULT_USER_ID,
-        appId: SHOPEE_APP_ID,
-        appSecret: SHOPEE_APP_SECRET
-      });
-    }
-  }
-  
-  await saveDB();
-}
-
-// Inicializa DB ao arrancar
 initDB();
 
-// ========================
-// MULTI-SESSÕES WHATSAPP
-// ========================
-let sessions = {};
-let automationTimers = {};
+// Helpers de DB
+const getUserConfig = (userId) => dbData.configs.find(c => c.userId === userId);
+const setUserConfig = async (userId, data) => {
+  const idx = dbData.configs.findIndex(c => c.userId === userId);
+  if (idx > -1) {
+    dbData.configs[idx] = { ...dbData.configs[idx], ...data };
+  } else {
+    dbData.configs.push({ userId, ...data });
+  }
+  await saveDB();
+  return getUserConfig(userId);
+};
 
-async function createSession(userId) {
+// ========================
+// GERENCIADOR WHATSAPP
+// ========================
+const sessions = {}; // { [userId]: { client, status, qr } }
+
+const getSession = (userId) => sessions[userId];
+
+const createSession = async (userId) => {
   if (sessions[userId]) return sessions[userId];
 
-  console.log("➡️ Criando sessão para USER:", userId);
+  console.log(`🔄 Iniciando sessão WhatsApp para User ${userId}...`);
 
   const client = new Client({
     puppeteer: {
       headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     },
-    authStrategy: new LocalAuth({
-      clientId: `achady-session-${userId}`,
-    }),
+    authStrategy: new LocalAuth({ clientId: `achady-${userId}` })
   });
 
   sessions[userId] = {
     client,
-    qr: null,
-    status: "starting",
-    groupId: null,
+    status: 'starting',
+    qr: null
   };
 
-  client.on("qr", async (qr) => {
-    console.log(`📌 QR CODE GERADO PARA USER: ${userId}`);
-    const qrImage = await qrcode.toDataURL(qr);
-    sessions[userId].qr = qrImage;
-    sessions[userId].status = "qr";
+  client.on('qr', async (qr) => {
+    console.log(`📌 QR Code recebido para User ${userId}`);
+    sessions[userId].qr = await qrcode.toDataURL(qr);
+    sessions[userId].status = 'qr';
   });
 
-  client.on("ready", () => {
-    console.log(`✅ WhatsApp conectado — USER ${userId}`);
-    sessions[userId].status = "ready";
+  client.on('ready', () => {
+    console.log(`✅ WhatsApp User ${userId} está ONLINE/READY!`);
+    sessions[userId].status = 'ready';
+    sessions[userId].qr = null;
   });
 
-  client.on("disconnected", () => {
-    console.log(`⚠️ WhatsApp desconectado — USER ${userId}`);
-    sessions[userId].status = "offline";
+  client.on('authenticated', () => {
+    console.log(`🔐 WhatsApp User ${userId} autenticado.`);
+    sessions[userId].status = 'authenticated';
   });
 
-  client.initialize();
+  client.on('disconnected', (reason) => {
+    console.log(`❌ WhatsApp User ${userId} desconectado:`, reason);
+    sessions[userId].status = 'offline';
+  });
+
+  try {
+    await client.initialize();
+  } catch (e) {
+    console.error(`Erro ao inicializar cliente ${userId}:`, e);
+    sessions[userId].status = 'error';
+  }
+
   return sessions[userId];
-}
+};
 
 // ========================
-// FUNÇÕES SHOPEE
+// SHOPEE API CLIENT
 // ========================
-const SHOPEE_ENDPOINT = "https://open-api.affiliate.shopee.com.br/graphql";
-
-function buildShopeeAuthHeader(appId, appSecret, payload) {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
+function generateShopeeSignature(appId, appSecret, payload, timestamp) {
   const factor = appId + timestamp + payload + appSecret;
-  const signature = crypto.createHash("sha256").update(factor).digest("hex");
-  return `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`;
+  return crypto.createHash('sha256').update(factor).digest('hex');
 }
 
 async function fetchShopeeOffers(userId) {
-  const cred = dbData.shopee_credentials.find(c => c.userId === userId);
-
-  if (!cred) {
-    console.error("❌ Credenciais Shopee não encontradas no DB.");
-    return [];
+  const config = getUserConfig(userId);
+  if (!config || !config.appId || !config.appSecret) {
+    throw new Error("Credenciais da Shopee não configuradas.");
   }
 
-  const automation = dbData.automation.find(a => a.userId === userId);
-  const keyword = automation?.keyword || DEFAULT_KEYWORD;
-
+  const keyword = config.keyword || "promoção";
+  
   const query = `
-    query productOffer($keyword: String!, $page: Int!, $limit: Int!) {
+    query {
       productOfferV2(
-        keyword: $keyword,
-        page: $page,
-        limit: $limit,
+        keyword: "${keyword}",
+        page: 1,
+        limit: 5,
         sortType: 2
       ) {
         nodes {
-          itemId
           productName
           offerLink
           priceMin
           priceMax
           priceDiscountRate
+          imageUrl
         }
       }
     }
   `;
 
-  const payload = JSON.stringify({
-    query,
-    operationName: "productOffer",
-    variables: { keyword, page: 1, limit: 5 },
-  });
-
-  const authHeader = buildShopeeAuthHeader(cred.appId, cred.appSecret, payload);
+  const payload = JSON.stringify({ query });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = generateShopeeSignature(config.appId, config.appSecret, payload, timestamp);
 
   try {
     const response = await axios.post(SHOPEE_ENDPOINT, payload, {
-      headers: { "Content-Type": "application/json", Authorization: authHeader },
-      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `SHA256 Credential=${config.appId}, Timestamp=${timestamp}, Signature=${signature}`
+      },
+      timeout: 15000
     });
 
-    const nodes = response.data?.data?.productOfferV2?.nodes || [];
-    return nodes.map((n) => {
-      const price = Number(n.priceMin || 0);
-      const discountPercent = Number(n.priceDiscountRate || 0);
-      let originalPrice = price;
-      if (discountPercent > 0 && discountPercent < 100) {
-        originalPrice = price / (1 - discountPercent / 100);
-      }
-      return {
-        itemId: n.itemId,
-        title: n.productName,
-        link: n.offerLink,
-        price,
-        originalPrice,
-        discountPercent,
-      };
-    });
-  } catch (err) {
-    console.error("❌ Erro Shopee:", err?.response?.data || err.message);
+    if (response.data.errors) {
+      console.error("Erro GraphQL Shopee:", response.data.errors);
+      throw new Error("Erro na API da Shopee (GraphQL)");
+    }
+
+    return response.data?.data?.productOfferV2?.nodes || [];
+  } catch (error) {
+    console.error("Falha na requisição Shopee:", error.message);
     return [];
   }
 }
 
 // ========================
-// AUTOMAÇÃO
+// MOTOR DE AUTOMAÇÃO (ROBÔ)
 // ========================
-function formatPriceBRL(value) {
-  if (value == null || isNaN(value)) return "-";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const automationTimers = {};
+
+function formatCurrency(val) {
+  return Number(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+function buildMessage(template, offer) {
+  const titulo = offer.productName || "Oferta";
+  const preco = formatCurrency(offer.priceMin || 0);
+  const precoOriginal = formatCurrency(offer.priceMax || (offer.priceMin * 1.2));
+  const desconto = offer.priceDiscountRate ? `${offer.priceDiscountRate}% OFF` : "";
+  const link = offer.offerLink;
 
-function buildMessageFromTemplate(userId, offer) {
-  const config = dbData.automation.find(a => a.userId === userId);
-  const template = config?.template || `🔥 {{titulo}} por {{preco}}! Link: {{link}}`;
+  let msg = template || `🔥 {{titulo}}\n💰 {{preco}}\n🛒 {{link}}`;
   
-  return template
-    .replace(/{{titulo}}/g, offer.title)
-    .replace(/{{preco}}/g, formatPriceBRL(offer.price))
-    .replace(/{{precoOriginal}}/g, formatPriceBRL(offer.originalPrice))
-    .replace(/{{desconto}}/g, `${offer.discountPercent}%`)
-    .replace(/{{link}}/g, offer.link);
+  msg = msg.replace(/{{titulo}}/g, titulo)
+           .replace(/{{preco}}/g, preco)
+           .replace(/{{precoOriginal}}/g, precoOriginal)
+           .replace(/{{desconto}}/g, desconto)
+           .replace(/{{link}}/g, link);
+           
+  return msg;
 }
 
 async function runAutomationCycle(userId) {
   try {
-    const session = sessions[userId];
-    if (!session || session.status !== "ready") return;
+    // 1. Verificar Estado
+    const config = getUserConfig(userId);
+    const session = getSession(userId);
 
-    const automation = dbData.automation.find(a => a.userId === userId);
-    if (!automation || !automation.enabled) return;
+    if (!config || !config.isActive) {
+      console.log(`⏸️ Robô User ${userId} está pausado.`);
+      return;
+    }
+    if (!session || session.status !== 'ready') {
+      console.log(`⚠️ Robô User ${userId}: WhatsApp não está pronto.`);
+      return;
+    }
 
-    // Busca grupos
+    // 2. Buscar Grupos
     const groups = dbData.groups.filter(g => g.userId === userId);
-    if (!groups.length) {
-       console.log("⚠️ Nenhum grupo cadastrado.");
-       return;
+    if (groups.length === 0) {
+      console.log(`⚠️ Robô User ${userId}: Sem grupos cadastrados.`);
+      return;
     }
 
+    // 3. Buscar Ofertas
+    console.log(`🔎 Buscando ofertas Shopee para User ${userId}...`);
     const offers = await fetchShopeeOffers(userId);
-    if (!offers.length) return;
-
-    const offer = offers[0];
-    const message = buildMessageFromTemplate(userId, offer);
-
-    for (const group of groups) {
-      if (!group.groupId) continue;
-      
-      console.log(`📨 Enviando oferta para ${group.name} (${group.groupId})`);
-      await session.client.sendMessage(group.groupId, message);
-
-      // Save Log
-      dbData.logs.unshift({
-        id: Date.now(),
-        userId,
-        groupName: group.name,
-        productName: offer.title,
-        offerLink: offer.link,
-        priceMin: offer.price,
-        priceOriginal: offer.originalPrice,
-        discountRate: offer.discountPercent,
-        sentAt: Math.floor(Date.now() / 1000) // timestamp seconds
-      });
-      
-      // Limita logs a 100
-      if (dbData.logs.length > 200) dbData.logs = dbData.logs.slice(0, 200);
-      
-      await saveDB();
-
-      await sleep(5000 + Math.random() * 5000); // Delay
+    
+    if (!offers || offers.length === 0) {
+      console.log(`⚠️ Nenhuma oferta encontrada.`);
+      return;
     }
+
+    // Seleciona a primeira oferta (MVP)
+    const offer = offers[0]; 
+    const message = buildMessage(config.messageTemplate, offer);
+
+    // 4. Enviar para Grupos
+    for (const group of groups) {
+      // Tenta enviar se tiver groupId, se não, ignora
+      if (group.groupId) {
+        console.log(`📤 Enviando oferta para ${group.name}...`);
+        
+        try {
+          await session.client.sendMessage(group.groupId, message);
+          
+          // 5. Logar Envio
+          dbData.logs.unshift({
+            id: Date.now(),
+            userId,
+            groupName: group.name,
+            productName: offer.productName,
+            price: offer.priceMin,
+            discount: offer.priceDiscountRate,
+            offerLink: offer.offerLink,
+            sentAt: new Date().toISOString()
+          });
+          
+          // Manter log limpo (Max 200)
+          if (dbData.logs.length > 200) dbData.logs.pop();
+          await saveDB();
+
+          // Delay anti-ban (5 a 15 seg)
+          await new Promise(r => setTimeout(r, 5000 + Math.random() * 10000));
+
+        } catch (sendErr) {
+          console.error(`❌ Falha ao enviar para ${group.name}:`, sendErr.message);
+        }
+      }
+    }
+
   } catch (err) {
-    console.error("❌ Erro ciclo automação:", err.message);
+    console.error(`❌ Erro no ciclo de automação User ${userId}:`, err.message);
   }
 }
 
 async function startAutomationTimer(userId) {
+  // Limpar anterior
   if (automationTimers[userId]) {
     clearInterval(automationTimers[userId]);
     delete automationTimers[userId];
   }
 
-  const automation = dbData.automation.find(a => a.userId === userId);
-  if (!automation || !automation.enabled) return;
-
-  const intervalMs = (automation.frequency || 5) * 60 * 1000;
-  console.log(`⏱️ Automação iniciada (User ${userId}, cada ${automation.frequency} min)`);
-  
-  // Executa o primeiro ciclo imediatamente
-  runAutomationCycle(userId);
-
-  automationTimers[userId] = setInterval(() => runAutomationCycle(userId), intervalMs);
+  const config = getUserConfig(userId);
+  if (config && config.isActive) {
+    const minutes = config.intervalMinutes || 15;
+    console.log(`⏱️ Timer iniciado para User ${userId}: Ciclo a cada ${minutes} minutos.`);
+    
+    // Executa imediatamente uma vez
+    runAutomationCycle(userId);
+    
+    // Agenda próximos
+    automationTimers[userId] = setInterval(() => {
+      runAutomationCycle(userId);
+    }, minutes * 60 * 1000);
+  } else {
+    console.log(`⏹️ Timer parado para User ${userId}.`);
+  }
 }
 
 // ========================
-// ROTAS HTTP
+// ROTAS DA API
 // ========================
 
-app.get("/", (req, res) => res.send("Servidor WhatsApp Achady (JSON DB) rodando. 🚀"));
-
-app.get("/status", (req, res) => {
-  const users = Object.keys(sessions);
-  const status = users.length > 0 ? sessions[users[0]]?.status : "offline";
-  res.json({ ok: true, status, users });
-});
-
+// 1. SESSÃO WHATSAPP
 app.post("/start/:userId", async (req, res) => {
   const { userId } = req.params;
   try {
     const session = await createSession(userId);
-    res.json({ message: "Sessão iniciada", status: session.status });
+    res.json({ status: session.status, message: "Sessão iniciada/recuperada" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get("/qr/:userId", (req, res) => {
-  const sess = sessions[req.params.userId];
-  if (!sess) return res.status(404).json({ qr: null, status: "not_started" });
-  res.json({ qr: sess.qr, status: sess.status });
+  const sess = getSession(req.params.userId);
+  if (!sess) return res.status(404).json({ status: "not_started", qr: null });
+  res.json({ status: sess.status, qr: sess.qr });
 });
 
+app.get("/status", (req, res) => {
+  // Status global simples
+  res.json({ online: true, timestamp: Date.now() });
+});
+
+// 2. GESTÃO DE GRUPOS
 app.post("/join/:userId", async (req, res) => {
   const { userId } = req.params;
   const { invite, name, category } = req.body;
-
-  if (!invite) return res.status(400).json({ error: "Invite obrigatório" });
-
-  const sess = sessions[userId];
-  if (!sess || sess.status !== "ready") return res.status(400).json({ error: "WhatsApp não conectado" });
+  
+  const sess = getSession(userId);
+  if (!sess || sess.status !== 'ready') {
+    return res.status(400).json({ error: "WhatsApp não está conectado (Ready)" });
+  }
 
   try {
-    const chat = await sess.client.acceptInvite(invite);
-    const groupId = chat.id._serialized;
-    const groupName = name || chat.name || "Grupo Achady";
-
-    // Adiciona grupo ao DB
+    // Aceita convite
+    const inviteCode = invite.replace('https://chat.whatsapp.com/', '');
+    const chatId = await sess.client.acceptInvite(inviteCode);
+    
+    // O retorno do acceptInvite pode ser apenas o ID ou um objeto, depende da versão da lib
+    // Geralmente retorna o ID do grupo (ex: 123... @g.us)
+    
+    // Vamos buscar informações do chat para garantir
+    // Nota: Às vezes demora um pouco para o chat aparecer na lista
+    
     const newGroup = {
       id: Date.now(),
       userId,
       invite,
-      name: groupName,
-      groupId,
-      category: category || 'geral'
+      name: name || "Grupo Novo",
+      groupId: typeof chatId === 'object' ? chatId._serialized : chatId, 
+      category: category || "geral"
     };
-    
+
     dbData.groups.push(newGroup);
     await saveDB();
 
-    res.json({ ok: true, message: "Grupo adicionado", groupId });
+    res.json({ success: true, groupName: newGroup.name, groupId: newGroup.groupId });
   } catch (err) {
-    res.status(500).json({ error: "Falha ao entrar no grupo: " + err.message });
+    console.error("Erro /join:", err);
+    res.status(500).json({ error: "Falha ao entrar no grupo. Verifique o link." });
   }
 });
 
-// Configuração Geral (Dashboard)
+// 3. CONFIGURAÇÃO (Shopee + Robô)
 app.post("/config/:userId", async (req, res) => {
-    const { userId } = req.params;
-    const { 
-        appId, appSecret, // Credenciais Shopee
-        keyword, messageTemplate, intervalMinutes, isActive // Automação
-    } = req.body;
+  const { userId } = req.params;
+  const body = req.body; // appId, appSecret, keyword, intervalMinutes, messageTemplate, isActive
 
-    try {
-        // 1. Atualiza Credenciais
-        if (appId !== undefined || appSecret !== undefined) {
-            const index = dbData.shopee_credentials.findIndex(c => c.userId === userId);
-            if (index > -1) {
-                if (appId) dbData.shopee_credentials[index].appId = appId;
-                if (appSecret) dbData.shopee_credentials[index].appSecret = appSecret;
-            } else {
-                dbData.shopee_credentials.push({ userId, appId: appId || "", appSecret: appSecret || "" });
-            }
-        }
-
-        // 2. Atualiza Automação
-        if (keyword !== undefined || messageTemplate !== undefined || intervalMinutes !== undefined || isActive !== undefined) {
-             const index = dbData.automation.findIndex(a => a.userId === userId);
-             
-             if (index > -1) {
-                const auto = dbData.automation[index];
-                if (isActive !== undefined) auto.enabled = isActive ? 1 : 0;
-                if (intervalMinutes !== undefined) auto.frequency = intervalMinutes;
-                if (keyword !== undefined) auto.keyword = keyword;
-                if (messageTemplate !== undefined) auto.template = messageTemplate;
-                
-                dbData.automation[index] = auto;
-             } else {
-                dbData.automation.push({
-                   userId,
-                   enabled: isActive ? 1 : 0,
-                   frequency: intervalMinutes || 15,
-                   keyword: keyword || DEFAULT_KEYWORD,
-                   template: messageTemplate || ""
-                });
-             }
-
-             // Reinicia Timer
-             const auto = dbData.automation.find(a => a.userId === userId);
-             if (auto.enabled) {
-                 await startAutomationTimer(userId);
-             } else {
-                 if (automationTimers[userId]) {
-                     clearInterval(automationTimers[userId]);
-                     delete automationTimers[userId];
-                 }
-             }
-        }
-
-        await saveDB();
-        res.json({ ok: true, message: "Configurações salvas" });
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: "Erro ao salvar config" });
-    }
-});
-
-// Envio Manual (Botão Teste)
-app.post("/send/:userId", async (req, res) => {
-    const { userId } = req.params;
-    const { number, groupId, message } = req.body;
-    const target = number || groupId;
-
-    const sess = sessions[userId];
-    if (!sess || sess.status !== "ready") return res.status(400).json({ error: "Sessão não pronta" });
-
-    try {
-        let chatId = target.includes("@") ? target : `${target.replace(/\D/g,"")}@c.us`;
-        await sess.client.sendMessage(chatId, message);
-        res.json({ ok: true });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get("/logs/:userId", async (req, res) => {
   try {
-    const userLogs = dbData.logs
-      .filter(l => l.userId === req.params.userId)
-      .sort((a, b) => b.sentAt - a.sentAt) // Mais recente primeiro
-      .slice(0, 100);
+    const newConfig = await setUserConfig(userId, body);
+    
+    // Se mudou isActive ou interval, reiniciar timer
+    if (body.isActive !== undefined || body.intervalMinutes !== undefined) {
+      await startAutomationTimer(userId);
+    }
 
-    // Mapeamento para garantir compatibilidade com frontend se necessário
-    // Mas as chaves já foram salvas compativeis (productName, etc)
-    res.json({ ok: true, logs: userLogs });
+    res.json({ success: true, config: newConfig });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Rota auxiliar para o Frontend carregar dados iniciais
+app.get("/config/:userId", (req, res) => {
+  const config = getUserConfig(req.params.userId);
+  // Retorna config ou objeto vazio seguro
+  res.json(config || {
+    appId: "", appSecret: "", keyword: "", 
+    intervalMinutes: 15, isActive: false, 
+    messageTemplate: "" 
+  });
+});
+
+// 4. LOGS
+app.get("/logs/:userId", (req, res) => {
+  const { userId } = req.params;
+  // Filtra logs do usuário e ordena decrescente
+  const logs = dbData.logs
+    .filter(l => l.userId === userId)
+    .sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt))
+    .slice(0, 100);
+
+  res.json({ logs });
+});
+
+// 5. TESTE DE ENVIO (Botão Dashboard)
+app.post("/send/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const { message, number } = req.body; // number pode ser ID de grupo ou telefone
+
+  const sess = getSession(userId);
+  if (!sess || sess.status !== 'ready') return res.status(400).json({ error: "Sessão não conectada" });
+
+  try {
+    // Formata ID se for número comum
+    let target = number;
+    if (!target.includes('@')) {
+        target = `${target.replace(/\D/g, '')}@c.us`;
+    }
+    
+    await sess.client.sendMessage(target, message);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// INICIAR
 app.listen(PORT, () => {
-  console.log(`🌐 Servidor rodando na porta ${PORT}`);
+  console.log(`🚀 Achady Server rodando na porta ${PORT}`);
 });
