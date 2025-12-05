@@ -1,109 +1,106 @@
 // server.js
-// ACHADY – Servidor WhatsApp + Shopee + Histórico + Anti-ban
+// -----------------------------------------------
+// npm install express cors whatsapp-web.js qrcode node-fetch sqlite sqlite3
+// -----------------------------------------------
 
 import express from "express";
 import cors from "cors";
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode";
+import fetch from "node-fetch";
 import sqlite3 from "sqlite3";
-import axios from "axios";
+import { open } from "sqlite";
 
 const { Client, LocalAuth } = pkg;
 
-// =====================================================
+// ===============================================
 // CONFIG BÁSICA
-// =====================================================
+// ===============================================
+const PORT = process.env.PORT || 3000;
+const SHOPEE_GRAPHQL_ENDPOINT =
+  process.env.SHOPEE_GRAPHQL_ENDPOINT ||
+  "https://affiliate.shopee.com.br/api/v3/gql?q=productOfferLinks"; // endpoint real que você achou
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 3000;
+// ===============================================
+// SQLITE – BANCO LOCAL
+// ===============================================
+let db;
 
-// =====================================================
-// BANCO DE DADOS (SQLite)
-// Arquivo: achady.db na raiz do projeto
-// =====================================================
-const db = new sqlite3.Database("./achady.db");
+async function initDb() {
+  db = await open({
+    filename: "./achady.sqlite",
+    driver: sqlite3.Database,
+  });
 
-// Cria tabelas se não existirem
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS settings (
-      user_id TEXT PRIMARY KEY,
+  await db.exec(`
+    PRAGMA journal_mode = WAL;
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      achady_user_id TEXT UNIQUE NOT NULL,
       shopee_app_id TEXT,
-      shopee_secret TEXT,
-      interval_minutes INTEGER DEFAULT 15,
-      template TEXT,
-      bot_active INTEGER DEFAULT 0
-    )
-  `);
+      shopee_app_secret TEXT,
+      robot_enabled INTEGER NOT NULL DEFAULT 0,
+      interval_minutes INTEGER NOT NULL DEFAULT 15,
+      message_template TEXT NOT NULL DEFAULT '🔥 OFERTA IMPERDÍVEL!\\n\\n{{titulo}}\\nApenas: {{preco}}\\nDe: {{preco_original}}\\nDesconto: {{desconto}}\\n\\nCompre aqui: {{link}}',
+      last_run_at TEXT
+    );
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id TEXT,
-      invite TEXT,
-      joined INTEGER DEFAULT 0
-    )
-  `);
+      user_id INTEGER NOT NULL,
+      name TEXT,
+      invite_link TEXT,
+      wa_chat_id TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS send_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id TEXT,
-      group_invite TEXT,
-      product_title TEXT,
-      sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      status TEXT,
-      error TEXT
-    )
+      user_id INTEGER NOT NULL,
+      group_id INTEGER,
+      offer_title TEXT,
+      offer_link TEXT,
+      payload_json TEXT,
+      sent_at TEXT NOT NULL,
+      status TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (group_id) REFERENCES groups(id)
+    );
   `);
-});
-
-// Helpers DB (promisificados)
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
 }
 
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+async function ensureUser(achadyUserId) {
+  let user = await db.get(
+    "SELECT * FROM users WHERE achady_user_id = ?",
+    achadyUserId
+  );
+  if (!user) {
+    await db.run("INSERT INTO users (achady_user_id) VALUES (?)", achadyUserId);
+    user = await db.get(
+      "SELECT * FROM users WHERE achady_user_id = ?",
+      achadyUserId
+    );
+  }
+  return user;
 }
 
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-}
+// ===============================================
+// WHATSAPP – MULTI-SESSÃO
+// ===============================================
+let sessions = {}; // { [achadyUserId]: { client, qr, status } }
 
-// =====================================================
-// SESSÕES WHATSAPP – UMA POR USER_ID DO ACHADY
-// =====================================================
-const sessions = {};         // { userId: { client, qr, status } }
-const schedulers = {};       // agendadores por usuário (intervalos)
-
-// Função de espera (anti-ban)
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Cria ou recupera sessão
-async function createSession(userId) {
-  if (sessions[userId]) {
-    return sessions[userId];
+async function createSession(achadyUserId) {
+  if (sessions[achadyUserId]) {
+    return sessions[achadyUserId];
   }
 
-  console.log("➡️ Criando sessão para USER:", userId);
+  console.log("➡️ Criando sessão para USER:", achadyUserId);
 
   const client = new Client({
     puppeteer: {
@@ -111,319 +108,64 @@ async function createSession(userId) {
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     },
     authStrategy: new LocalAuth({
-      clientId: `achady-session-${userId}`,
+      clientId: `achady-session-${achadyUserId}`,
     }),
   });
 
-  sessions[userId] = {
+  sessions[achadyUserId] = {
     client,
     qr: null,
-    status: "starting", // starting | qr | ready | error
+    status: "starting",
   };
 
   client.on("qr", async (qr) => {
-    console.log(`📌 QR CODE GERADO PARA USER: ${userId}`);
+    console.log(`📌 QR CODE GERADO PARA USER: ${achadyUserId}`);
     const qrImage = await qrcode.toDataURL(qr);
-    sessions[userId].qr = qrImage;
-    sessions[userId].status = "qr";
+    sessions[achadyUserId].qr = qrImage;
+    sessions[achadyUserId].status = "qr";
   });
 
   client.on("ready", () => {
-    console.log(`✅ WhatsApp conectado — USER ${userId}`);
-    sessions[userId].status = "ready";
+    console.log(`✅ WhatsApp conectado — USER ${achadyUserId}`);
+    sessions[achadyUserId].status = "ready";
   });
 
   client.on("disconnected", (reason) => {
-    console.log(`⚠️ WhatsApp desconectou — USER ${userId}`, reason);
-    sessions[userId].status = "error";
+    console.log(`⚠️ WhatsApp desconectado — USER ${achadyUserId}`, reason);
+    sessions[achadyUserId].status = "disconnected";
   });
 
   client.initialize();
-  return sessions[userId];
+
+  return sessions[achadyUserId];
 }
 
-// =====================================================
-// SHOPEE – BUSCAR OFERTAS (GraphQL)
-// =====================================================
-
-// ⚠️ CONFIGURE AQUI:
-//  - URL da API GraphQL da Shopee Open API
-//  - Query GraphQL que retorna as ofertas
-//
-// Leia a documentação da Shopee para pegar:
-//  - endpoint correto (por ex: https://affiliate.shopee.com.br/open_api/graphql)
-//  - o formato da query/mutation
-const SHOPEE_GRAPHQL_ENDPOINT = process.env.SHOPEE_GRAPHQL_ENDPOINT || ""; // coloque sua URL aqui
-
-// Exemplo de função genérica para buscar 1 oferta
-async function getShopeeOffers({ appId, secret }) {
-  if (!SHOPEE_GRAPHQL_ENDPOINT) {
-    throw new Error(
-      "SHOPEE_GRAPHQL_ENDPOINT não configurado. Defina a URL oficial da Shopee em env ou no código."
-    );
-  }
-
-  // ⚠️ EXEMPLO DE QUERY – você deve trocar pelo modelo real da Shopee
-  const query = `
-    query ExampleOffers {
-      # TODO: substitua pelos campos reais da sua API Shopee
-      # Por exemplo: affiliateProducts(...) { items { title, price, originalPrice, discount, link } }
-    }
-  `;
-
-  try {
-    const resp = await axios.post(
-      SHOPEE_GRAPHQL_ENDPOINT,
-      {
-        query,
-        variables: {}, // ajuste se precisar
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-APP-ID": appId,
-          "X-APP-SECRET": secret,
-        },
-      }
-    );
-
-    const data = resp.data;
-
-    // TODO: mapeie o caminho correto até as ofertas
-    // Abaixo é APENAS um exemplo de mapeamento.
-    const items = (data.data && data.data.affiliateProducts && data.data.affiliateProducts.items) || [];
-
-    // Normalizar para o formato usado pelo template
-    const ofertas = items.map((p) => ({
-      titulo: p.title,
-      preco: p.price,
-      precoOriginal: p.originalPrice,
-      desconto: p.discount,
-      link: p.link,
-    }));
-
-    return ofertas;
-  } catch (err) {
-    console.error("Erro ao buscar ofertas na Shopee:", err.message);
-    throw err;
-  }
-}
-
-// =====================================================
-// TEMPLATE DE MENSAGEM (usado pelo painel Achady)
-// Placeholders: {{titulo}}, {{preco}}, {{precooriginal}}, {{desconto}}, {{link}}
-// =====================================================
-const DEFAULT_TEMPLATE = `
-🔥 OFERTA IMPERDÍVEL! 🔥
-
-{{titulo}}
-Apenas: {{preco}}
-De: {{precooriginal}}
-Desconto: {{desconto}}
-
-🛒 Compre aqui: {{link}}
-`.trim();
-
-function aplicarTemplate(template, oferta) {
-  let msg = template || DEFAULT_TEMPLATE;
-
-  msg = msg.replace(/{{titulo}}/g, oferta.titulo || "");
-  msg = msg.replace(/{{preco}}/g, oferta.preco || "");
-  msg = msg.replace(/{{precooriginal}}/g, oferta.precoOriginal || "");
-  msg = msg.replace(/{{desconto}}/g, oferta.desconto || "");
-  msg = msg.replace(/{{link}}/g, oferta.link || "");
-
-  return msg;
-}
-
-// =====================================================
-// GRUPOS – ENTRAR POR LINK E ENVIAR MENSAGEM
-// =====================================================
-async function joinGroupIfNeeded(client, inviteLink, userId) {
-  const row = await dbGet(
-    "SELECT joined FROM groups WHERE user_id = ? AND invite = ?",
-    [userId, inviteLink]
-  );
-
-  if (row && row.joined) {
-    return; // já entrou antes
-  }
-
-  const code = inviteLink.split("/").pop();
-  console.log(`🔗 USER ${userId} entrando no grupo com código: ${code}`);
-
-  try {
-    await client.acceptInvite(code);
-    await dbRun(
-      "INSERT OR IGNORE INTO groups (user_id, invite, joined) VALUES (?, ?, 1)",
-      [userId, inviteLink]
-    );
-    await dbRun(
-      "UPDATE groups SET joined = 1 WHERE user_id = ? AND invite = ?",
-      [userId, inviteLink]
-    );
-    console.log(`✅ USER ${userId} entrou no grupo`);
-  } catch (err) {
-    console.error("Erro ao entrar no grupo:", err.message);
-    throw err;
-  }
-}
-
-async function enviarMensagemGrupo(client, inviteLink, mensagem, userId, productTitle) {
-  try {
-    await joinGroupIfNeeded(client, inviteLink, userId);
-
-    const code = inviteLink.split("/").pop();
-    const chat = await client.getChatById(`${code}@g.us`).catch(() => null);
-
-    if (!chat) {
-      console.log("Não foi possível encontrar o chat do grupo via ID. Tentando por invite…");
-      // fallback: aceitar invite de novo (já faz parte do joinGroupIfNeeded)
-    }
-
-    // Envio da mensagem
-    const targetChat = chat || (await client.getChatById(`${code}@g.us`));
-    await targetChat.sendMessage(mensagem);
-
-    await dbRun(
-      "INSERT INTO send_logs (user_id, group_invite, product_title, status, error) VALUES (?, ?, ?, ?, ?)",
-      [userId, inviteLink, productTitle || "", "ok", ""]
-    );
-
-    console.log(`✅ Mensagem enviada para grupo (user ${userId})`);
-  } catch (err) {
-    console.error("Erro ao enviar mensagem para grupo:", err.message);
-    await dbRun(
-      "INSERT INTO send_logs (user_id, group_invite, product_title, status, error) VALUES (?, ?, ?, ?, ?)",
-      [userId, inviteLink, productTitle || "", "error", err.message]
-    );
-  }
-}
-
-// =====================================================
-// CICLO AUTOMÁTICO – BUSCAR OFERTAS E DISPARAR
-// =====================================================
-async function runUserCycle(userId) {
-  try {
-    const settings = await dbGet("SELECT * FROM settings WHERE user_id = ?", [userId]);
-    if (!settings || !settings.bot_active) {
-      return; // robô desativado
-    }
-
-    const session = await createSession(userId);
-    if (session.status !== "ready") {
-      console.log(`USER ${userId} ainda não está ready (status: ${session.status}), pulando ciclo.`);
-      return;
-    }
-
-    const groups = await dbAll("SELECT invite FROM groups WHERE user_id = ?", [userId]);
-    if (!groups.length) {
-      console.log(`USER ${userId} não tem grupos cadastrados.`);
-      return;
-    }
-
-    const { shopee_app_id, shopee_secret, template } = settings;
-
-    if (!shopee_app_id || !shopee_secret) {
-      console.log(`USER ${userId} sem credenciais Shopee, pulando ciclo.`);
-      return;
-    }
-
-    console.log(`🔍 Buscando ofertas Shopee para USER ${userId}…`);
-    const ofertas = await getShopeeOffers({
-      appId: shopee_app_id,
-      secret: shopee_secret,
-    });
-
-    if (!ofertas.length) {
-      console.log(`USER ${userId} – nenhuma oferta retornada pela Shopee.`);
-      return;
-    }
-
-    // Simples: pega a primeira oferta da lista para este ciclo
-    const oferta = ofertas[0];
-    const mensagem = aplicarTemplate(template || DEFAULT_TEMPLATE, oferta);
-
-    // Limite anti-ban: máximo N grupos por ciclo
-    const MAX_GRUPOS_POR_CICLO = 3;
-    const client = session.client;
-
-    for (let i = 0; i < groups.length && i < MAX_GRUPOS_POR_CICLO; i++) {
-      const g = groups[i];
-      await enviarMensagemGrupo(client, g.invite, mensagem, userId, oferta.titulo);
-
-      // Delay aleatório entre 5 e 15s entre grupos (anti-ban básico)
-      const delay = 5000 + Math.floor(Math.random() * 10000);
-      await sleep(delay);
-    }
-
-    console.log(`✅ Ciclo concluído para USER ${userId}`);
-  } catch (err) {
-    console.error(`Erro no ciclo automático do USER ${userId}:`, err.message);
-  }
-}
-
-// =====================================================
-// AGENDADORES POR USUÁRIO
-// =====================================================
-function scheduleForUser(userId) {
-  // limpa se já tiver
-  if (schedulers[userId]) {
-    clearInterval(schedulers[userId]);
-    delete schedulers[userId];
-  }
-
-  dbGet("SELECT interval_minutes, bot_active FROM settings WHERE user_id = ?", [userId])
-    .then((row) => {
-      if (!row || !row.bot_active) {
-        console.log(`⏸️ Robô desativado para USER ${userId}, nenhum agendamento criado.`);
-        return;
-      }
-
-      const minutes = row.interval_minutes || 15;
-      const intervalMs = minutes * 60 * 1000;
-
-      console.log(
-        `⏱️ Agendador criado para USER ${userId} – a cada ${minutes} minuto(s).`
-      );
-
-      schedulers[userId] = setInterval(() => {
-        runUserCycle(userId);
-      }, intervalMs);
-    })
-    .catch((err) => console.error("Erro ao agendar usuário:", err.message));
-}
-
-// Na inicialização, recria agendadores para quem estiver ativo
-async function bootstrapSchedulers() {
-  const rows = await dbAll("SELECT user_id FROM settings WHERE bot_active = 1");
-  rows.forEach((r) => scheduleForUser(r.user_id));
-}
-
-bootstrapSchedulers();
-
-// =====================================================
-// ROTAS HTTP – INTEGRAÇÃO COM O PAINEL ACHADY
-// =====================================================
-
-// 1) Iniciar sessão / mostrar QR
+// ===============================================
+// ROTAS WHATSAPP – START / QR / STATUS
+// ===============================================
 app.post("/start/:userId", async (req, res) => {
-  const { userId } = req.params;
+  try {
+    const { userId } = req.params;
 
-  if (!userId) {
-    return res.status(400).json({ error: "userId é obrigatório" });
+    if (!userId) {
+      return res.status(400).json({ error: "userId é obrigatório" });
+    }
+
+    await ensureUser(userId);
+    const session = await createSession(userId);
+
+    return res.json({
+      message: "Sessão iniciada",
+      userId,
+      status: session.status,
+    });
+  } catch (err) {
+    console.error("Erro em /start/:userId", err);
+    return res.status(500).json({ error: "Erro ao iniciar sessão" });
   }
-
-  const session = await createSession(userId);
-  return res.json({
-    message: "Sessão iniciada",
-    userId,
-    status: session.status,
-  });
 });
 
-// 2) Buscar QR atual
-app.get("/qr/:userId", (req, res) => {
+app.get("/qr/:userId", async (req, res) => {
   const { userId } = req.params;
   const session = sessions[userId];
 
@@ -437,126 +179,403 @@ app.get("/qr/:userId", (req, res) => {
   });
 });
 
-// 3) Status da sessão
-app.get("/status/:userId", (req, res) => {
+app.get("/status/:userId", async (req, res) => {
   const { userId } = req.params;
   const session = sessions[userId];
 
   if (!session) {
-    return res.status(404).json({
-      status: "not_started",
-      qr: null,
-    });
+    return res.status(404).json({ status: "not_started" });
   }
 
-  return res.json({
-    status: session.status,
-    hasQr: !!session.qr,
-  });
+  return res.json({ status: session.status });
 });
 
-// 4) Configuração vinda do painel Achady
-// Body esperado:
-// {
-//   "shopeeAppId": "...",
-//   "shopeeSecret": "...",
-//   "intervalMinutes": 5,
-//   "template": "texto com {{titulo}}...",
-//   "botActive": true,
-//   "groups": ["https://chat.whatsapp.com/AAAA", "..."]
-// }
-app.post("/config/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const {
-    shopeeAppId,
-    shopeeSecret,
-    intervalMinutes,
-    template,
-    botActive,
-    groups,
-  } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ error: "userId é obrigatório" });
-  }
-
+// ===============================================
+// ENTRAR AUTOMATICAMENTE NO GRUPO VIA LINK
+// ===============================================
+app.post("/join/:userId", async (req, res) => {
   try {
-    await dbRun(
-      `
-      INSERT INTO settings (user_id, shopee_app_id, shopee_secret, interval_minutes, template, bot_active)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        shopee_app_id = excluded.shopee_app_id,
-        shopee_secret = excluded.shopee_secret,
-        interval_minutes = excluded.interval_minutes,
-        template = excluded.template,
-        bot_active = excluded.bot_active
-    `,
-      [
-        userId,
-        shopeeAppId || null,
-        shopeeSecret || null,
-        intervalMinutes || 15,
-        template || DEFAULT_TEMPLATE,
-        botActive ? 1 : 0,
-      ]
-    );
+    const { userId } = req.params;
+    const { invite, name } = req.body;
 
-    if (Array.isArray(groups)) {
-      // limpa grupos antigos e recria
-      await dbRun("DELETE FROM groups WHERE user_id = ?", [userId]);
-      for (const g of groups) {
-        if (!g) continue;
-        await dbRun(
-          "INSERT INTO groups (user_id, invite, joined) VALUES (?, ?, 0)",
-          [userId, g]
-        );
-      }
+    if (!invite) {
+      return res.status(400).json({ error: "invite (link do grupo) é obrigatório" });
     }
 
-    // Atualiza agendador
-    scheduleForUser(userId);
+    const session = sessions[userId];
+    if (!session || session.status !== "ready") {
+      return res.status(400).json({ error: "Sessão WhatsApp não está pronta" });
+    }
+
+    const inviteCode = invite
+      .replace("https://chat.whatsapp.com/", "")
+      .split(/[? ]/)[0];
+
+    console.log(`➡️ USER ${userId} entrando no grupo com código: ${inviteCode}`);
+
+    const chat = await session.client.acceptInvite(inviteCode); // whatsapp-web.js
+
+    const user = await ensureUser(userId);
+
+    await db.run(
+      `
+      INSERT INTO groups (user_id, name, invite_link, wa_chat_id, active)
+      VALUES (?, ?, ?, ?, 1)
+      ON CONFLICT(user_id, wa_chat_id) DO UPDATE SET
+        invite_link = excluded.invite_link,
+        active = 1
+    `,
+      user.id,
+      chat.name || name || "Grupo",
+      invite,
+      chat.id._serialized
+    );
+
+    return res.json({
+      ok: true,
+      chatId: chat.id._serialized,
+      name: chat.name,
+    });
+  } catch (err) {
+    console.error("Erro em /join/:userId", err);
+    return res.status(500).json({ error: "Erro ao entrar no grupo" });
+  }
+});
+
+// ===============================================
+// CONFIGURAÇÕES VINDAS DO PAINEL ACHADY
+// ===============================================
+
+// Salvar credenciais Shopee do usuário
+app.post("/config/shopee/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { appId, appSecret } = req.body;
+
+    if (!appId || !appSecret) {
+      return res
+        .status(400)
+        .json({ error: "appId e appSecret da Shopee são obrigatórios" });
+    }
+
+    const user = await ensureUser(userId);
+
+    await db.run(
+      `
+      UPDATE users
+      SET shopee_app_id = ?, shopee_app_secret = ?
+      WHERE id = ?
+    `,
+      appId.trim(),
+      appSecret.trim(),
+      user.id
+    );
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error("Erro ao salvar config:", err.message);
-    return res.status(500).json({ error: "Erro ao salvar config" });
+    console.error("Erro em /config/shopee/:userId", err);
+    return res.status(500).json({ error: "Erro ao salvar config Shopee" });
   }
 });
 
-// 5) Histórico de disparos (para tela de Logs do Achady)
-app.get("/history/:userId", async (req, res) => {
-  const { userId } = req.params;
-
+// Ativar robô + frequência + template
+app.post("/config/robot/:userId", async (req, res) => {
   try {
-    const rows = await dbAll(
+    const { userId } = req.params;
+    const { enabled, intervalMinutes, template } = req.body;
+
+    const user = await ensureUser(userId);
+
+    const safeInterval = Math.max(5, Number(intervalMinutes) || 15); // mínimo 5 min
+
+    await db.run(
       `
-      SELECT id, group_invite, product_title, sent_at, status, error
-      FROM send_logs
-      WHERE user_id = ?
-      ORDER BY sent_at DESC
-      LIMIT 100
+      UPDATE users
+      SET robot_enabled = ?, interval_minutes = ?, message_template = ?
+      WHERE id = ?
     `,
-      [userId]
+      enabled ? 1 : 0,
+      safeInterval,
+      template || user.message_template,
+      user.id
     );
 
-    return res.json(rows);
+    return res.json({ ok: true });
   } catch (err) {
-    console.error("Erro ao buscar histórico:", err.message);
-    return res.status(500).json({ error: "Erro ao buscar histórico" });
+    console.error("Erro em /config/robot/:userId", err);
+    return res.status(500).json({ error: "Erro ao salvar config do robô" });
   }
 });
 
-// =====================================================
-// ROTA DE TESTE (homepage)
-// =====================================================
+// ===============================================
+// SHOPEE – FUNÇÕES AUXILIARES
+// ===============================================
+
+// ⚠️ IMPORTANTE:
+// 1) Você vai precisar ajustar "buildShopeeGraphQLBody" com o mesmo JSON
+//    que aparece na aba Network (Request Payload) quando você clica em "Pesquisar ofertas".
+// 2) Depois, olhar o JSON de resposta no console e ajustar "normalizeShopeeResponse".
+
+function buildShopeeGraphQLBody(user) {
+  // EXEMPLO DE ESTRUTURA – Ajuste com o payload REAL da sua aba Network
+  // Normalmente é algo assim:
+  //
+  // {
+  //   "operationName": "productOfferLinks",
+  //   "variables": { ... },
+  //   "query": "query productOfferLinks(...) { ... }"
+  // }
+  //
+  // Copie exatamente o "Request Payload" da requisição graphql q=productOfferLinks
+  // e cole aqui, talvez só mexendo em filtros (categoria, ordenação, etc).
+
+  return {
+    operationName: "productOfferLinks",
+    variables: {
+      // TODO: substituir pelos mesmos campos que você viu no Network
+      page: 1,
+      pageSize: 20,
+      // filtros de exemplo, ajuste conforme sua conta:
+      // category: null,
+      // sortType: "commission_desc"
+    },
+    query: `
+      query productOfferLinks($page: Int, $pageSize: Int) {
+        productOfferLinks(page: $page, pageSize: $pageSize) {
+          edges {
+            node {
+              id
+              title
+              offerLink
+              price
+              originalPrice
+              discount
+            }
+          }
+        }
+      }
+    `,
+  };
+}
+
+// Mapeia o JSON da Shopee → formato genérico usado no template
+function normalizeShopeeResponse(raw) {
+  // ⚠️ ESSA PARTE DEPENDE DO JSON REAL.
+  // Depois do primeiro teste, faça um console.log(JSON.stringify(raw, null, 2))
+  // e ajuste os caminhos abaixo.
+
+  const edges =
+    raw?.data?.productOfferLinks?.edges ||
+    raw?.data?.product_offer_links?.edges ||
+    [];
+
+  const offers = edges.map((edge) => {
+    const n = edge.node || edge;
+    const preco = Number(n.price || n.discounted_price || 0) / 100;
+    const precoOriginal = Number(n.originalPrice || n.original_price || 0) / 100;
+    const desconto =
+      n.discount ||
+      (precoOriginal > 0
+        ? Math.round(100 - (preco / precoOriginal) * 100)
+        : null);
+
+    return {
+      id: n.id,
+      titulo: n.title || n.name || "Oferta Shopee",
+      preco: preco > 0 ? `R$ ${preco.toFixed(2)}` : "",
+      preco_original:
+        precoOriginal > 0 ? `R$ ${precoOriginal.toFixed(2)}` : "",
+      desconto: desconto != null ? `${desconto}% OFF` : "",
+      link: n.offerLink || n.link || "",
+    };
+  });
+
+  return offers;
+}
+
+async function fetchShopeeOffersForUser(user) {
+  if (!user.shopee_app_id || !user.shopee_app_secret) {
+    console.warn(
+      `Usuário ${user.achady_user_id} sem credenciais Shopee – pulando.`
+    );
+    return [];
+  }
+
+  const body = buildShopeeGraphQLBody(user);
+
+  const res = await fetch(SHOPEE_GRAPHQL_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // ⚠️ Esses headers podem mudar – confira na aba Network
+      "x-affiliate-appid": user.shopee_app_id,
+      "x-affiliate-secret": user.shopee_app_secret,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error(
+      `Erro Shopee (${res.status}) para user ${user.achady_user_id}:`,
+      text
+    );
+    return [];
+  }
+
+  const json = await res.json();
+  // Descomente abaixo no primeiro teste para enxergar o formato REAL
+  // console.log("Shopee JSON:", JSON.stringify(json, null, 2));
+  return normalizeShopeeResponse(json);
+}
+
+// ===============================================
+// TEMPLATE + ANTI-BAN
+// ===============================================
+
+function renderTemplate(template, offer) {
+  return template
+    .replace(/{{titulo}}/g, offer.titulo || "")
+    .replace(/{{preco}}/g, offer.preco || "")
+    .replace(/{{precooriginal}}/gi, offer.preco_original || "")
+    .replace(/{{preco_original}}/g, offer.preco_original || "")
+    .replace(/{{desconto}}/g, offer.desconto || "")
+    .replace(/{{link}}/g, offer.link || "");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Estratégia simples anti-ban:
+// - Nunca dispara mais de 1 "rodada" por usuário dentro do intervalo configurado
+// - Delay aleatório entre mensagens dentro do mesmo grupo
+// - Pequena pausa entre usuários
+
+async function runRobotCycle() {
+  try {
+    const now = new Date();
+    const users = await db.all(
+      "SELECT * FROM users WHERE robot_enabled = 1"
+    );
+
+    for (const user of users) {
+      // Checa intervalo
+      if (user.last_run_at) {
+        const last = new Date(user.last_run_at);
+        const diffMin = (now - last) / 60000;
+        if (diffMin < user.interval_minutes) {
+          continue;
+        }
+      }
+
+      const session = sessions[user.achady_user_id];
+      if (!session || session.status !== "ready") {
+        console.warn(
+          `Robô: sessão de ${user.achady_user_id} não está pronta – pulando.`
+        );
+        continue;
+      }
+
+      const offers = await fetchShopeeOffersForUser(user);
+      if (!offers || offers.length === 0) {
+        console.warn(`Robô: nenhuma oferta retornada para ${user.achady_user_id}`);
+        await db.run(
+          "UPDATE users SET last_run_at = ? WHERE id = ?",
+          now.toISOString(),
+          user.id
+        );
+        continue;
+      }
+
+      // Por enquanto, vamos pegar só a primeira oferta da lista
+      const offer = offers[0];
+
+      const groups = await db.all(
+        "SELECT * FROM groups WHERE user_id = ? AND active = 1",
+        user.id
+      );
+
+      for (const group of groups) {
+        const message = renderTemplate(user.message_template, offer);
+
+        try {
+          const chat = await session.client.getChatById(group.wa_chat_id);
+          await chat.sendMessage(message);
+
+          await db.run(
+            `
+            INSERT INTO send_logs (
+              user_id, group_id, offer_title, offer_link, payload_json, sent_at, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
+            user.id,
+            group.id,
+            offer.titulo,
+            offer.link,
+            JSON.stringify(offer),
+            new Date().toISOString(),
+            "ok"
+          );
+
+          // Delay anti-ban entre mensagens
+          await sleep(2000 + randomInt(1000, 3000));
+        } catch (err) {
+          console.error(
+            `Erro ao enviar mensagem para grupo ${group.wa_chat_id}:`,
+            err
+          );
+          await db.run(
+            `
+            INSERT INTO send_logs (
+              user_id, group_id, offer_title, offer_link, payload_json, sent_at, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
+            user.id,
+            group.id,
+            offer.titulo,
+            offer.link,
+            JSON.stringify({ offer, error: String(err) }),
+            new Date().toISOString(),
+            "error"
+          );
+        }
+      }
+
+      await db.run(
+        "UPDATE users SET last_run_at = ? WHERE id = ?",
+        new Date().toISOString(),
+        user.id
+      );
+
+      // Pausa entre usuários (anti-ban)
+      await sleep(3000 + randomInt(1000, 4000));
+    }
+  } catch (err) {
+    console.error("Erro no ciclo do robô:", err);
+  }
+}
+
+// roda a cada 60 segundos para checar se algum usuário já está no horário
+setInterval(runRobotCycle, 60 * 1000);
+
+// ===============================================
+// ROTA DE TESTE
+// ===============================================
 app.get("/", (req, res) => {
   res.send("Servidor WhatsApp Achady está rodando. 🚀");
 });
 
-// =====================================================
+// ===============================================
 // INICIAR SERVIDOR
-// =====================================================
-app.listen(PORT, () => {
-  console.log(`🌐 Servidor rodando na porta ${PORT}`);
-});
+// ===============================================
+(async () => {
+  await initDb();
+  app.listen(PORT, () => {
+    console.log(`🌐 Servidor rodando na porta ${PORT}`);
+  });
+})();
