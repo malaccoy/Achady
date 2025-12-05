@@ -95,15 +95,14 @@ export const Dashboard: React.FC = () => {
       }));
       setIsSavingKey(false);
       
-      // Also update config on server if possible, though backend doesn't take keys yet
-      // This sends the default keyword "cozinha" logic if not specified
-      fetch('/api/config', {
+      // Update config on new server (using correct field names appId/appSecret)
+      fetch(`/api/config/${FIXED_USER_ID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            tempo: settings.checkIntervalMinutes,
-            // Assuming we might want to allow keyword config later
-            palavra: 'cozinha' 
+            appId: apiKeyInput,
+            appSecret: apiSecretInput,
+            keyword: 'ofertas' // default keyword
         })
       }).catch(console.error);
       
@@ -121,25 +120,19 @@ export const Dashboard: React.FC = () => {
     setSettings(prev => ({ ...prev, automationEnabled: enabled, checkIntervalMinutes: interval }));
     db.alternarAutomacao(currentUserId, enabled, interval);
     
-    // Call Server
+    // Call Server (New endpoint merges activation state and interval)
     try {
-        if (enabled) {
-            // Update Config First
-            await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    tempo: interval,
-                    mensagem: settings.messageTemplate.replace(/{{titulo}}/g, '{produto}').replace(/{{preco}}/g, '{preco}').replace(/{{link}}/g, '{link}') // Map template format if needed
-                })
-            });
-            await fetch('/api/ativar', { method: 'POST' });
-        } else {
-            await fetch('/api/parar', { method: 'POST' });
-        }
+        await fetch(`/api/config/${FIXED_USER_ID}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                intervalMinutes: interval,
+                isActive: enabled
+            })
+        });
     } catch (e) {
         console.error("Erro ao comunicar com servidor de automação:", e);
-        alert("Erro ao conectar com o robô. Verifique se o server.js está rodando.");
+        alert("Erro ao conectar com o robô.");
     }
   };
 
@@ -148,16 +141,11 @@ export const Dashboard: React.FC = () => {
     db.salvarModeloMensagem(currentUserId, settings.messageTemplate);
     
     // Convert generic {{var}} to backend specific {var} if needed or just send as is
-    // The new backend uses {produto}, {preco}, {link}
-    let backendTemplate = settings.messageTemplate
-        .replace(/{{titulo}}/g, '{produto}')
-        .replace(/{{preco}}/g, '{preco}')
-        .replace(/{{link}}/g, '{link}');
-        
-    await fetch('/api/config', {
+    // The new backend uses handlebars style {{var}} which matches UI
+    await fetch(`/api/config/${FIXED_USER_ID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensagem: backendTemplate })
+        body: JSON.stringify({ messageTemplate: settings.messageTemplate })
     });
     
     alert('Modelo salvo e atualizado no robô!');
@@ -171,7 +159,11 @@ export const Dashboard: React.FC = () => {
         const res = await fetch(`/api/join/${FIXED_USER_ID}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ invite: newGroupLink })
+            body: JSON.stringify({ 
+                invite: newGroupLink,
+                name: `Grupo ${groups.length + 1}`,
+                category: newGroupCategory
+            })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -217,7 +209,7 @@ export const Dashboard: React.FC = () => {
     setSendingTest(true);
 
     try {
-      // Proxied to localhost:3000/send/1
+      // Proxied to localhost:3000/send/1 (added to server.js manually)
       const response = await fetch(`/api/send/${FIXED_USER_ID}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

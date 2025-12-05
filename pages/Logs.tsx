@@ -4,6 +4,8 @@ import { RefreshCw, FileText, Search, ExternalLink, Filter, TrendingUp, Tag, Cal
 import type { MessageLog } from '../types';
 import { useNavigate } from 'react-router-dom';
 
+const FIXED_USER_ID = "1";
+
 export const Logs: React.FC = () => {
   const navigate = useNavigate();
   const [logs, setLogs] = useState<MessageLog[]>([]);
@@ -20,14 +22,30 @@ export const Logs: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      // Changed from /api/logs/list to /api/logs to match new server
-      const res = await fetch('/api/logs');
+      // Endpoint updated to match new server.js: /logs/:userId
+      const res = await fetch(`/api/logs/${FIXED_USER_ID}`);
       const data = await res.json();
       
       if (data.ok && Array.isArray(data.logs)) {
-        setLogs(data.logs);
+        // Map new server structure to old UI structure
+        const mappedLogs: MessageLog[] = data.logs.map((l: any) => ({
+            id: l.id.toString(),
+            grupoId: '', // Server doesn't send group ID here
+            grupoNome: l.groupName,
+            whatsappLink: '',
+            categoria: 'Geral', // Server doesn't explicitly store log category yet, maybe infer from group?
+            produtoId: '',
+            titulo: l.productName,
+            precoOriginal: l.priceOriginal,
+            preco: l.priceMin,
+            descontoPercentual: l.discountRate,
+            imagem: '', // Server doesn't seem to store image URL in logs table based on provided code
+            linkAfiliado: l.offerLink,
+            mensagemEnviada: 'Mensagem enviada', // Simplified
+            enviadoEm: l.sentAt
+        }));
+        setLogs(mappedLogs);
       } else {
-        // Fallback or empty if server hasn't implemented it fully
         setLogs([]);
         if (!data.ok) console.warn("Logs response error:", data);
       }
