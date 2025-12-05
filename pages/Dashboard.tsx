@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
-import { ConnectWhatsAppModal } from '../components/ConnectWhatsAppModal';
+import ConnectWhatsAppModal from '../components/ConnectWhatsAppModal';
 import { Check, Trash2, Plus, Zap, AlertCircle, Save, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
@@ -95,12 +95,6 @@ export const Dashboard: React.FC = () => {
       }));
       setIsSavingKey(false);
     }, 800);
-  };
-
-  const handleWhatsappConnected = () => {
-    if (!currentUserId) return;
-    db.setWhatsappStatus(currentUserId, 'CONNECTED');
-    setSettings(prev => ({ ...prev, whatsappConnected: true }));
   };
 
   const handleDisconnectWhatsapp = () => {
@@ -451,10 +445,8 @@ export const Dashboard: React.FC = () => {
 
       {/* WhatsApp Connect Modal */}
       <ConnectWhatsAppModal 
-        open={showQrModal} 
+        isOpen={showQrModal} 
         onClose={() => setShowQrModal(false)}
-        userId={FIXED_USER_ID} // Passando USER_ID = "1"
-        onConnected={handleWhatsappConnected}
       />
 
     </div>
