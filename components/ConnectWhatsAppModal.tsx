@@ -32,9 +32,9 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     
     // Se o site está em HTTPS mas a API é HTTP, usamos um proxy seguro
     if (window.location.protocol === 'https:' && API_BASE_URL.startsWith('http:')) {
-       console.log("🔒 Usando Proxy Seguro para contornar Mixed Content...");
-       // Usamos encodeURIComponent para garantir que a URL passe corretamente
-       const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+       console.log("🔒 Usando Proxy Seguro (CodeTabs) para contornar Mixed Content...");
+       // CodeTabs proxy costuma ser mais permissivo que corsproxy.io
+       const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
        return fetch(proxyUrl, options);
     }
     
@@ -172,7 +172,12 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
              <div className="max-w-[280px]">
                 <p className="font-bold text-slate-800 mb-2">Erro de Conexão</p>
                 <p className="text-xs text-slate-500 mb-4 break-words leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
-                  {errorDetails || "O servidor não respondeu. Verifique se a VPS está ligada."}
+                  {errorDetails || "O servidor não respondeu."}
+                  {window.location.protocol === 'https:' && (
+                    <span className="block mt-2 font-semibold text-red-600">
+                      ⚠️ Você está em HTTPS. O proxy pode ter falhado. Teste localmente ou configure SSL na VPS.
+                    </span>
+                  )}
                 </p>
              </div>
              <button onClick={iniciarSessao} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm transition-colors">

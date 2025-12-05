@@ -12,7 +12,7 @@ const { Client, LocalAuth } = pkg;
 
 const app = express();
 
-// ✅ Configuração CORS permissiva para aceitar requisições do Google Studio/Vercel
+// ✅ Configuração CORS permissiva
 app.use(cors({
     origin: '*', 
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -21,14 +21,19 @@ app.use(cors({
 
 app.use(express.json());
 
-// Servir frontend (caso esteja rodando junto)
+// ✅ Middleware de LOG (Para ver se as requisições chegam)
+app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.originalUrl} - IP: ${req.ip}`);
+    next();
+});
+
+// Servir frontend
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Armazenamento em memória
 const sessions = {};
 const qrCodes = {};
 
-// Função auxiliar para formatar número (remove caracteres não numéricos e garante sufixo @c.us)
+// Função auxiliar
 function formatPhone(phone) {
     let clean = phone.replace(/\D/g, '');
     if (!clean.endsWith('@c.us')) {
@@ -72,7 +77,7 @@ function createSession(sessionId) {
 
     client.on("ready", () => {
         console.log(`✅ Sessão ${sessionId} conectada`);
-        sessions[sessionId].status = "connected"; // Ajustado para "connected" conforme pedido
+        sessions[sessionId].status = "connected";
     });
 
     client.on("authenticated", () => {
@@ -93,7 +98,7 @@ function createSession(sessionId) {
 }
 
 // =======================================================
-// ✅ ROTAS ETAPA 2 e 3 (CONEXÃO)
+// ✅ ROTAS API
 // =======================================================
 
 // 1. Iniciar Sessão
@@ -125,10 +130,7 @@ app.get("/qr/:userId", (req, res) => {
     return res.json({ status: 'starting' });
 });
 
-// =======================================================
-// ✅ ROTA ETAPA 4 (ENVIO DE MENSAGEM)
-// =======================================================
-
+// 3. Enviar Mensagem
 app.post("/send", async (req, res) => {
     const { userId, number, message } = req.body;
 
@@ -147,10 +149,7 @@ app.post("/send", async (req, res) => {
     }
 });
 
-// =======================================================
-// ✅ ROTA ETAPA 5 (STATUS)
-// =======================================================
-
+// 4. Status
 app.get("/status/:userId", (req, res) => {
     const { userId } = req.params;
     if (!sessions[userId]) {
@@ -159,7 +158,7 @@ app.get("/status/:userId", (req, res) => {
     res.json({ status: sessions[userId].status });
 });
 
-// Fallback para React Router
+// Fallback
 app.get("*", (req, res) => {
     if (req.path.startsWith('/qr/') || req.path.startsWith('/start/') || req.path.startsWith('/send') || req.path.startsWith('/status/')) {
         return res.status(404).json({ error: "Endpoint não encontrado" });
