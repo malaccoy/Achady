@@ -14,6 +14,7 @@ const API_BASE_URL = "http://72.60.228.212:3000";
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
   const [status, setStatus] = useState<'starting' | 'qr' | 'connected' | 'disconnected' | 'error'>('starting');
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string>('');
   
   const isMounted = useRef(false);
 
@@ -25,24 +26,46 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     return () => { isMounted.current = false; };
   }, [open]);
 
+  // Checa se estamos em HTTPS tentando acessar HTTP (Mixed Content)
+  const checkMixedContent = () => {
+    if (window.location.protocol === 'https:' && API_BASE_URL.startsWith('http:')) {
+      return "⚠️ Bloqueio de Segurança: Você está em um site HTTPS tentando acessar um servidor HTTP. O navegador bloqueou a conexão. Teste localmente ou configure SSL no servidor.";
+    }
+    return "";
+  };
+
   // ✅ 1. INICIAR SESSÃO
   async function iniciarSessao() {
     if (!isMounted.current) return;
     setStatus("starting");
     setQrCode(null);
+    setErrorDetails('');
+
+    const mixedContentWarning = checkMixedContent();
+    if (mixedContentWarning) {
+      setStatus("error");
+      setErrorDetails(mixedContentWarning);
+      return;
+    }
 
     try {
       // POST para a BASE + /start/1
       const res = await fetch(`${API_BASE_URL}/start/${userId}`, {
         method: "POST",
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        mode: 'cors'
       });
       
+      if (!res.ok) {
+        throw new Error(`Erro HTTP: ${res.status}`);
+      }
+
       // Independente da resposta (ok ou já existe), começamos a buscar o QR
       buscarQRCode();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao iniciar:", e);
       setStatus("error");
+      setErrorDetails(e.message || "Falha de conexão com o servidor.");
     }
   }
 
@@ -52,7 +75,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
 
     try {
       // GET para a BASE + /qr/1
-      const res = await fetch(`${API_BASE_URL}/qr/${userId}`);
+      const res = await fetch(`${API_BASE_URL}/qr/${userId}`, { mode: 'cors' });
       const data = await res.json();
 
       console.log("Status API:", data.status);
@@ -76,10 +99,16 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
         setTimeout(buscarQRCode, 3000);
       }
 
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro polling:", e);
-      // Tenta novamente mesmo com erro de rede
-      if (isMounted.current) setTimeout(buscarQRCode, 3000);
+      // Se já estava exibindo QR, tenta de novo silenciosamente. Se não, mostra erro.
+      if (status !== 'qr') {
+        setStatus("error");
+        setErrorDetails("Servidor indisponível ou bloqueado. " + (e.message || ""));
+      } else {
+         // Tenta novamente em background mesmo com erro de rede se já tem QR
+         if (isMounted.current) setTimeout(buscarQRCode, 3000);
+      }
     }
   }
 
@@ -103,7 +132,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
         {(status === 'starting' || (status === 'qr' && !qrCode)) && (
           <div className="flex flex-col items-center gap-4 py-8 min-h-[250px] justify-center">
             <Loader2 className="w-10 h-10 text-achady-purple animate-spin" />
-            <p className="text-slate-500 font-medium animate-pulse">Aguardando QR...</p>
+            <p className="text-slate-500 font-medium animate-pulse">Iniciando servidor...</p>
           </div>
         )}
 
@@ -140,8 +169,13 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center">
                <AlertCircle className="w-8 h-8" />
              </div>
-             <p className="font-bold text-slate-800">Erro de Conexão</p>
-             <button onClick={iniciarSessao} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm">
+             <div className="max-w-[280px]">
+                <p className="font-bold text-slate-800 mb-2">Erro de Conexão</p>
+                <p className="text-xs text-slate-500 mb-4 break-words leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
+                  {errorDetails || "O servidor 72.60.228.212 não respondeu."}
+                </p>
+             </div>
+             <button onClick={iniciarSessao} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm transition-colors">
                <RefreshCw className="w-4 h-4" /> Tentar Novamente
              </button>
            </div>

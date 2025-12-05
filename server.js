@@ -11,7 +11,14 @@ const __dirname = path.dirname(__filename);
 const { Client, LocalAuth } = pkg;
 
 const app = express();
-app.use(cors());
+
+// ✅ Configuração CORS permissiva para aceitar requisições do Google Studio/Vercel
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 // Servir frontend (caso esteja rodando junto)
@@ -161,6 +168,6 @@ app.get("*", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Servidor rodando na porta ${PORT}`);
 });
