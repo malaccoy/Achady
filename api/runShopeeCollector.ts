@@ -251,15 +251,12 @@ async function dispatchOffers(groups: Grupo[], products: ShopeeProduct[], templa
     
       console.log(`🔵 Enviando oferta "${product.titulo}" para grupo ${g.nome} (Cat: ${g.categoria})...`);
 
-      // Como o servidor é próprio, usamos o endpoint /send
-      const url = `${CONFIG.WPP_BASE_URL}/send`;
+      // Como o servidor é próprio, usamos o endpoint /send/:userId
+      const url = `${CONFIG.WPP_BASE_URL}/send/${CONFIG.WPP_SESSION}`;
 
       const payload = {
-        userId: CONFIG.WPP_SESSION,
-        grupo: g.linkWhatsapp,
-        mensagem: message,
-        number: g.linkWhatsapp, // Compatibilidade
-        isGroup: true
+        groupId: g.linkWhatsapp,
+        message: message
       };
 
       // Disparo real

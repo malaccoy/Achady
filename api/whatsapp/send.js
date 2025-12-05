@@ -4,14 +4,19 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Método não permitido" });
     }
 
+    const { userId, number, message } = req.body;
+
     // Repassa a requisição para a VPS via Backend (Server-to-Server)
-    // Isso evita o erro de Mixed Content (HTTPS -> HTTP)
-    const response = await fetch("http://72.60.228.212:3000/send", {
+    // O novo server.js usa POST /send/:userId com { groupId, message }
+    const response = await fetch(`http://72.60.228.212:3000/send/${userId}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify({
+        groupId: number,
+        message: message
+      })
     });
 
     const data = await response.json();
