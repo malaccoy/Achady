@@ -65,6 +65,7 @@ db.serialize(() => {
   `);
 
   // Grupos de destino
+  // Added migration logic to ensure 'category' column exists
   db.run(`
     CREATE TABLE IF NOT EXISTS groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +75,15 @@ db.serialize(() => {
       wid TEXT,            -- ID interno do WhatsApp (quando o bot entra)
       category TEXT
     )
-  `);
+  `, (err) => {
+      if (!err) {
+          // Migration: Attempt to add category column if it doesn't exist
+          // This prevents errors on existing databases created before this update
+          db.run("ALTER TABLE groups ADD COLUMN category TEXT", () => {
+              // Ignore error if column already exists
+          });
+      }
+  });
 
   // Logs de disparos
   db.run(`
@@ -488,7 +497,8 @@ app.post("/join/:userId", async (req, res) => {
 
     const sess = sessions[userId];
     const groupName = name || "Grupo Novo";
-    const groupCategory = category || "Geral"; // Garante categoria
+    // Recebe categoria do body ou usa default "geral"
+    const groupCategory = category || "geral";
 
     // Insere no banco primeiro
     await runAsync(
@@ -587,7 +597,7 @@ app.post("/config/:userId", async (req, res) => {
             userId,
             g.name || "Grupo",
             g.inviteLink,
-            g.category || "Geral",
+            g.category || "geral",
           ]
         );
       }
