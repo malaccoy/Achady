@@ -8,9 +8,6 @@ interface ConnectWhatsAppModalProps {
   onConnected: () => void;
 }
 
-// ✅ CONFIGURAÇÃO GLOBAL - BASE URL APENAS
-const API_BASE_URL = "http://72.60.228.212:3000";
-
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
   const [status, setStatus] = useState<'starting' | 'qr' | 'connected' | 'disconnected' | 'error'>('starting');
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -26,23 +23,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     return () => { isMounted.current = false; };
   }, [open]);
 
-  // 🛡️ Helper para contornar Mixed Content (HTTPS -> HTTP) usando Proxy
-  const fetchSafe = async (endpoint: string, options?: RequestInit) => {
-    const targetUrl = `${API_BASE_URL}${endpoint}`;
-    
-    // Se o site está em HTTPS mas a API é HTTP, usamos um proxy seguro
-    if (window.location.protocol === 'https:' && API_BASE_URL.startsWith('http:')) {
-       console.log("🔒 Usando Proxy Seguro (CodeTabs) para contornar Mixed Content...");
-       // CodeTabs proxy costuma ser mais permissivo que corsproxy.io
-       const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
-       return fetch(proxyUrl, options);
-    }
-    
-    // Caso contrário (rodando local ou ambos HTTP/HTTPS), vai direto
-    return fetch(targetUrl, options);
-  };
-
-  // ✅ 1. INICIAR SESSÃO
+  // ✅ 1. INICIAR SESSÃO (Via Proxy Interno)
   async function iniciarSessao() {
     if (!isMounted.current) return;
     setStatus("starting");
@@ -50,17 +31,20 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     setErrorDetails('');
 
     try {
-      // POST para a BASE + /start/1 usando fetchSafe
-      const res = await fetchSafe(`/start/${userId}`, {
+      // Chama o endpoint interno criado em /api/whatsapp/start
+      const res = await fetch(`/api/whatsapp/start`, {
         method: "POST",
         headers: { 'Content-Type': 'application/json' }
       });
       
       if (!res.ok) {
-        throw new Error(`Erro HTTP: ${res.status}`);
+        throw new Error(`Erro API: ${res.status}`);
       }
 
-      // Independente da resposta (ok ou já existe), começamos a buscar o QR
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      // Inicia polling do QR
       buscarQRCode();
     } catch (e: any) {
       console.error("Erro ao iniciar:", e);
@@ -69,13 +53,13 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
     }
   }
 
-  // ✅ 2. BUSCAR QR (POLLING 3s)
+  // ✅ 2. BUSCAR QR (Via Proxy Interno)
   async function buscarQRCode() {
     if (!isMounted.current) return;
 
     try {
-      // GET para a BASE + /qr/1 usando fetchSafe
-      const res = await fetchSafe(`/qr/${userId}`);
+      // Chama o endpoint interno criado em /api/whatsapp/qr
+      const res = await fetch(`/api/whatsapp/qr`);
       const data = await res.json();
 
       console.log("Status API:", data.status);
@@ -101,11 +85,9 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
 
     } catch (e: any) {
       console.error("Erro polling:", e);
-      // Se já estava exibindo QR, tenta de novo silenciosamente. Se não, mostra erro.
       if (status !== 'qr') {
         setStatus("error");
         setErrorDetails("Tentando reconectar... " + (e.message || ""));
-        // Tenta novamente em 3s mesmo com erro
         if (isMounted.current) setTimeout(buscarQRCode, 3000);
       } else {
          if (isMounted.current) setTimeout(buscarQRCode, 3000);
@@ -173,11 +155,6 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
                 <p className="font-bold text-slate-800 mb-2">Erro de Conexão</p>
                 <p className="text-xs text-slate-500 mb-4 break-words leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
                   {errorDetails || "O servidor não respondeu."}
-                  {window.location.protocol === 'https:' && (
-                    <span className="block mt-2 font-semibold text-red-600">
-                      ⚠️ Você está em HTTPS. O proxy pode ter falhado. Teste localmente ou configure SSL na VPS.
-                    </span>
-                  )}
                 </p>
              </div>
              <button onClick={iniciarSessao} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm transition-colors">
