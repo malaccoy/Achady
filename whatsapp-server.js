@@ -89,6 +89,28 @@ app.get('/status', (req, res) => {
   });
 });
 
+// GET /groups: Listar grupos e IDs
+app.get('/groups', async (req, res) => {
+  if (!isWhatsappReady) {
+    return res.status(503).json({ error: 'WhatsApp ainda não está pronto.' });
+  }
+
+  try {
+    const chats = await client.getChats();
+    const groups = chats
+      .filter((chat) => chat.isGroup)
+      .map((g) => ({
+        id: g.id._serialized,
+        name: g.name,
+      }));
+
+    res.json(groups);
+  } catch (err) {
+    console.error('Erro ao listar grupos:', err.message);
+    res.status(500).json({ error: 'Erro ao listar grupos' });
+  }
+});
+
 // POST /automation: Liga/desliga automação
 app.post('/automation', (req, res) => {
   const { status } = req.body;

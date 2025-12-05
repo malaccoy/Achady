@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Toggle } from '../components/UI';
 import ConnectWhatsAppModal from '../components/ConnectWhatsAppModal';
-import { Check, Trash2, Plus, Zap, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send, AlertTriangle, Save } from 'lucide-react';
+import { Check, Trash2, Plus, Zap, ShoppingBag, MessageSquare, Users, Link as LinkIcon, Key, Tag, Smartphone, QrCode, Send, AlertTriangle, Save, RefreshCw } from 'lucide-react';
 import type { AppSettings, WhatsAppGroup, GroupCategory } from '../types';
 import { db } from '../services/db';
 import { useWhatsappStatus } from '../hooks/useWhatsappStatus';
@@ -30,6 +30,10 @@ export const Dashboard: React.FC = () => {
   });
   
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [realGroups, setRealGroups] = useState<{ id: string, name: string }[]>([]);
+  const [loadingRealGroups, setLoadingRealGroups] = useState(false);
+  const [showRealGroups, setShowRealGroups] = useState(false);
+
   const [newGroupLink, setNewGroupLink] = useState('');
   const [newGroupCategory, setNewGroupCategory] = useState<GroupCategory>('geral');
   
@@ -148,6 +152,25 @@ export const Dashboard: React.FC = () => {
       alert('Modelo salvo localmente!');
     } catch (e) {
       alert("Erro ao salvar modelo.");
+    }
+  };
+
+  const handleFetchRealGroups = async () => {
+    setLoadingRealGroups(true);
+    setShowRealGroups(true);
+    try {
+      const res = await fetch('/api/whatsapp/groups');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        setRealGroups(data);
+      } else {
+        alert("Não foi possível buscar os grupos. Verifique se o WhatsApp está conectado.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao conectar com a API de grupos.");
+    } finally {
+      setLoadingRealGroups(false);
     }
   };
 
@@ -426,8 +449,34 @@ export const Dashboard: React.FC = () => {
           title="Grupos de WhatsApp" 
           icon={<Users className="w-5 h-5" />} 
           className="lg:col-span-2"
+          action={
+            settings.whatsappConnected && (
+              <Button size="sm" variant="ghost" onClick={handleFetchRealGroups} isLoading={loadingRealGroups}>
+                <RefreshCw className="w-3 h-3 mr-1" /> Sincronizar
+              </Button>
+            )
+          }
         >
           <div className="space-y-6">
+            
+            {/* Real Groups List (Collapsible) */}
+            {showRealGroups && realGroups.length > 0 && (
+               <div className="mb-4 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-bold text-indigo-900">Grupos detectados no WhatsApp ({realGroups.length})</h4>
+                    <button className="text-xs text-indigo-500 hover:underline" onClick={() => setShowRealGroups(false)}>Ocultar</button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                    {realGroups.map(g => (
+                      <div key={g.id} className="text-xs flex justify-between items-center p-2 bg-white rounded border border-indigo-100">
+                        <span className="truncate flex-1 font-medium text-slate-700">{g.name}</span>
+                        <span className="text-slate-400 text-[10px] ml-2 font-mono select-all cursor-pointer">{g.id}</span>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+            )}
+
             <div className="flex flex-col md:flex-row gap-3 items-end">
               <div className="flex-1 w-full">
                  <Input
