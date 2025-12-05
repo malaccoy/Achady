@@ -6,7 +6,7 @@ interface Props {
 }
 
 export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
-  const [qr, setQr] = useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +28,7 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   useEffect(() => {
     if (!isOpen || status === "idle") return;
 
+    // Se abriu e ainda não começou, inicia
     if (status === "idle") {
         iniciarSessao();
     }
@@ -36,25 +37,28 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
       try {
         const res = await fetch('/api/whatsapp/qr');
         
-        // Se a API retornar sucesso (mesmo que sem QR, pode ter status)
         if (res.ok) {
             const data = await res.json();
             
-            // Se já conectou
+            // 1. Se já conectou
             if (data.status === "ready" || data.status === "connected") {
                 setStatus("ready");
-                setQr(null);
+                setQrImage(null);
                 clearInterval(interval);
                 setTimeout(() => {
                     onClose();
-                    // Opcional: recarregar a página para atualizar o dashboard
+                    // Opcional: recarregar para atualizar status na dashboard
                     window.location.reload();
                 }, 1500);
             }
-            // Se tem QR
-            else if (data.qr) {
-                setQr(data.qr);
+            // 2. Se tem QR (agora vem como imageUrl)
+            else if (data.imageUrl) {
+                setQrImage(data.imageUrl);
                 setStatus("qr");
+            }
+            // 3. Se está iniciando ou aguardando
+            else if (data.status) {
+                setStatus(data.status);
             }
         }
       } catch (err) {
@@ -83,12 +87,12 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
            </button>
         )}
 
-        {status === "starting" && <p className="text-slate-500 animate-pulse">⏳ Aguardando QR Code...</p>}
+        {status === "starting" && <p className="text-slate-500 animate-pulse">⏳ Aguardando QR Code da VPS...</p>}
         
-        {status === "qr" && qr && (
+        {status === "qr" && qrImage && (
           <div className="space-y-3">
             <div className="p-2 bg-white border border-slate-200 rounded-lg inline-block">
-                <img src={qr} className="w-48 h-48" alt="WhatsApp QR Code" />
+                <img src={qrImage} className="w-48 h-48 mx-auto" alt="WhatsApp QR Code" />
             </div>
             <p className="text-sm text-slate-600">Abra o WhatsApp &gt; Aparelhos conectados &gt; Conectar</p>
           </div>
