@@ -9,7 +9,7 @@ interface ConnectWhatsAppModalProps {
 }
 
 export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open, onClose, userId, onConnected }) => {
-  const [status, setStatus] = useState<'starting' | 'qr' | 'connected' | 'disconnected' | 'error'>('starting');
+  const [status, setStatus] = useState<'starting' | 'qr' | 'authenticated' | 'connected' | 'disconnected' | 'error'>('starting');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string>('');
   
@@ -70,8 +70,11 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
         setTimeout(() => { if (isMounted.current) onClose(); }, 2000);
         return;
       }
-
-      if (data.status === 'qr' && data.qr) {
+      
+      if (data.status === 'authenticated') {
+        setStatus('authenticated');
+        // Continua buscando até virar 'connected'
+      } else if (data.status === 'qr' && data.qr) {
         setQrCode(data.qr);
         setStatus('qr');
       } else if (data.status === 'starting') {
@@ -85,7 +88,7 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
 
     } catch (e: any) {
       console.error("Erro polling:", e);
-      if (status !== 'qr') {
+      if (status !== 'qr' && status !== 'authenticated') {
         setStatus("error");
         setErrorDetails("Tentando reconectar... " + (e.message || ""));
         if (isMounted.current) setTimeout(buscarQRCode, 3000);
@@ -129,6 +132,17 @@ export const ConnectWhatsAppModal: React.FC<ConnectWhatsAppModalProps> = ({ open
             <p className="text-xs font-semibold text-achady-purple bg-brand-50 px-3 py-1 rounded-full animate-pulse">
               Aguardando leitura...
             </p>
+          </div>
+        )}
+
+        {/* AUTHENTICATED */}
+        {status === 'authenticated' && (
+          <div className="flex flex-col items-center gap-4 py-8 min-h-[250px] justify-center">
+             <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
+             <div className="text-center">
+                <h3 className="text-lg font-bold text-slate-900">Autenticado!</h3>
+                <p className="text-slate-500 text-sm">Sincronizando chats, aguarde...</p>
+             </div>
           </div>
         )}
 

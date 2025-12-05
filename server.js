@@ -81,6 +81,7 @@ function createSession(sessionId) {
     });
 
     client.on("authenticated", () => {
+        console.log(`✅ Sessão ${sessionId} autenticada (aguardando ready)`);
         sessions[sessionId].status = "authenticated";
     });
 
@@ -122,6 +123,10 @@ app.get("/qr/:userId", (req, res) => {
     if (sessao.status === 'connected') {
         return res.json({ status: 'connected' });
     }
+    
+    if (sessao.status === 'authenticated') {
+        return res.json({ status: 'authenticated' });
+    }
 
     if (sessao.status === 'qr' && qrCode) {
         return res.json({ status: 'qr', qr: qrCode });
@@ -149,13 +154,24 @@ app.post("/send", async (req, res) => {
     }
 });
 
-// 4. Status
+// 4. Status por Usuario
 app.get("/status/:userId", (req, res) => {
     const { userId } = req.params;
     if (!sessions[userId]) {
         return res.json({ status: "disconnected" });
     }
     res.json({ status: sessions[userId].status });
+});
+
+// ===============================
+// ✅ ROTA DE STATUS (OBRIGATÓRIA)
+// ===============================
+app.get("/status", (req, res) => {
+    const ativo = Object.keys(sessions).length > 0;
+    res.json({
+        status: ativo ? "connected" : "not_connected",
+        sessions: Object.keys(sessions)
+    });
 });
 
 // Fallback
