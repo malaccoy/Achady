@@ -65,3 +65,9 @@ export async function getMessageLogs(): Promise<MessageLog[]> {
     // Simulate Select * from message_logs order by enviadoEm desc
     return MEMORY_LOGS.sort((a, b) => new Date(b.enviadoEm).getTime() - new Date(a.enviadoEm).getTime());
 }
+
+export async function getMessageLogsByGroup(groupId: string): Promise<MessageLog[]> {
+    return MEMORY_LOGS
+        .filter(log => log.grupoId === groupId)
+        .sort((a, b) => new Date(b.enviadoEm).getTime() - new Date(a.enviadoEm).getTime());
+}

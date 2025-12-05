@@ -113,34 +113,56 @@ app.post("/start/:userId", (req, res) => {
 app.get("/qr/:userId", (req, res) => {
     const { userId } = req.params;
     
+    // 🔴 Caso 1: Sessão não existe
     if (!sessions[userId]) {
-        return res.json({ status: "disconnected" });
+        return res.json({ 
+            status: "disconnected", 
+            message: "Sessão não encontrada" 
+        });
     }
 
     const sessao = sessions[userId];
     const qrCode = qrCodes[userId];
 
+    // ✅ Caso 2: Conectado
     if (sessao.status === 'connected') {
-        return res.json({ status: 'connected' });
+        return res.json({ status: 'connected', message: "WhatsApp conectado e pronto." });
     }
     
+    // 🟡 Caso 3: Autenticado, mas carregando chats
     if (sessao.status === 'authenticated') {
-        return res.json({ status: 'authenticated' });
+        return res.json({ status: 'authenticated', message: "Autenticado. Carregando conversas..." });
     }
 
+    // 🟣 Caso 4: QR Code disponível
     if (sessao.status === 'qr' && qrCode) {
-        return res.json({ status: 'qr', qr: qrCode });
+        return res.json({ status: 'qr', qr: qrCode, message: "Aguardando leitura do QR Code." });
     }
 
-    return res.json({ status: 'starting' });
+    // ⚪ Caso 5: Iniciando
+    return res.json({ status: 'starting', message: "Iniciando cliente WhatsApp..." });
 });
 
 // 3. Enviar Mensagem
 app.post("/send", async (req, res) => {
     const { userId, number, message } = req.body;
 
-    if (!sessions[userId] || sessions[userId].status !== 'connected') {
-        return res.status(400).json({ error: "Sessão não conectada ou inexistente" });
+    // 🔴 Erro: Sessão não existe
+    if (!sessions[userId]) {
+        return res.status(404).json({ 
+            ok: false, 
+            error: "Sessão não encontrada", 
+            details: "Inicie a conexão no painel antes de enviar mensagens." 
+        });
+    }
+
+    // 🔴 Erro: Sessão existe, mas não está 'connected'
+    if (sessions[userId].status !== 'connected') {
+        return res.status(400).json({ 
+            ok: false, 
+            error: "Sessão não está pronta", 
+            details: `Status atual: ${sessions[userId].status}. Aguarde a conexão completar.`
+        });
     }
 
     try {
@@ -150,7 +172,7 @@ app.post("/send", async (req, res) => {
         res.json({ ok: true, message: "Mensagem enviada com sucesso" });
     } catch (e) {
         console.error("Erro ao enviar mensagem:", e);
-        res.status(500).json({ error: "Falha ao enviar mensagem." });
+        res.status(500).json({ ok: false, error: "Falha interna ao enviar mensagem.", details: e.message });
     }
 });
 
