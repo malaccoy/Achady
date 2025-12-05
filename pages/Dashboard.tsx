@@ -36,6 +36,7 @@ export const Dashboard: React.FC = () => {
 
   const [newGroupLink, setNewGroupLink] = useState('');
   const [newGroupCategory, setNewGroupCategory] = useState<GroupCategory>('geral');
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
   
   // Shopee Auth State
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -182,8 +183,11 @@ export const Dashboard: React.FC = () => {
         return;
     }
     
+    setIsAddingGroup(true);
+
     try {
-        const res = await fetch('/api/whatsapp/join', {
+        // Chamada para a nova rota que adiciona e configura o grupo
+        const res = await fetch('/api/whatsapp/add-group', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -196,7 +200,7 @@ export const Dashboard: React.FC = () => {
         if (!res.ok) throw new Error(data.error || "Erro ao adicionar grupo");
         
         const newGroupView: WhatsAppGroup = {
-          id: Date.now().toString(),
+          id: data.groupId || Date.now().toString(),
           link: newGroupLink,
           name: data.groupName || `Grupo ${groups.length + 1}`,
           category: newGroupCategory
@@ -207,10 +211,14 @@ export const Dashboard: React.FC = () => {
         
         setNewGroupLink('');
         setNewGroupCategory('geral');
-        alert(`Entrou no grupo: ${data.groupName}`);
+        
+        // Feedback visual solicitado
+        alert(`✅ Grupo conectado com sucesso!\nNome: ${data.groupName}\nConfigurado como padrão para envios.`);
         
     } catch (e: any) {
         alert(`Falha ao entrar no grupo: ${e.message}`);
+    } finally {
+        setIsAddingGroup(false);
     }
   };
 
@@ -309,13 +317,13 @@ export const Dashboard: React.FC = () => {
                   {/* Shopee Indicator */}
                   <div className={`text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${whatsappStatus.shopeeConfigured ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-200 text-amber-700'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${whatsappStatus.shopeeConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                      {whatsappStatus.shopeeConfigured ? 'Shopee Configurada' : 'Shopee Não Configurada'}
+                      {whatsappStatus.shopeeConfigured ? 'API Shopee: Conectada' : 'API Shopee: Não configurada'}
                   </div>
                   
                   {/* Group Indicator */}
                   <div className={`text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${whatsappStatus.groupConfigured ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-amber-200 text-amber-700'}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${whatsappStatus.groupConfigured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                      {whatsappStatus.groupConfigured ? 'Grupo Configurado' : 'Grupo Não Configurado'}
+                      {whatsappStatus.groupConfigured ? 'Grupo WhatsApp: Configurado' : 'Grupo WhatsApp: Não Configurado'}
                   </div>
               </div>
             </div>
@@ -499,7 +507,7 @@ export const Dashboard: React.FC = () => {
                   ))}
                 </select>
               </div>
-              <Button onClick={handleAddGroup} disabled={!newGroupLink}>
+              <Button onClick={handleAddGroup} disabled={!newGroupLink || isAddingGroup} isLoading={isAddingGroup}>
                 <Plus className="w-4 h-4 mr-1" /> Adicionar
               </Button>
             </div>

@@ -11,10 +11,12 @@ export default async function handler(req, res) {
     // Busca status na VPS
     const response = await axios.get(`${baseUrl}/status`, { timeout: 5000 });
     
+    // data deve ter { connected, shopeeConfigured, groupConfigured }
     return res.status(200).json(response.data);
   } catch (error) {
     console.error('Erro proxy STATUS:', error.message);
-    // Retorna um status default "offline" se a VPS estiver inacessível
+    // Se a VPS estiver fora, retorna erro 500 ou status desconectado explícito
+    // O usuário prefere ver "Desconectado" a erro
     return res.status(200).json({ 
         connected: false, 
         shopeeConfigured: false, 

@@ -81,12 +81,11 @@ app.get('/status', (req, res) => {
   // Verifica se existe URL da Shopee configurada (mesmo que seja default)
   const shopeeConfigured = Boolean(process.env.SHOPEE_URL || process.env.SHOPEE_KEYWORD);
   
-  // Verifica se o grupo está configurado na memória
-  const groupConfigured = Boolean(currentGroupId);
+  // Verifica se o grupo está configurado na memória ou no ENV
+  const groupConfigured = Boolean(currentGroupId || process.env.WHATSAPP_GROUP_ID);
 
   return res.json({
     connected,
-    connectionStatus,
     shopeeConfigured,
     groupConfigured,
     automationEnabled: isAutomationOn,
@@ -182,10 +181,10 @@ app.post('/join-group', async (req, res) => {
     
     console.log('✅ Entrou no grupo:', chat.name, 'ID:', groupId);
     
-    // Se não houver grupo configurado ainda, define este como padrão
+    // Auto-configura como padrão se ainda não houver um, OU sempre (conforme preferência do usuário de não editar ENV)
     if (!currentGroupId) {
         currentGroupId = groupId;
-        console.log('⚙️ Auto-configurado como grupo padrão:', currentGroupId);
+        console.log('⚙️ Auto-configurado como grupo padrão (Join):', currentGroupId);
     }
 
     res.json({ 
@@ -211,11 +210,11 @@ async function enviarOfertasPeriodicamente() {
 
     if (!ofertas || !ofertas.length) return;
 
-    // Usa a variável global atualizada em tempo real
-    const groupId = currentGroupId;
+    // Usa a variável global atualizada em tempo real, ou fallback para ENV
+    const groupId = currentGroupId || process.env.WHATSAPP_GROUP_ID;
 
     if (!groupId) {
-        // console.log('⚠️ Nenhum grupo configurado para envio.');
+        console.log('⚠️ Nenhum WHATSAPP_GROUP_ID configurado (currentGroupId vazio), não enviando mensagens.');
         return;
     }
 
@@ -223,7 +222,7 @@ async function enviarOfertasPeriodicamente() {
       const mensagem = formatarMensagemOferta(oferta);
       try {
         await client.sendMessage(groupId, mensagem);
-        console.log('✅ Oferta enviada:', oferta.titulo);
+        console.log('✅ Oferta enviada para o grupo:', oferta.titulo);
         await new Promise(r => setTimeout(r, 8000));
       } catch (e) {
         console.error('Erro envio msg:', e.message);

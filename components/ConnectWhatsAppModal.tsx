@@ -10,7 +10,7 @@ export default function ConnectWhatsAppModal({ isOpen, onClose }: Props) {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   
-  // Polling rápido (2s) enquanto modal está aberto
+  // Polling rápido (2s) enquanto modal está aberto para detectar conexão rapidamente
   const { status, loading } = useWhatsappStatus(isOpen ? 2000 : 60000);
 
   // Iniciar sessão
