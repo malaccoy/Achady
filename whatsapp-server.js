@@ -1,13 +1,12 @@
-// whatsapp-server.js - servidor WhatsApp standalone do ACHADY
+// whatsapp-server.js - servidor WhatsApp standalone do ACHADY (ESM)
 
-// Carrega variáveis de ambiente
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config();
 
 import express from 'express';
 import qrcode from 'qrcode-terminal';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
-import { buscarOfertasShopee } from './shopee.js'; // função já existe no projeto
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import { buscarOfertasShopee } from './shopee.js'; // importante: exporte buscarOfertasShopee como ESM em shopee.js
 
 // ==== CONFIG BÁSICA ====
 
@@ -55,6 +54,7 @@ client.on('disconnected', (reason) => {
   console.log('⚠️ Cliente desconectado:', reason);
 });
 
+// Inicializa o cliente do WhatsApp
 client.initialize();
 
 // ==== ROTAS HTTP ====
@@ -212,7 +212,7 @@ async function enviarOfertasPeriodicamente() {
 
     const groupId = currentGroupId;
     if (!groupId) {
-      console.log('⚠️ WHATSAPP_GROUP_ID não definido no .env e currentGroupId vazio, não enviando mensagens.');
+      console.log('⚠️ Nenhum grupo padrão configurado, não enviando mensagens.');
       return;
     }
 

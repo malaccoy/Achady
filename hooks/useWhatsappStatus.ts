@@ -24,7 +24,15 @@ export function useWhatsappStatus(pollIntervalMs: number = 5000) {
       try {
         // Usa fetch nativo para evitar dependência excessiva de axios no front se não necessário
         const res = await fetch('/api/whatsapp/status');
-        if (!res.ok) throw new Error("Falha ao buscar status");
+        
+        // Handle server errors (e.g. 504, 500) gracefully without throwing
+        if (!res.ok) {
+            if (!cancelled) {
+                setStatus(prev => ({ ...prev, connected: false }));
+                setLoading(false);
+            }
+            return;
+        }
         
         const data = await res.json();
         
@@ -33,9 +41,9 @@ export function useWhatsappStatus(pollIntervalMs: number = 5000) {
           setLoading(false);
         }
       } catch (err) {
-        console.error('Erro ao buscar status do WhatsApp:', err);
+        // Suppress network errors (e.g. server offline) to avoid console noise
         if (!cancelled) {
-             // Em caso de erro, assume desconectado mas mantém loading false
+             setStatus(prev => ({ ...prev, connected: false }));
              setLoading(false);
         }
       }
