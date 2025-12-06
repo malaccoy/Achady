@@ -1,26 +1,31 @@
-import dotenv from 'dotenv';
-import express from 'express';
-import qrcode from 'qrcode-terminal';
-import pkg from 'whatsapp-web.js';
-import { buscarOfertasShopee } from './shopee.js';
+require('dotenv').config();
+const express = require('express');
+const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 
-dotenv.config();
+// Tenta importar shopee.js. Se falhar (ex: por ser ESM em ambiente CJS), usa fallback.
+let buscarOfertasShopee;
+try {
+  // Tenta require padrão
+  const shopeeModule = require('./shopee.js');
+  buscarOfertasShopee = shopeeModule.buscarOfertasShopee;
+} catch (err) {
+  console.warn('Aviso: Não foi possível carregar ./shopee.js via require. O arquivo pode ser ESM ou não existir.', err.message);
+  // Fallback seguro para não derrubar o servidor
+  buscarOfertasShopee = async () => [];
+}
 
-const { Client, LocalAuth } = pkg;
 const app = express();
-
 app.use(express.json());
 
 const PORT = process.env.WHATSAPP_PORT || 3001;
 const INTERVAL_MINUTES = parseInt(process.env.INTERVAL_MINUTES || '5', 10);
 
-// Global State
+// Variáveis globais de estado
 let isAutomationOn = true;
-let ultimoQR = null;
-
-// 1.1) Adicionar variáveis globais de estado
 let isWhatsappReady = false;
 let currentGroupId = process.env.WHATSAPP_GROUP_ID || null;
+let ultimoQR = null;
 
 const client = new Client({
   authStrategy: new LocalAuth({
@@ -38,7 +43,6 @@ client.on('qr', (qr) => {
   ultimoQR = qr;
 });
 
-// 1.2) Marcar quando o WhatsApp conecta
 client.on('ready', () => {
   isWhatsappReady = true;
   console.log('✅ WhatsApp conectado e pronto!');
@@ -50,7 +54,6 @@ client.on('auth_failure', (msg) => {
   isWhatsappReady = false;
 });
 
-// 1.3) Marcar quando o WhatsApp desconecta
 client.on('disconnected', (reason) => {
   isWhatsappReady = false;
   console.log('⚠️ Cliente desconectado:', reason);
@@ -67,10 +70,9 @@ app.get('/qr', (req, res) => {
   });
 });
 
-// 1.4) Criar a rota GET /status
 app.get('/status', (req, res) => {
   const connected = isWhatsappReady;
-  const shopeeConfigured = Boolean(process.env.SHOPEE_URL);
+  const shopeeConfigured = Boolean(process.env.SHOPEE_URL || process.env.SHOPEE_APP_ID);
   const groupConfigured = Boolean(currentGroupId || process.env.WHATSAPP_GROUP_ID);
 
   return res.json({
@@ -144,13 +146,21 @@ app.post('/join-group', async (req, res) => {
   }
 });
 
-// 1.3) Garantir que o envio automático usa currentGroupId
+// === Automação ===
+
 async function enviarOfertasPeriodicamente() {
   if (!isAutomationOn || !isWhatsappReady) return;
 
   try {
     console.log('🔍 Buscando ofertas da Shopee...');
     const keyword = process.env.SHOPEE_KEYWORD || "ofertas";
+    
+    // Verifica se a função foi carregada corretamente
+    if (typeof buscarOfertasShopee !== 'function') {
+        console.log('⚠️ Função buscarOfertasShopee indisponível. Verifique shopee.js.');
+        return;
+    }
+
     const ofertas = await buscarOfertasShopee(keyword);
 
     if (!ofertas || !ofertas.length) return;
@@ -161,11 +171,13 @@ async function enviarOfertasPeriodicamente() {
       return;
     }
 
+    // Envia até 5 ofertas
     for (const oferta of ofertas.slice(0, 5)) {
       const mensagem = formatarMensagemOferta(oferta);
       try {
         await client.sendMessage(groupId, mensagem);
-        console.log('✅ Oferta enviada para o grupo:', oferta.titulo);
+        console.log('✅ Oferta enviada para o grupo:', oferta.titulo || oferta.productName);
+        // Delay para evitar bloqueio
         await new Promise(r => setTimeout(r, 8000));
       } catch (e) {
         console.error('Erro envio msg:', e.message);
@@ -183,9 +195,10 @@ function formatarMensagemOferta(oferta) {
   const precoOriginal = oferta.priceMax || oferta.precoOriginal;
   const desconto = oferta.priceDiscountRate || oferta.desconto;
   
-  const precoFormatado = typeof preco === 'number' 
-    ? preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) 
-    : preco;
+  let precoFormatado = preco;
+  if (typeof preco === 'number') {
+    precoFormatado = preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
 
   let msg = `🔥 *${titulo}*\n` +
             `💰 Preço: ${precoFormatado}\n`;
