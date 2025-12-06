@@ -1,12 +1,13 @@
 // whatsapp-server.js - servidor WhatsApp standalone do ACHADY
 
 // Carrega variáveis de ambiente
-require('dotenv').config();
+import 'dotenv/config';
 
-const express = require('express');
-const qrcode = require('qrcode-terminal');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const { buscarOfertasShopee } = require('./shopee'); // função já existe no projeto
+import express from 'express';
+import qrcode from 'qrcode-terminal';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
+import { buscarOfertasShopee } from './shopee.js'; // função já existe no projeto
 
 // ==== CONFIG BÁSICA ====
 
