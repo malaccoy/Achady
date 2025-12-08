@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, MessageTemplate, WhatsAppStatus } from '../types';
+import { Group, LogEntry, AutomationConfig, MessageTemplate, WhatsAppStatus, ShopeeConfigResponse } from '../types';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -92,6 +92,18 @@ export const runAutomationOnce = async (): Promise<void> => {
 export const sendTestMessage = async (): Promise<void> => {
     await api.post('/test/send');
 };
+
+// --- Shopee API ---
+
+export const getShopeeConfig = async (): Promise<ShopeeConfigResponse> => {
+  const res = await api.get('/shopee/config');
+  return res.data;
+};
+
+export const saveShopeeConfig = async (appId: string, secret: string): Promise<void> => {
+  await api.post('/shopee/config', { appId, secret });
+};
+
 
 // --- Template ---
 

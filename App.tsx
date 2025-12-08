@@ -5,6 +5,7 @@ import { GroupManager } from './components/GroupManager';
 import { AutomationControl } from './components/AutomationControl';
 import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
+import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 
 function App() {
   const [activeSection, setActiveSection] = useState<MenuItemId>("status");
@@ -17,6 +18,8 @@ function App() {
         return <GroupManager />;
       case "automation":
         return <AutomationControl />;
+      case "shopee":
+        return <ShopeeApiConfig />;
       case "template":
         return <TemplateEditor />;
       case "logs":

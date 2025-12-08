@@ -30,10 +30,16 @@ export interface LogEntry {
   errorMessage?: string;
 }
 
+export interface ShopeeConfigResponse {
+  hasCredentials: boolean;
+  appIdMasked: string | null;
+}
+
 export enum Tab {
   STATUS = 'STATUS',
   GROUPS = 'GROUPS',
   AUTOMATION = 'AUTOMATION',
   TEMPLATE = 'TEMPLATE',
   LOGS = 'LOGS',
+  SHOPEE = 'SHOPEE',
 }

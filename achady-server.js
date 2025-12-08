@@ -6,6 +6,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -14,7 +15,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3001;
 
 // =======================
-// "Banco de dados" em memória (fase de validação)
+// "Banco de dados" em memória
 // =======================
 let groups = []; // { id, name, link, active, chatId? }
 let logs = [];   // { when, group, title, price, status, error? }
@@ -29,6 +30,12 @@ let automationConfig = {
   intervalMinutes: 5,
 };
 let automationTimer = null;
+
+// Configuração da API de Afiliados Shopee
+let shopeeConfig = {
+  appId: process.env.SHOPEE_APP_ID || null,
+  secret: process.env.SHOPEE_APP_SECRET || null,
+};
 
 // =======================
 // WhatsApp Client
@@ -75,8 +82,31 @@ function ensureClientInitialized() {
 }
 
 // =======================
-// Helpers
+// Helpers Shopee API
 // =======================
+function buildShopeeHeaders(payloadObj) {
+  const { appId, secret } = shopeeConfig;
+
+  if (!appId || !secret) {
+    throw new Error('Credenciais da Shopee não configuradas');
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000); // segundos
+  const payload = JSON.stringify(payloadObj);
+
+  // Fator = AppId + Timestamp + Payload + Secret
+  const factor = `${appId}${timestamp}${payload}${secret}`;
+  const signature = crypto
+    .createHash('sha256')
+    .update(factor)
+    .digest('hex'); // 64 chars, lowercase
+
+  return {
+    Authorization: `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`,
+    'Content-Type': 'application/json',
+  };
+}
+
 function formatMessage(offer) {
   if (!offer) return 'Sem oferta disponível.';
 
@@ -89,6 +119,64 @@ function formatMessage(offer) {
 }
 
 async function fetchShopeeOffer() {
+  // 1. Tenta usar API Oficial se configurada
+  if (shopeeConfig.appId && shopeeConfig.secret) {
+    try {
+      // Endpoint GraphQL da Shopee (exemplo, verificar documentação atual)
+      const endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
+
+      const query = `
+        query brandOfferList($page: Int!, $size: Int!) {
+          brandOffer {
+            nodes(page: $page, size: $size) {
+              offerName
+              commissionRate
+              targetUrl
+              imageUrl
+            }
+          }
+        }
+      `;
+
+      const variables = { page: 1, size: 1 };
+      const payload = { query, variables };
+
+      const headers = buildShopeeHeaders(payload);
+
+      console.log('[SHOPEE API] Buscando oferta via GraphQL...');
+      const { data } = await axios.post(endpoint, payload, { headers });
+
+      if (data.errors && data.errors.length) {
+        console.error('[SHOPEE API] Erro GraphQL:', JSON.stringify(data.errors));
+        // Se der erro na API, continua para o fallback de scraping?
+        // Vamos deixar cair no catch e ir pro scraping.
+        throw new Error('Erro na resposta GraphQL');
+      }
+
+      const nodes = data?.data?.brandOffer?.nodes || [];
+      const first = nodes[0];
+
+      if (first) {
+        const priceText = '—'; // API de afiliados foca em comissão, preço varia
+        return {
+          title: first.offerName || 'Oferta Shopee',
+          price: priceText,
+          originalPrice: '',
+          discount: first.commissionRate
+            ? `${first.commissionRate}% comissão`
+            : '',
+          link: first.targetUrl || 'https://shopee.com.br',
+        };
+      } else {
+         console.warn('[SHOPEE API] Nenhuma oferta retornada na lista.');
+      }
+    } catch (err) {
+      console.error('[SHOPEE API] Erro ao buscar oferta (fallback para scraping):', err.message);
+    }
+  }
+
+  // 2. Fallback: SCRAPING ANTIGO
+  console.log('[SHOPEE] Usando método Scraping (Axios + HTML)...');
   const url = process.env.SHOPEE_SEARCH_URL;
 
   if (!url) {
@@ -116,7 +204,6 @@ async function fetchShopeeOffer() {
     const $ = cheerio.load(html);
 
     // ⚠️ IMPORTANTE: Ajuste os seletores conforme a página da Shopee que você for usar.
-    // Aqui é só um exemplo bem genérico:
     const firstItem = $('a').first();
 
     if (!firstItem || !firstItem.attr('href')) {
@@ -129,7 +216,6 @@ async function fetchShopeeOffer() {
       ? firstItem.attr('href')
       : 'https://shopee.com.br' + firstItem.attr('href');
 
-    // Valores de exemplo para preço, até você extrair de fato do HTML
     return {
       title,
       price: 'R$ 49,90',
@@ -252,6 +338,35 @@ app.get('/api/whatsapp/qr', async (req, res) => {
 // Status do WhatsApp
 app.get('/api/whatsapp/status', (req, res) => {
   return res.json({ status: whatsappStatus });
+});
+
+// =======================
+// ROTAS: Config Shopee API
+// =======================
+app.get('/api/shopee/config', (req, res) => {
+  res.json({
+    hasCredentials: !!(shopeeConfig.appId && shopeeConfig.secret),
+    appIdMasked: shopeeConfig.appId
+      ? shopeeConfig.appId.slice(0, 3) + '****' + shopeeConfig.appId.slice(-2)
+      : null,
+  });
+});
+
+app.post('/api/shopee/config', (req, res) => {
+  const { appId, secret } = req.body;
+
+  if (!appId || !secret) {
+    return res
+      .status(400)
+      .json({ error: 'appId e secret são obrigatórios' });
+  }
+
+  shopeeConfig.appId = appId;
+  shopeeConfig.secret = secret;
+
+  console.log('[SHOPEE API] Credenciais atualizadas via painel.');
+
+  res.json({ ok: true });
 });
 
 // =======================

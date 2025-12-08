@@ -5,6 +5,7 @@ export type MenuItemId =
   | "status"
   | "groups"
   | "automation"
+  | "shopee"
   | "template"
   | "logs";
 
@@ -18,6 +19,7 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "status", label: "Status & Conexão" },
   { id: "groups", label: "Grupos WhatsApp" },
   { id: "automation", label: "Automação" },
+  { id: "shopee", label: "Config API Shopee" },
   { id: "template", label: "Modelo de Mensagem" },
   { id: "logs", label: "Logs de Envio" },
 ];
