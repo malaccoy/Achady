@@ -1,41 +1,22 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, MessageTemplate, WhatsAppStatus, ShopeeConfigResponse } from '../types';
+import { Group, LogEntry, AutomationConfig, MessageTemplate, ShopeeConfigResponse } from '../types';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
 });
 
-// Helper to map backend status to frontend status
-const mapStatus = (s: string): WhatsAppStatus['status'] => {
-  switch (s) {
-    case 'ready': return 'CONNECTED';
-    case 'qr': return 'QR_READY';
-    case 'auth_failure': return 'DISCONNECTED';
-    case 'disconnected': return 'DISCONNECTED';
-    default: return 'DISCONNECTED';
-  }
-};
-
 // --- WhatsApp Connection ---
 
-export const getBotStatus = async (): Promise<WhatsAppStatus> => {
-  try {
-    const res = await api.get('/whatsapp/status');
-    return { status: mapStatus(res.data.status) };
-  } catch (error) {
-    console.warn("API Error", error);
-    return { status: 'DISCONNECTED' };
-  }
+export const getWhatsappStatus = async (): Promise<{ status: string }> => {
+  const res = await api.get('/whatsapp/status');
+  return res.data;
 };
 
-export const generateQrCode = async (): Promise<WhatsAppStatus> => {
+export const getWhatsappQR = async (): Promise<{ status: string; qr: string | null }> => {
   const res = await api.get('/whatsapp/qr');
-  return { 
-    status: mapStatus(res.data.status),
-    qrCode: res.data.qr 
-  };
+  return res.data;
 };
 
 // --- Groups ---

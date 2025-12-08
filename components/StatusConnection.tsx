@@ -1,60 +1,66 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getBotStatus, generateQrCode } from '../services/api';
-import { WhatsAppStatus } from '../types';
-import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { getWhatsappStatus, getWhatsappQR } from '../services/api';
+import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone } from 'lucide-react';
 
 export const StatusConnection: React.FC = () => {
-  const [statusData, setStatusData] = useState<WhatsAppStatus>({ status: 'DISCONNECTED' });
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string>("desconhecido");
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingQR, setLoadingQR] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  async function handleCheckStatus() {
     try {
-      const data = await getBotStatus();
-      setStatusData(prev => ({ ...prev, status: data.status }));
-      if (data.status === 'QR_READY') {
-          handleGenerateQR();
+      setLoadingStatus(true);
+      setError(null);
+      const res = await getWhatsappStatus();
+      setStatus(res.status);
+      if (res.status !== "qr") {
+        setQrDataUrl(null);
       }
-    } catch (err) {
-      setError("Falha ao conectar com o backend.");
+    } catch (e) {
+      setError("Não foi possível obter o status do WhatsApp.");
     } finally {
-      setLoading(false);
+      setLoadingStatus(false);
     }
-  }, []);
+  }
 
-  const handleGenerateQR = async () => {
+  async function handleGenerateQR() {
     try {
-      const data = await generateQrCode();
-      setStatusData(data);
-    } catch (err) {
+      setLoadingQR(true);
+      setError(null);
+      const res = await getWhatsappQR();
+      setStatus(res.status);
+      if (res.qr) {
+        setQrDataUrl(res.qr);
+      } else {
+        setQrDataUrl(null);
+      }
+    } catch (e) {
       setError("Erro ao gerar QR Code.");
+    } finally {
+      setLoadingQR(false);
     }
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(() => {
-        getBotStatus().then(data => {
-            setStatusData(prev => {
-                if (prev.status !== data.status) {
-                    return { ...prev, status: data.status };
-                }
-                return prev;
-            });
-        });
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  }
 
   const getStatusColor = (s: string) => {
     switch (s) {
-      case 'CONNECTED': return 'bg-green-500/10 text-green-300 border-green-500/20';
-      case 'CONNECTING': return 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20';
-      case 'QR_READY': return 'bg-blue-500/10 text-blue-300 border-blue-500/20';
-      default: return 'bg-red-500/10 text-red-300 border-red-500/20';
+      case 'ready': return 'bg-green-500/10 text-green-300 border-green-500/20';
+      case 'qr': return 'bg-blue-500/10 text-blue-300 border-blue-500/20';
+      case 'disconnected': return 'bg-red-500/10 text-red-300 border-red-500/20';
+      case 'auth_failure': return 'bg-red-500/10 text-red-300 border-red-500/20';
+      default: return 'bg-slate-500/10 text-slate-300 border-slate-500/20';
     }
+  };
+
+  const getStatusLabel = (s: string) => {
+      switch (s) {
+          case 'ready': return 'Conectado';
+          case 'qr': return 'Aguardando Leitura';
+          case 'disconnected': return 'Desconectado';
+          case 'auth_failure': return 'Falha na Autenticação';
+          default: return s;
+      }
   };
 
   return (
@@ -62,66 +68,82 @@ export const StatusConnection: React.FC = () => {
       <div className="card p-6">
         <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
           <ShieldCheck className="w-6 h-6 text-orange-500" />
-          Status do Bot
+          Status & Conexão WhatsApp
         </h2>
         
-        <div className={`p-4 rounded-md border flex items-center justify-between ${getStatusColor(statusData.status)}`}>
+        <p className="text-sm text-slate-400 mb-6">
+            Conecte o bot do ACHADY ao seu WhatsApp escaneando o QR Code. O processo é manual para garantir controle.
+        </p>
+
+        {/* Status Indicator */}
+        <div className={`p-4 rounded-md border flex items-center justify-between mb-6 transition-colors ${getStatusColor(status)}`}>
           <div className="flex items-center gap-3">
-             {statusData.status === 'CONNECTED' ? <ShieldCheck /> : <WifiOff />}
-             <span className="font-semibold text-lg">
-                {statusData.status === 'CONNECTED' && 'Conectado'}
-                {statusData.status === 'DISCONNECTED' && 'Desconectado'}
-                {statusData.status === 'QR_READY' && 'Aguardando Leitura do QR'}
-                {statusData.status === 'CONNECTING' && 'Conectando...'}
+             {status === 'ready' ? <ShieldCheck className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+             <span className="font-semibold text-lg capitalize">
+                Status atual: {getStatusLabel(status)}
              </span>
           </div>
-          <button 
-            onClick={fetchStatus}
-            className="p-2 hover:bg-white/10 rounded-full transition-colors"
-            title="Verificar agora"
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <button 
+                onClick={handleCheckStatus} 
+                disabled={loadingStatus}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+            >
+                {loadingStatus ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                Verificar Status
+            </button>
+            
+            <button 
+                onClick={handleGenerateQR} 
+                disabled={loadingQR}
+                className="flex-1 bg-orange-600 hover:bg-orange-500 text-white px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+            >
+                {loadingQR ? <Loader2 className="animate-spin w-4 h-4" /> : <QrCode className="w-4 h-4" />}
+                Gerar QR Code
+            </button>
         </div>
 
         {error && (
-            <div className="mt-4 p-3 bg-red-900/30 text-red-200 text-sm rounded border border-red-900/50 flex items-center gap-2">
+            <div className="mb-6 p-3 bg-red-900/30 text-red-200 text-sm rounded border border-red-900/50 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 {error}
             </div>
         )}
 
-        <div className="mt-8 flex flex-col items-center justify-center p-8 bg-slate-900/30 border border-dashed border-slate-700/50 rounded-lg">
-          {statusData.status === 'QR_READY' && statusData.qrCode ? (
-            <div className="text-center">
-              <img src={statusData.qrCode} alt="WhatsApp QR Code" className="w-64 h-64 mb-4 mx-auto border-4 border-white shadow-lg rounded-lg" />
-              <p className="text-sm text-slate-400 font-medium">Abra o WhatsApp {'>'} Aparelhos conectados {'>'} Conectar aparelho</p>
-            </div>
-          ) : statusData.status === 'CONNECTED' ? (
-            <div className="text-center py-10">
-                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
-                    <ShieldCheck className="w-10 h-10 text-green-500" />
+        {/* QR Code Display Area */}
+        <div className="flex flex-col items-center justify-center p-8 bg-slate-900/30 border border-dashed border-slate-700/50 rounded-lg min-h-[200px]">
+            {qrDataUrl ? (
+                <div className="text-center animate-in fade-in zoom-in duration-300">
+                    <div className="bg-white p-2 rounded-lg inline-block mb-4 shadow-xl">
+                         <img src={qrDataUrl} alt="QR Code WhatsApp" className="w-64 h-64" />
+                    </div>
+                    <div className="text-slate-300 flex items-center justify-center gap-2 text-sm">
+                        <Smartphone className="w-4 h-4" />
+                        <p>Abra o WhatsApp {'>'} Aparelhos conectados {'>'} Conectar</p>
+                    </div>
                 </div>
-                <h3 className="text-lg font-medium text-slate-200">Tudo pronto!</h3>
-                <p className="text-slate-500">O bot está conectado e pronto para enviar ofertas.</p>
-            </div>
-          ) : (
-            <div className="text-center">
-               <QrCode className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-               <p className="text-slate-500 mb-6 max-w-sm mx-auto">
-                 O bot precisa ler o QR Code para se conectar ao WhatsApp Web. Clique abaixo para gerar um novo código.
-               </p>
-               <button
-                onClick={handleGenerateQR}
-                disabled={loading}
-                className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2 mx-auto"
-               >
-                 {loading ? <Loader2 className="animate-spin w-4 h-4"/> : <QrCode className="w-4 h-4"/>}
-                 Gerar QR Code
-               </button>
-            </div>
-          )}
+            ) : status === 'qr' ? (
+                <div className="text-center text-slate-500">
+                    <QrCode className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">Clique em <strong>Gerar QR Code</strong> para exibir o código.</p>
+                </div>
+            ) : status === 'ready' ? (
+                 <div className="text-center">
+                    <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
+                        <ShieldCheck className="w-8 h-8 text-green-500" />
+                    </div>
+                    <p className="text-slate-400 font-medium">Bot conectado e operando.</p>
+                </div>
+            ) : (
+                <div className="text-center text-slate-500">
+                    <p className="text-sm">Aguardando ação...</p>
+                </div>
+            )}
         </div>
+
       </div>
     </div>
   );

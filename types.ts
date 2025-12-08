@@ -1,5 +1,5 @@
 export interface WhatsAppStatus {
-  status: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'QR_READY';
+  status: string; // 'disconnected' | 'qr' | 'ready' | 'auth_failure'
   qrCode?: string; // Base64 or URL
 }
 

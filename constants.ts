@@ -1,7 +1,7 @@
-// In a real Vite app, this would be import.meta.env.VITE_API_BASE_URL
-// For Next.js compatibility mentioned in prompt context, we map it here.
-export const API_BASE_URL = 'https://minha-vps.com/api'; // Default fallback
-// export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+// In Vite, env vars are exposed via import.meta.env and should usually be prefixed with VITE_
+// We check for VITE_API_BASE_URL first, then fallback to the hardcoded VPS IP.
+
+export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://72.60.228.212:3001/api';
 
 export const MOCK_PREVIEW_DATA = {
   titulo: "Fone de Ouvido Bluetooth Sem Fio TWS i12",
