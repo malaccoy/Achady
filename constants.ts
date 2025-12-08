@@ -1,4 +1,4 @@
-// Updated to use relative path which is handled by Vercel serverless function (api/[...path].ts)
+// Relies on vercel.json rewrites (prod) or vite.config.ts proxy (dev)
 export const API_BASE_URL = "/api";
 
 export const MOCK_PREVIEW_DATA = {
