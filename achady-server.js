@@ -122,7 +122,7 @@ async function fetchShopeeOffer() {
   // 1. Tenta usar API Oficial se configurada
   if (shopeeConfig.appId && shopeeConfig.secret) {
     try {
-      // Endpoint GraphQL da Shopee (exemplo, verificar documentação atual)
+      // Endpoint GraphQL da Shopee
       const endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
 
       const query = `
@@ -148,8 +148,6 @@ async function fetchShopeeOffer() {
 
       if (data.errors && data.errors.length) {
         console.error('[SHOPEE API] Erro GraphQL:', JSON.stringify(data.errors));
-        // Se der erro na API, continua para o fallback de scraping?
-        // Vamos deixar cair no catch e ir pro scraping.
         throw new Error('Erro na resposta GraphQL');
       }
 
@@ -203,7 +201,6 @@ async function fetchShopeeOffer() {
 
     const $ = cheerio.load(html);
 
-    // ⚠️ IMPORTANTE: Ajuste os seletores conforme a página da Shopee que você for usar.
     const firstItem = $('a').first();
 
     if (!firstItem || !firstItem.attr('href')) {
@@ -315,11 +312,12 @@ function startAutomationLoop() {
 }
 
 // =======================
-// ROTAS: WhatsApp
+// ROUTER SETUP
 // =======================
+const router = express.Router();
 
-// Gerar/retornar QR Code
-app.get('/api/whatsapp/qr', async (req, res) => {
+// --- WHATSAPP ROUTES ---
+router.get('/whatsapp/qr', async (req, res) => {
   try {
     ensureClientInitialized();
 
@@ -335,15 +333,12 @@ app.get('/api/whatsapp/qr', async (req, res) => {
   }
 });
 
-// Status do WhatsApp
-app.get('/api/whatsapp/status', (req, res) => {
+router.get('/whatsapp/status', (req, res) => {
   return res.json({ status: whatsappStatus });
 });
 
-// =======================
-// ROTAS: Config Shopee API
-// =======================
-app.get('/api/shopee/config', (req, res) => {
+// --- SHOPEE CONFIG ROUTES ---
+router.get('/shopee/config', (req, res) => {
   res.json({
     hasCredentials: !!(shopeeConfig.appId && shopeeConfig.secret),
     appIdMasked: shopeeConfig.appId
@@ -352,141 +347,101 @@ app.get('/api/shopee/config', (req, res) => {
   });
 });
 
-app.post('/api/shopee/config', (req, res) => {
+router.post('/shopee/config', (req, res) => {
   const { appId, secret } = req.body;
-
   if (!appId || !secret) {
-    return res
-      .status(400)
-      .json({ error: 'appId e secret são obrigatórios' });
+    return res.status(400).json({ error: 'appId e secret são obrigatórios' });
   }
-
   shopeeConfig.appId = appId;
   shopeeConfig.secret = secret;
-
   console.log('[SHOPEE API] Credenciais atualizadas via painel.');
-
   res.json({ ok: true });
 });
 
-// =======================
-// ROTAS: Grupos
-// =======================
-
-// Listar grupos
-app.get('/api/groups', (req, res) => {
+// --- GROUP ROUTES ---
+router.get('/groups', (req, res) => {
   res.json(groups);
 });
 
-// Criar grupo (somente guarda o link por enquanto)
-app.post('/api/groups', (req, res) => {
+router.post('/groups', (req, res) => {
   const { link, name } = req.body;
-
   if (!link) {
     return res.status(400).json({ error: 'link é obrigatório' });
   }
-
   const id = Date.now().toString();
   const group = {
     id,
     link,
     name: name || 'Grupo sem nome',
     active: true,
-    chatId: null, // será preenchido quando der join via link
+    chatId: null,
   };
   groups.push(group);
-
   res.status(201).json(group);
 });
 
-// Ativar/desativar grupo
-app.patch('/api/groups/:id/toggle', (req, res) => {
+router.patch('/groups/:id/toggle', (req, res) => {
   const { id } = req.params;
   const group = groups.find((g) => g.id === id);
-
   if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
-
   group.active = !group.active;
   res.json(group);
 });
 
-// Deletar grupo
-app.delete('/api/groups/:id', (req, res) => {
+router.delete('/groups/:id', (req, res) => {
   const { id } = req.params;
   const exists = groups.some((g) => g.id === id);
   if (!exists) return res.status(404).json({ error: 'Grupo não encontrado' });
-
   groups = groups.filter((g) => g.id !== id);
   res.status(204).send();
 });
 
-// Entrar automaticamente no grupo via link e salvar chatId
-app.post('/api/groups/:id/join', async (req, res) => {
+router.post('/groups/:id/join', async (req, res) => {
   const { id } = req.params;
   const group = groups.find((g) => g.id === id);
-
-  if (!group) {
-    return res.status(404).json({ error: 'Grupo não encontrado' });
-  }
-
+  if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
   if (whatsappStatus !== 'ready') {
-    return res
-      .status(400)
-      .json({ error: 'WhatsApp não está pronto. Conecte primeiro pelo QR.' });
+    return res.status(400).json({ error: 'WhatsApp não está pronto. Conecte primeiro pelo QR.' });
   }
-
   try {
-    // Espera link no formato: https://chat.whatsapp.com/CODIGODOGRUPO
     const parts = group.link.split('/');
     const inviteCode = parts[parts.length - 1];
-
     const chat = await client.acceptInvite(inviteCode);
     group.chatId = chat.id._serialized;
-
-    res.json({
-      message: 'Entrou no grupo com sucesso.',
-      group,
-    });
+    res.json({ message: 'Entrou no grupo com sucesso.', group });
   } catch (err) {
     console.error('[WHATSAPP] Erro ao entrar no grupo:', err.message);
     res.status(500).json({ error: 'Erro ao entrar no grupo via link.' });
   }
 });
 
-// =======================
-// ROTAS: Automação
-// =======================
-app.get('/api/automation', (req, res) => {
+// --- AUTOMATION ROUTES ---
+router.get('/automation', (req, res) => {
   res.json(automationConfig);
 });
 
-app.patch('/api/automation/status', (req, res) => {
+router.patch('/automation/status', (req, res) => {
   const { ativo } = req.body;
   automationConfig.active = !!ativo;
   startAutomationLoop();
   res.json(automationConfig);
 });
 
-app.patch('/api/automation/interval', (req, res) => {
+router.patch('/automation/interval', (req, res) => {
   const { intervalMinutes } = req.body;
   const n = Number(intervalMinutes);
-
   if (!n || n <= 0) {
     return res.status(400).json({ error: 'intervalMinutes inválido' });
   }
-
   automationConfig.intervalMinutes = n;
   startAutomationLoop();
   res.json(automationConfig);
 });
 
-// Rodar uma vez (buscar ofertas e enviar)
-app.post('/api/automation/run-once', async (req, res) => {
+router.post('/automation/run-once', async (req, res) => {
   try {
     const offer = await fetchShopeeOffer();
-    if (!offer) {
-      return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
-    }
+    if (!offer) return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
     await sendOfferToAllActiveGroups(offer);
     res.json({ ok: true, offer });
   } catch (err) {
@@ -495,13 +450,10 @@ app.post('/api/automation/run-once', async (req, res) => {
   }
 });
 
-// Envio de teste (igual ao run-once, pensado para botão de "Enviar teste agora")
-app.post('/api/test/send', async (req, res) => {
+router.post('/test/send', async (req, res) => {
   try {
     const offer = await fetchShopeeOffer();
-    if (!offer) {
-      return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
-    }
+    if (!offer) return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
     await sendOfferToAllActiveGroups(offer);
     res.json({ ok: true, offer });
   } catch (err) {
@@ -510,30 +462,34 @@ app.post('/api/test/send', async (req, res) => {
   }
 });
 
-// =======================
-// ROTAS: Template de mensagem
-// =======================
-app.get('/api/template', (req, res) => {
+// --- TEMPLATE & LOGS ---
+router.get('/template', (req, res) => {
   res.json({ template });
 });
 
-app.post('/api/template', (req, res) => {
+router.post('/template', (req, res) => {
   const { template: newTemplate } = req.body;
-
-  if (!newTemplate) {
-    return res.status(400).json({ error: 'template é obrigatório' });
-  }
-
+  if (!newTemplate) return res.status(400).json({ error: 'template é obrigatório' });
   template = newTemplate;
   res.json({ template });
 });
 
-// =======================
-// ROTAS: Logs
-// =======================
-app.get('/api/logs', (req, res) => {
-  const last = logs.slice(-200); // últimos 200
+router.get('/logs', (req, res) => {
+  const last = logs.slice(-200);
   res.json(last);
+});
+
+// =======================
+// MOUNT ROUTER
+// =======================
+// Monta o roteador tanto em /api quanto na raiz
+// Isso resolve problemas de proxy que enviam /api/... ou /...
+app.use('/api', router);
+app.use('/', router);
+
+// Rota raiz para Health Check
+app.get('/', (req, res) => {
+  res.send('ACHADY Backend Online 🚀');
 });
 
 // =======================
