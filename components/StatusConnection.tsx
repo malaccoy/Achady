@@ -18,8 +18,8 @@ export const StatusConnection: React.FC = () => {
       if (res.status !== "qr") {
         setQrDataUrl(null);
       }
-    } catch (e) {
-      setError("Não foi possível obter o status do WhatsApp.");
+    } catch (e: any) {
+      setError(e.message || "Não foi possível obter o status do WhatsApp.");
     } finally {
       setLoadingStatus(false);
     }
@@ -36,8 +36,8 @@ export const StatusConnection: React.FC = () => {
       } else {
         setQrDataUrl(null);
       }
-    } catch (e) {
-      setError("Erro ao gerar QR Code.");
+    } catch (e: any) {
+      setError(e.message || "Erro ao gerar QR Code.");
     } finally {
       setLoadingQR(false);
     }
