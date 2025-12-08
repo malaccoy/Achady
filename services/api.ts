@@ -33,11 +33,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 // --- WhatsApp Connection ---
 
 export const getWhatsappStatus = async (): Promise<{ status: string }> => {
-  return request<{ status: string }>('/whatsapp/status');
+  const res = await fetch(`${API_BASE_URL}/whatsapp/status`);
+  if (!res.ok) throw new Error(`Erro na requisição: ${res.status}`);
+  return res.json() as Promise<{ status: string }>;
 };
 
 export const getWhatsappQR = async (): Promise<{ status: string; qr: string | null }> => {
-  return request<{ status: string; qr: string | null }>('/whatsapp/qr');
+  const res = await fetch(`${API_BASE_URL}/whatsapp/qr`);
+  if (!res.ok) throw new Error(`Erro na requisição: ${res.status}`);
+  return res.json() as Promise<{ status: string; qr: string | null }>;
 };
 
 // --- Groups ---
