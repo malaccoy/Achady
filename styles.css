@@ -1,0 +1,307 @@
+/* ---------- RESET BÁSICO ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Inter", sans-serif;
+  color: #e5e7eb;
+  background:
+    radial-gradient(circle at top left, #1e293b 0, transparent 50%),
+    radial-gradient(circle at bottom right, #0f172a 0, #020617 55%);
+  background-color: #0f172a;
+}
+
+/* ---------- LAYOUT GERAL ---------- */
+.achady-shell {
+  display: flex;
+  min-height: 100vh;
+  background: transparent;
+}
+
+/* ---------- SIDEBAR ---------- */
+.achady-sidebar {
+  width: 260px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
+  background: linear-gradient(180deg, #020617 0%, #020617 35%, #020617 100%);
+  backdrop-filter: blur(22px);
+}
+
+@media (max-width: 768px) {
+  .achady-sidebar {
+    position: fixed;
+    height: 100%;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .achady-sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+.achady-logo-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.achady-logo-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 30% 0, #fed7aa 0, #f97316 45%, #a855f7 100%);
+  font-weight: 700;
+  font-size: 18px;
+  color: #020617;
+}
+
+.achady-logo-title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+  color: #f8fafc;
+}
+
+.achady-logo-sub {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.achady-sidebar-badge {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 250, 252, 0.06);
+  background: radial-gradient(circle at 0 0, rgba(248, 250, 252, 0.12), transparent 55%);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #9ca3af;
+}
+
+.achady-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.achady-nav-item {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.08s ease;
+  text-decoration: none;
+}
+
+.achady-nav-item:hover {
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+  transform: translateX(1px);
+}
+
+.achady-nav-item--active {
+  background: linear-gradient(90deg, rgba(248, 113, 22, 0.18), transparent);
+  color: #f9fafb;
+}
+
+.achady-nav-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.achady-nav-item--active .achady-nav-dot {
+  background: #fb923c;
+  box-shadow: 0 0 0 5px rgba(248, 113, 22, 0.25);
+}
+
+.achady-sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.achady-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  color: #e2e8f0;
+}
+
+.achady-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.28);
+}
+
+.achady-version {
+  opacity: 0.7;
+}
+
+/* ---------- MAIN AREA ---------- */
+.achady-main {
+  flex: 1;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  height: 100vh;
+}
+
+.achady-main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.achady-main-title {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.achady-main-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.achady-main-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.achady-chip {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+}
+
+.achady-chip--accent {
+  border-color: rgba(248, 113, 22, 0.55);
+  background: radial-gradient(circle at 0 0, rgba(248, 113, 22, 0.18), rgba(15, 23, 42, 0.9));
+  color: #fed7aa;
+}
+
+.achady-main-content {
+  margin-top: 6px;
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: radial-gradient(circle at top left, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.4));
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------- COMPONENTS ---------- */
+
+.card {
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.8);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.table-wrapper {
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.6);
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead tr {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  background: rgba(2, 6, 23, 0.5);
+}
+
+th,
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  color: #cbd5e1;
+}
+
+tbody tr:hover {
+  background: rgba(148, 163, 184, 0.05);
+}
+
+/* Form Elements Overrides */
+input, select, textarea {
+  background-color: rgba(2, 6, 23, 0.5) !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  color: #f1f5f9 !important;
+  border-radius: 8px !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+}
+
+/* Mobile Menu Toggle */
+.mobile-menu-btn {
+  display: none;
+}
+@media(max-width: 768px) {
+  .mobile-menu-btn {
+    display: block;
+    background: transparent;
+    border: none;
+    color: white;
+  }
+}

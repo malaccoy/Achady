@@ -46,9 +46,9 @@ export const AutomationControl: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <Zap className="w-6 h-6 text-primary" />
+      <div className="card p-6">
+        <h2 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+          <Zap className="w-6 h-6 text-orange-500" />
           Controle de Automação
         </h2>
 
@@ -56,9 +56,9 @@ export const AutomationControl: React.FC = () => {
             <div className="space-y-6">
                 
                 {/* Switch Active */}
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
                     <div>
-                        <h3 className="font-medium text-slate-900">Status da Automação</h3>
+                        <h3 className="font-medium text-slate-200">Status da Automação</h3>
                         <p className="text-sm text-slate-500">Ativa ou desativa o envio automático</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -68,20 +68,20 @@ export const AutomationControl: React.FC = () => {
                             checked={active}
                             onChange={(e) => setActive(e.target.checked)}
                         />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                     </label>
                 </div>
 
                 {/* Interval Select */}
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <label className="block text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
                         Intervalo de Busca (Minutos)
                     </label>
                     <select 
                         value={interval}
                         onChange={(e) => setIntervalVal(Number(e.target.value))}
-                        className="w-full p-3 bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-primary outline-none"
+                        className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
                     >
                         <option value={5}>A cada 5 minutos</option>
                         <option value={15}>A cada 15 minutos</option>
@@ -91,7 +91,7 @@ export const AutomationControl: React.FC = () => {
                 </div>
 
                 {message && (
-                    <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-900/30 text-green-300 border border-green-900/50' : 'bg-red-900/30 text-red-300 border border-red-900/50'}`}>
                         {message.text}
                     </div>
                 )}
@@ -99,7 +99,7 @@ export const AutomationControl: React.FC = () => {
                 <button 
                     onClick={handleSave}
                     disabled={loading}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2 border border-slate-700"
                 >
                     {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
                     Salvar Configurações
@@ -107,24 +107,24 @@ export const AutomationControl: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-6">
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                    <h4 className="font-semibold text-blue-900 flex items-center gap-2 mb-2">
+                <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-900/40">
+                    <h4 className="font-semibold text-blue-300 flex items-center gap-2 mb-2">
                         <Info className="w-4 h-4" />
                         Como funciona?
                     </h4>
-                    <p className="text-sm text-blue-800 leading-relaxed">
+                    <p className="text-sm text-blue-200/80 leading-relaxed">
                         A automação busca ofertas da Shopee via scraping (usando Axios e HTML) diretamente na sua VPS. 
                         Se encontrar ofertas que batem com os critérios, ela envia automaticamente para todos os grupos ativos usando o modelo de mensagem configurado.
                     </p>
                 </div>
 
-                <div className="border-t border-slate-200 pt-6 mt-auto">
-                    <h3 className="font-medium text-slate-900 mb-2">Teste Manual</h3>
+                <div className="border-t border-slate-700/50 pt-6 mt-auto">
+                    <h3 className="font-medium text-slate-200 mb-2">Teste Manual</h3>
                     <p className="text-sm text-slate-500 mb-4">Força uma busca e envio imediato, independente do intervalo.</p>
                     <button 
                         onClick={handleRunNow}
                         disabled={runningOnce}
-                        className="w-full border-2 border-primary text-primary hover:bg-orange-50 py-3 rounded-md font-bold transition-colors flex items-center justify-center gap-2"
+                        className="w-full border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 py-3 rounded-md font-bold transition-colors flex items-center justify-center gap-2"
                     >
                         {runningOnce ? <Loader2 className="animate-spin w-5 h-5" /> : <Play className="w-5 h-5" />}
                         Rodar Agora (Buscar e Enviar)

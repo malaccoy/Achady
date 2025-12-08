@@ -1,78 +1,106 @@
-import React from 'react';
-import { Tab } from '../types';
-import { LayoutDashboard, Users, Zap, MessageSquare, List, Menu, X } from 'lucide-react';
+import React, { useState } from "react";
+import { Menu, X } from "lucide-react";
+
+export type MenuItemId =
+  | "status"
+  | "groups"
+  | "automation"
+  | "template"
+  | "logs";
 
 interface LayoutProps {
-  activeTab: Tab;
-  setActiveTab: (tab: Tab) => void;
+  activeSection: MenuItemId;
+  onChangeSection: (id: MenuItemId) => void;
   children: React.ReactNode;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ activeTab, setActiveTab, children }) => {
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
+  { id: "status", label: "Status & Conexão" },
+  { id: "groups", label: "Grupos WhatsApp" },
+  { id: "automation", label: "Automação" },
+  { id: "template", label: "Modelo de Mensagem" },
+  { id: "logs", label: "Logs de Envio" },
+];
 
-  const menuItems = [
-    { id: Tab.STATUS, label: 'Status & Conexão', icon: LayoutDashboard },
-    { id: Tab.GROUPS, label: 'Grupos WhatsApp', icon: Users },
-    { id: Tab.AUTOMATION, label: 'Automação', icon: Zap },
-    { id: Tab.TEMPLATE, label: 'Modelo de Mensagem', icon: MessageSquare },
-    { id: Tab.LOGS, label: 'Logs de Envio', icon: List },
-  ];
+export const Layout: React.FC<LayoutProps> = ({
+  activeSection,
+  onChangeSection,
+  children,
+}) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
-      
-      {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-20">
-        <h1 className="text-xl font-bold text-primary tracking-tight">ACHADY</h1>
-        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-slate-600">
-          {mobileMenuOpen ? <X /> : <Menu />}
-        </button>
-      </div>
-
-      {/* Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-10 w-64 bg-slate-900 text-white transform transition-transform duration-200 ease-in-out
-        md:relative md:translate-x-0
-        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <div className="p-6 border-b border-slate-800">
-            <h1 className="text-2xl font-black text-primary tracking-tighter">ACHADY</h1>
-            <p className="text-xs text-slate-400 mt-1">Bot Automation Manager</p>
+    <div className="achady-shell">
+      <aside className={`achady-sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
+        <div className="flex justify-between items-center md:block">
+            <div className="achady-logo-block">
+            <div className="achady-logo-circle">A</div>
+            <div>
+                <div className="achady-logo-title">ACHADY</div>
+                <div className="achady-logo-sub">Bot Automation</div>
+            </div>
+            </div>
+            <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}>
+                <X className="w-6 h-6" />
+            </button>
         </div>
-        <nav className="p-4 space-y-1">
-            {menuItems.map(item => (
-                <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 ${activeTab === item.id ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-                >
-                    <item.icon className="w-5 h-5" />
-                    <span className="font-medium text-sm">{item.label}</span>
-                </button>
-            ))}
+
+        <div className="achady-sidebar-badge mt-4 md:mt-0">Shopee Deals • Beta</div>
+
+        <nav className="achady-nav">
+          {MENU_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={
+                "achady-nav-item" +
+                (activeSection === item.id ? " achady-nav-item--active" : "")
+              }
+              onClick={() => {
+                  onChangeSection(item.id);
+                  setIsMobileMenuOpen(false);
+              }}
+            >
+              <span className="achady-nav-dot" />
+              <span>{item.label}</span>
+            </button>
+          ))}
         </nav>
+
+        <div className="achady-sidebar-footer">
+          <span className="achady-status-pill">
+            <span className="achady-status-indicator" />
+            Online
+          </span>
+          <span className="achady-version">v0.1 • VPS</span>
+        </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto h-[calc(100vh-65px)] md:h-screen">
-        <div className="max-w-5xl mx-auto">
-            <header className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-800">
-                    {menuItems.find(i => i.id === activeTab)?.label}
-                </h2>
-                <p className="text-slate-500 text-sm mt-1">Gerencie seu sistema de ofertas da Shopee.</p>
-            </header>
-            {children}
-        </div>
-      </main>
+      <main className="achady-main">
+        <header className="achady-main-header">
+          <div className="flex items-center gap-3">
+             <button className="mobile-menu-btn md:hidden" onClick={() => setIsMobileMenuOpen(true)}>
+                <Menu className="w-6 h-6 text-slate-300" />
+             </button>
+             <div>
+                <h1 className="achady-main-title">
+                    {MENU_ITEMS.find(i => i.id === activeSection)?.label || 'Dashboard'}
+                </h1>
+                <p className="achady-main-subtitle hidden md:block">
+                Controle a automação de ofertas da Shopee para seus grupos.
+                </p>
+             </div>
+          </div>
+          <div className="achady-main-header-actions">
+            <span className="achady-chip hidden md:inline-block">Auto Mode</span>
+            <span className="achady-chip achady-chip--accent">WhatsApp Bot</span>
+          </div>
+        </header>
 
-      {/* Overlay for mobile */}
-      {mobileMenuOpen && (
-        <div 
-            className="fixed inset-0 bg-black/50 z-0 md:hidden"
-            onClick={() => setMobileMenuOpen(false)}
-        ></div>
+        <section className="achady-main-content">{children}</section>
+      </main>
+      
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
     </div>
   );

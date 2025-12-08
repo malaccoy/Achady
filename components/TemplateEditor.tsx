@@ -46,18 +46,18 @@ export const TemplateEditor: React.FC = () => {
   return (
     <div className="grid lg:grid-cols-2 gap-6 h-full">
       {/* Editor Column */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 flex flex-col">
-        <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-          <MessageSquare className="w-6 h-6 text-primary" />
+      <div className="card p-6 flex flex-col">
+        <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+          <MessageSquare className="w-6 h-6 text-orange-500" />
           Modelo de Mensagem
         </h2>
         
-        <div className="mb-4 text-xs text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">
-            Variáveis disponíveis: <span className="font-mono text-primary">{`{{titulo}}`}</span>, <span className="font-mono text-primary">{`{{preco}}`}</span>, <span className="font-mono text-primary">{`{{precoOriginal}}`}</span>, <span className="font-mono text-primary">{`{{desconto}}`}</span>, <span className="font-mono text-primary">{`{{link}}`}</span>
+        <div className="mb-4 text-xs text-slate-400 bg-slate-900/30 p-2 rounded border border-slate-700/50">
+            Variáveis disponíveis: <span className="font-mono text-orange-400">{`{{titulo}}`}</span>, <span className="font-mono text-orange-400">{`{{preco}}`}</span>, <span className="font-mono text-orange-400">{`{{precoOriginal}}`}</span>, <span className="font-mono text-orange-400">{`{{desconto}}`}</span>, <span className="font-mono text-orange-400">{`{{link}}`}</span>
         </div>
 
         <textarea
-            className="flex-1 w-full p-4 border border-slate-300 rounded-md font-mono text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
+            className="flex-1 w-full p-4 bg-slate-900/50 border border-slate-700 rounded-md font-mono text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none text-slate-200"
             value={template}
             onChange={(e) => setTemplate(e.target.value)}
             placeholder="Digite sua mensagem aqui..."
@@ -68,7 +68,7 @@ export const TemplateEditor: React.FC = () => {
             <button 
                 onClick={handleSave}
                 disabled={loading}
-                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2 border border-slate-700"
             >
                 {loading ? <Loader2 className="animate-spin w-4 h-4"/> : <Save className="w-4 h-4" />}
                 Salvar Modelo
@@ -76,7 +76,7 @@ export const TemplateEditor: React.FC = () => {
             <button 
                 onClick={handleSendTest}
                 disabled={sendingTest}
-                className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+                className="flex-1 bg-slate-100 hover:bg-white text-slate-800 border border-slate-300 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
             >
                  {sendingTest ? <Loader2 className="animate-spin w-4 h-4 text-green-600"/> : <Send className="w-4 h-4 text-green-600" />}
                 Enviar Teste Agora
@@ -85,8 +85,8 @@ export const TemplateEditor: React.FC = () => {
       </div>
 
       {/* Preview Column */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-        <h2 className="text-xl font-bold text-slate-800 mb-4">Prévia (WhatsApp)</h2>
+      <div className="card p-6">
+        <h2 className="text-xl font-bold text-slate-100 mb-4">Prévia (WhatsApp)</h2>
         <div className="bg-[#e5ddd5] p-6 rounded-lg min-h-[400px] flex flex-col relative overflow-hidden">
             {/* Mock Whatsapp BG Pattern */}
             <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4a4a4a 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>

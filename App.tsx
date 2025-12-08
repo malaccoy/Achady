@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
-import { Layout } from './components/Layout';
+import { Layout, MenuItemId } from './components/Layout';
 import { StatusConnection } from './components/StatusConnection';
 import { GroupManager } from './components/GroupManager';
 import { AutomationControl } from './components/AutomationControl';
 import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
-import { Tab } from './types';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.STATUS);
+  const [activeSection, setActiveSection] = useState<MenuItemId>("status");
 
   const renderContent = () => {
-    switch (activeTab) {
-      case Tab.STATUS:
+    switch (activeSection) {
+      case "status":
         return <StatusConnection />;
-      case Tab.GROUPS:
+      case "groups":
         return <GroupManager />;
-      case Tab.AUTOMATION:
+      case "automation":
         return <AutomationControl />;
-      case Tab.TEMPLATE:
+      case "template":
         return <TemplateEditor />;
-      case Tab.LOGS:
+      case "logs":
         return <LogsTable />;
       default:
         return <StatusConnection />;
@@ -28,7 +27,7 @@ function App() {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout activeSection={activeSection} onChangeSection={setActiveSection}>
       {renderContent()}
     </Layout>
   );
