@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, MessageTemplate, ShopeeConfigResponse } from '../types';
+import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse } from '../types';
 
 // Helper for JSON requests
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -98,10 +98,6 @@ export const runAutomationOnce = async (): Promise<void> => {
   await request('/automation/run-once', { method: 'POST' });
 };
 
-export const sendTestMessage = async (): Promise<void> => {
-  await request('/test/send', { method: 'POST' });
-};
-
 // --- Shopee API ---
 
 export const getShopeeConfig = async (): Promise<ShopeeConfigResponse> => {
@@ -117,20 +113,32 @@ export const saveShopeeConfig = async (appId: string, secret: string): Promise<v
 
 // --- Template ---
 
-export const getTemplate = async (): Promise<MessageTemplate> => {
-  try {
-    const res = await request<{ template: string }>('/template');
-    return { content: res.template || '' };
-  } catch (e) {
-    return { content: '' };
+export const getTemplate = async (): Promise<{ template: string }> => {
+  const res = await fetch(`${API_BASE_URL}/template`);
+  if (!res.ok) throw new Error("Erro ao carregar modelo");
+  return res.json() as Promise<{ template: string }>;
+};
+
+export const saveTemplate = async (template: string): Promise<void> => {
+  const res = await fetch(`${API_BASE_URL}/template`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ template }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Erro ao salvar modelo");
   }
 };
 
-export const saveTemplate = async (content: string): Promise<void> => {
-  await request('/template', {
-    method: 'POST',
-    body: JSON.stringify({ template: content }),
+export const sendTestOffer = async (): Promise<void> => {
+  const res = await fetch(`${API_BASE_URL}/test/send`, {
+    method: "POST",
   });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Erro ao enviar teste");
+  }
 };
 
 // --- Logs ---

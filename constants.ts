@@ -7,9 +7,21 @@ export const API_BASE_URL =
   "http://72.60.228.212:3001/api";
 
 export const MOCK_PREVIEW_DATA = {
-  titulo: "Fone de Ouvido Bluetooth Sem Fio TWS i12",
-  preco: "R$ 29,90",
-  precoOriginal: "R$ 89,90",
-  desconto: "67%",
-  link: "https://shopee.com.br/produto-exemplo"
+  titulo: "Kit 10 Organizadores Acrílico Gaveta Geladeira",
+  preco: "R$ 50,19",
+  precoOriginal: "R$ 66,64",
+  desconto: "25%",
+  link: "https://s.shopee.com.br/exemplo"
 };
+
+export const DEFAULT_TEMPLATE = `A SHÓ TÁ DEMAISSSS 😱🔥
+
+🎁 {{titulo}}
+
+💸 De: {{precoOriginal}}
+🔥 Por: {{preco}} ({{desconto}} OFF)
+
+🛒 Compre aqui:
+{{link}}
+
+⚠️ O preço e disponibilidade do produto podem variar, pois as promoções são por tempo limitado.`;
