@@ -1,10 +1,5 @@
-// In Vite, env vars are exposed via import.meta.env and should usually be prefixed with VITE_
-// We check for VITE_API_BASE_URL first, then fallback to NEXT_PUBLIC_API_BASE_URL, then the hardcoded VPS IP.
-
-export const API_BASE_URL =
-  (import.meta as any).env?.VITE_API_BASE_URL ||
-  (import.meta as any).env?.NEXT_PUBLIC_API_BASE_URL ||
-  "http://72.60.228.212:3001/api";
+// Updated to use relative path which is handled by Vercel serverless function (api/[...path].ts)
+export const API_BASE_URL = "/api";
 
 export const MOCK_PREVIEW_DATA = {
   titulo: "Kit 10 Organizadores Acrílico Gaveta Geladeira",
