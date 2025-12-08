@@ -1,23 +1,44 @@
+// api/whatsapp/status.ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import http from "http";
 
-const VPS_API_BASE_URL = "http://72.60.228.212:3001/api";
+const VPS_HOST = "72.60.228.212";
+const VPS_PORT = 3001;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  try {
-    const upstream = await fetch(`${VPS_API_BASE_URL}/whatsapp/status`, {
-      method: "GET",
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  const options: http.RequestOptions = {
+    hostname: VPS_HOST,
+    port: VPS_PORT,
+    path: "/api/whatsapp/status",
+    method: "GET",
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    let data = "";
+
+    proxyRes.on("data", (chunk) => {
+      data += chunk;
     });
 
-    const text = await upstream.text();
+    proxyRes.on("end", () => {
+      const statusCode = proxyRes.statusCode ?? 500;
 
-    upstream.headers.forEach((value, key) => {
-      if (key.toLowerCase() === "content-length") return;
-      res.setHeader(key, value);
+      Object.entries(proxyRes.headers).forEach(([key, value]) => {
+        if (!value) return;
+        if (key.toLowerCase() === "content-length") return;
+        res.setHeader(key, value as string);
+      });
+
+      res.status(statusCode).send(data);
     });
+  });
 
-    res.status(upstream.status).send(text);
-  } catch (err: any) {
-    console.error("[Vercel Status Proxy] Erro:", err.message);
-    res.status(500).json({ error: "Erro ao acessar WhatsApp status na VPS." });
-  }
+  proxyReq.on("error", (err) => {
+    console.error("[Vercel Status Proxy] erro:", err);
+    res
+      .status(500)
+      .json({ error: "Erro ao acessar WhatsApp status na VPS." });
+  });
+
+  proxyReq.end();
 }
