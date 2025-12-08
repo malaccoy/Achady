@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAutomationConfig, setAutomationStatus, setAutomationInterval, runAutomationOnce } from '../services/api';
-import { Zap, Play, Clock, Save, Loader2, Info } from 'lucide-react';
+import { Zap, Play, Clock, Save, Loader2 } from 'lucide-react';
 
 export const AutomationControl: React.FC = () => {
   const [active, setActive] = useState(false);
@@ -107,20 +107,9 @@ export const AutomationControl: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-6">
-                <div className="bg-blue-900/20 p-4 rounded-lg border border-blue-900/40">
-                    <h4 className="font-semibold text-blue-300 flex items-center gap-2 mb-2">
-                        <Info className="w-4 h-4" />
-                        Como funciona?
-                    </h4>
-                    <p className="text-sm text-blue-200/80 leading-relaxed">
-                        A automação busca ofertas da Shopee via scraping (usando Axios e HTML) diretamente na sua VPS. 
-                        Se encontrar ofertas que batem com os critérios, ela envia automaticamente para todos os grupos ativos usando o modelo de mensagem configurado.
-                    </p>
-                </div>
-
                 <div className="border-t border-slate-700/50 pt-6 mt-auto">
                     <h3 className="font-medium text-slate-200 mb-2">Teste Manual</h3>
-                    <p className="text-sm text-slate-500 mb-4">Força uma busca e envio imediato, independente do intervalo.</p>
+                    <p className="text-sm text-slate-500 mb-4">Força uma busca e envio imediato via API Shopee, independente do intervalo.</p>
                     <button 
                         onClick={handleRunNow}
                         disabled={runningOnce}
