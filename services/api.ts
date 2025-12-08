@@ -4,25 +4,38 @@ import { Group, LogEntry, AutomationConfig, MessageTemplate, WhatsAppStatus } fr
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
 });
+
+// Helper to map backend status to frontend status
+const mapStatus = (s: string): WhatsAppStatus['status'] => {
+  switch (s) {
+    case 'ready': return 'CONNECTED';
+    case 'qr': return 'QR_READY';
+    case 'auth_failure': return 'DISCONNECTED';
+    case 'disconnected': return 'DISCONNECTED';
+    default: return 'DISCONNECTED';
+  }
+};
 
 // --- WhatsApp Connection ---
 
 export const getBotStatus = async (): Promise<WhatsAppStatus> => {
-  // Mocking response for demo if API fails/doesn't exist yet
   try {
     const res = await api.get('/whatsapp/status');
-    return res.data;
+    return { status: mapStatus(res.data.status) };
   } catch (error) {
-    console.warn("API Error, returning mock status", error);
+    console.warn("API Error", error);
     return { status: 'DISCONNECTED' };
   }
 };
 
-export const generateQrCode = async (): Promise<{ qrCode: string }> => {
+export const generateQrCode = async (): Promise<WhatsAppStatus> => {
   const res = await api.get('/whatsapp/qr');
-  return res.data;
+  return { 
+    status: mapStatus(res.data.status),
+    qrCode: res.data.qr 
+  };
 };
 
 // --- Groups ---
@@ -41,6 +54,10 @@ export const addGroup = async (link: string): Promise<Group> => {
   return res.data;
 };
 
+export const joinGroup = async (id: string): Promise<void> => {
+  await api.post(`/groups/${id}/join`);
+};
+
 export const toggleGroup = async (id: string): Promise<void> => {
   await api.patch(`/groups/${id}/toggle`);
 };
@@ -53,7 +70,7 @@ export const deleteGroup = async (id: string): Promise<void> => {
 
 export const getAutomationConfig = async (): Promise<AutomationConfig> => {
   try {
-    const res = await api.get('/automation/config');
+    const res = await api.get('/automation');
     return res.data;
   } catch (e) {
     return { active: false, intervalMinutes: 60 };
@@ -61,11 +78,11 @@ export const getAutomationConfig = async (): Promise<AutomationConfig> => {
 };
 
 export const setAutomationStatus = async (active: boolean): Promise<void> => {
-  await api.patch('/automation/status', { active });
+  await api.patch('/automation/status', { ativo: active });
 };
 
 export const setAutomationInterval = async (minutes: number): Promise<void> => {
-  await api.patch('/automation/interval', { minutes });
+  await api.patch('/automation/interval', { intervalMinutes: minutes });
 };
 
 export const runAutomationOnce = async (): Promise<void> => {
@@ -81,14 +98,14 @@ export const sendTestMessage = async (): Promise<void> => {
 export const getTemplate = async (): Promise<MessageTemplate> => {
   try {
     const res = await api.get('/template');
-    return res.data;
+    return { content: res.data.template || '' };
   } catch (e) {
-    return { content: "🔥 Oferta!\n{{titulo}}\n{{link}}" };
+    return { content: '' };
   }
 };
 
 export const saveTemplate = async (content: string): Promise<void> => {
-  await api.post('/template', { content });
+  await api.post('/template', { template: content });
 };
 
 // --- Logs ---
@@ -96,12 +113,18 @@ export const saveTemplate = async (content: string): Promise<void> => {
 export const getLogs = async (): Promise<LogEntry[]> => {
   try {
     const res = await api.get('/logs');
-    return res.data;
+    // Map backend logs to frontend interface
+    // Backend: { when, group, title, price, status, error }
+    return res.data.map((log: any, index: number) => ({
+      id: `${log.when}-${index}`,
+      timestamp: log.when,
+      groupName: log.group || 'Desconhecido',
+      productTitle: log.title || 'Sem título',
+      price: log.price || '-',
+      status: log.status === 'enviado' ? 'SENT' : 'ERROR',
+      errorMessage: log.error
+    })).reverse(); // Show newest first if backend sends oldest first
   } catch (e) {
-    // Return mock logs if API fails
-    return [
-      { id: '1', timestamp: new Date().toISOString(), groupName: 'Promoções 1', productTitle: 'Mouse Gamer Logitech', price: 'R$ 150', status: 'SENT' },
-      { id: '2', timestamp: new Date(Date.now() - 3600000).toISOString(), groupName: 'Ofertas Top', productTitle: 'Teclado Mecânico', price: 'R$ 200', status: 'ERROR', errorMessage: 'Timeout' },
-    ];
+    return [];
   }
 };

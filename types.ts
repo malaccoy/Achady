@@ -8,6 +8,7 @@ export interface Group {
   name: string;
   link: string;
   active: boolean;
+  chatId?: string;
 }
 
 export interface AutomationConfig {
