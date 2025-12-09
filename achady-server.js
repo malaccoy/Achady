@@ -65,7 +65,7 @@ function saveDb() {
     // Prune logs (keep last 200)
     if (db.logs.length > 200) db.logs = db.logs.slice(-200);
     
-    // Prune sentOffers (older than 72h) to keep DB size small but allow re-send after 3 days
+    // Prune sentOffers (older than 72h)
     const now = Date.now();
     const THREE_DAYS = 72 * 60 * 60 * 1000;
     
@@ -91,7 +91,6 @@ class ShopeeClient {
     this.endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
   }
 
-  // Assinatura correta: SHA256(AppId + Timestamp + Payload + Secret)
   generateSignature(payloadString, timestamp) {
     const factor = this.appId + timestamp + payloadString + this.secret;
     return crypto.createHash('sha256').update(factor).digest('hex');
@@ -105,7 +104,6 @@ class ShopeeClient {
     const timestamp = Math.floor(Date.now() / 1000);
     const body = { query, variables };
     
-    // IMPORTANTE: Stringify APENAS UMA VEZ para garantir consistência entre assinatura e envio
     const payloadString = JSON.stringify(body);
     const signature = this.generateSignature(payloadString, timestamp);
 
@@ -115,7 +113,6 @@ class ShopeeClient {
     };
 
     try {
-      // Timeout de 15s
       const { data } = await axios.post(this.endpoint, payloadString, { headers, timeout: 15000 });
       
       if (data.errors) {
@@ -135,8 +132,7 @@ class ShopeeClient {
   }
 
   async searchOffers(keyword, limit = 10) {
-    // sortType 5 = COMMISSION_RATE_DESC
-    // IMPORTANTE: Campo correto é productName, não name
+    // CORREÇÃO C: Query usando productName (não name) explicitamente
     const query = `
       query($keyword: String, $limit: Int, $sortType: Int) {
         productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) {
@@ -171,11 +167,9 @@ class ShopeeClient {
   }
 }
 
-// Helper para formatar oferta para o template
 function formatOfferData(node, shortLink) {
   let priceDisplay = node.price ? `R$ ${node.price}` : '';
   
-  // Lógica de range de preço
   if (node.priceMin && node.priceMax && node.priceMin !== node.priceMax) {
       priceDisplay = `R$ ${node.priceMin} - R$ ${node.priceMax}`;
   } else if (node.priceMin) {
@@ -184,10 +178,13 @@ function formatOfferData(node, shortLink) {
   
   const originalPrice = node.priceMax ? `R$ ${(Number(node.priceMax) * 1.2).toFixed(2)}` : ''; 
 
+  // Validação para evitar "fake offer" ou undefined
+  const title = node.productName || 'Oferta Shopee'; 
+
   return {
-    title: node.productName || node.name || 'Produto Shopee', // Fallback para productName
+    title: title,
     price: priceDisplay,
-    precoOriginal: originalPrice, // compatibilidade com template antigo
+    precoOriginal: originalPrice,
     originalPrice: originalPrice,
     discount: node.commissionRate ? `Até ${Math.floor(Number(node.commissionRate) * 100)}% Cashback` : 'Oferta Top',
     link: shortLink || node.offerLink,
@@ -206,7 +203,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'achady_persist', dataPath: DATA_DIR }),
   puppeteer: {
     headless: true,
-    // Argumentos críticos para rodar em VPS/Docker
+    // CORREÇÃO D: Args robustos para VPS Linux (Hostinger/DigitalOcean)
     args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
@@ -215,7 +212,9 @@ const client = new Client({
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-software-rasterizer'
     ],
   },
 });
@@ -265,6 +264,8 @@ function ensureClientInitialized() {
 // AUTOMATION CORE
 // =======================
 let automationTimer = null;
+// CORREÇÃO B: Lock para evitar dupla execução do Scheduler
+let isJobRunning = false;
 
 function renderMessage(template, offer) {
   return template
@@ -276,145 +277,157 @@ function renderMessage(template, offer) {
 }
 
 async function processAutomationRun() {
-  console.log(`[JOB ${new Date().toLocaleTimeString()}] Iniciando rodada de automação...`);
-  
-  if (!db.shopeeConfig.appId || !db.shopeeConfig.secret) {
-    console.log('[JOB] Abortando: Credenciais Shopee não configuradas.');
-    return;
+  // CORREÇÃO B: Lock check
+  if (isJobRunning) {
+      console.log(`[JOB ${new Date().toLocaleTimeString()}] Skip: Job anterior ainda rodando.`);
+      return;
   }
+  isJobRunning = true;
 
-  const activeGroups = db.groups.filter(g => g.active && g.chatId);
-  if (activeGroups.length === 0) {
-    console.log('[JOB] Nenhum grupo ativo configurado ou bot não entrou nos grupos.');
-    return;
-  }
+  try {
+    console.log(`[JOB ${new Date().toLocaleTimeString()}] Iniciando rodada de automação...`);
+    
+    if (!db.shopeeConfig.appId || !db.shopeeConfig.secret) {
+      console.log('[JOB] Abortando: Credenciais Shopee não configuradas.');
+      return;
+    }
 
-  const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
-  // Default Global Keywords if group specific ones are missing
-  const globalKeywords = db.automationConfig.keywords || ['oferta'];
-  
-  for (const group of activeGroups) {
-    try {
-      // 1. Determine Keyword
-      let pool = group.keywords && group.keywords.length > 0 ? group.keywords : globalKeywords;
-      // Filter out empty strings
-      pool = pool.filter(k => k && k.trim().length > 0);
-      if(pool.length === 0) pool = ['promoção']; // Ultimate fallback
+    // Apenas grupos ativos que JÁ TEM chatId
+    const activeGroups = db.groups.filter(g => g.active);
+    
+    if (activeGroups.length === 0) {
+      console.log('[JOB] Nenhum grupo ativo configurado.');
+      return;
+    }
 
-      const keyword = pool[Math.floor(Math.random() * pool.length)];
-      console.log(`[JOB] Grupo "${group.name}": buscando por "${keyword}"...`);
+    const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+    const globalKeywords = db.automationConfig.keywords || ['oferta'];
+    
+    for (const group of activeGroups) {
+      // CORREÇÃO A: Guard clause para chatId ausente
+      if (!group.chatId) {
+          console.warn(`[JOB] Grupo "${group.name}" está ativo mas sem Chat ID (bot não conectado). Pulando.`);
+          continue;
+      }
 
-      const candidates = await shopee.searchOffers(keyword, 30); // Search 30 to have room for filtering
-      
-      const sentHistory = db.sentOffers[group.id] || [];
-      const sentIds = new Set(sentHistory.map(h => String(h.itemId)));
-      
-      // 2. Filter (Dedupe AND Blacklist)
-      const negativeKeywords = (group.negativeKeywords || []).map(k => k.toLowerCase());
-      
-      const newOffers = candidates.filter(node => {
-        // Check Dedupe
-        if (sentIds.has(String(node.itemId))) return false;
+      try {
+        let pool = group.keywords && group.keywords.length > 0 ? group.keywords : globalKeywords;
+        pool = pool.filter(k => k && k.trim().length > 0);
+        if(pool.length === 0) pool = ['promoção'];
+
+        const keyword = pool[Math.floor(Math.random() * pool.length)];
+        console.log(`[JOB] Grupo "${group.name}": buscando por "${keyword}"...`);
+
+        // Busca API
+        const candidates = await shopee.searchOffers(keyword, 30);
         
-        // Check Blacklist
-        const title = (node.productName || node.name || '').toLowerCase();
-        const isBlacklisted = negativeKeywords.some(badWord => title.includes(badWord));
+        // Dedupe logic
+        const sentHistory = db.sentOffers[group.id] || [];
+        const sentIds = new Set(sentHistory.map(h => String(h.itemId)));
+        const negativeKeywords = (group.negativeKeywords || []).map(k => k.toLowerCase());
         
-        if (isBlacklisted) {
-           console.log(`[JOB] Filtrado (Blacklist): "${title}" contém "${negativeKeywords.find(k => title.includes(k))}"`);
-           return false;
+        const newOffers = candidates.filter(node => {
+          if (sentIds.has(String(node.itemId))) return false;
+          
+          const title = (node.productName || node.name || '').toLowerCase();
+          // CORREÇÃO D: Evitar ofertas sem título (falha de API)
+          if (!title || title.trim() === '') return false;
+
+          const isBlacklisted = negativeKeywords.some(badWord => title.includes(badWord));
+          if (isBlacklisted) return false;
+
+          return true;
+        });
+
+        if (newOffers.length === 0) {
+          console.log(`[JOB] Grupo "${group.name}": Sem ofertas novas para "${keyword}".`);
+          continue;
         }
 
-        return true;
-      });
+        const selectedNode = newOffers[0];
+        
+        let finalLink = selectedNode.offerLink;
+        try {
+          const short = await shopee.generateShortLink(selectedNode.offerLink);
+          if (short) finalLink = short;
+        } catch (err) {
+          console.error('[JOB] Erro shortlink:', err.message);
+        }
 
-      if (newOffers.length === 0) {
-        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta válida (ou não enviada) encontrada para "${keyword}".`);
-        continue;
+        const offerData = formatOfferData(selectedNode, finalLink);
+        const messageBody = renderMessage(db.template, offerData);
+        
+        // Verificação final antes do envio
+        if (whatsappStatus === 'ready') {
+            let media = null;
+            if (offerData.imageUrl) {
+               try {
+                 const imgRes = await axios.get(offerData.imageUrl, { responseType: 'arraybuffer', timeout: 5000 });
+                 const b64 = Buffer.from(imgRes.data, 'binary').toString('base64');
+                 media = new MessageMedia('image/jpeg', b64, 'oferta.jpg');
+               } catch(err) {
+                 console.warn('[JOB] Falha imagem:', err.message);
+               }
+            }
+
+            if (media) {
+               await client.sendMessage(group.chatId, media, { caption: messageBody });
+            } else {
+               await client.sendMessage(group.chatId, messageBody);
+            }
+            
+            console.log(`[JOB] ENVIADO para ${group.name} (${offerData.title})`);
+
+            db.logs.push({
+               id: Date.now().toString(),
+               when: new Date().toISOString(),
+               group: group.name,
+               productTitle: offerData.title,
+               price: offerData.price,
+               status: 'SENT'
+            });
+
+            if (!db.sentOffers[group.id]) db.sentOffers[group.id] = [];
+            db.sentOffers[group.id].push({
+               itemId: String(selectedNode.itemId),
+               timestamp: Date.now(),
+               keyword: keyword
+            });
+            
+            saveDb();
+            // Pequeno delay entre grupos para não floodar
+            await new Promise(r => setTimeout(r, 2000));
+
+        } else {
+           console.warn('[JOB] WhatsApp desconectado/instável. Pulando envio.');
+           break; 
+        }
+
+      } catch (e) {
+        console.error(`[JOB] Erro no grupo ${group.name}:`, e.message);
+        // Não salva log de erro para coisas triviais para não poluir
       }
-
-      const selectedNode = newOffers[0];
-      
-      let finalLink = selectedNode.offerLink;
-      try {
-        const short = await shopee.generateShortLink(selectedNode.offerLink);
-        if (short) finalLink = short;
-      } catch (err) {
-        console.error('[JOB] Erro shortlink:', err.message);
-      }
-
-      const offerData = formatOfferData(selectedNode, finalLink);
-      const messageBody = renderMessage(db.template, offerData);
-      
-      if (whatsappStatus === 'ready') {
-          let media = null;
-          if (offerData.imageUrl) {
-             try {
-               const imgRes = await axios.get(offerData.imageUrl, { responseType: 'arraybuffer', timeout: 5000 });
-               const b64 = Buffer.from(imgRes.data, 'binary').toString('base64');
-               media = new MessageMedia('image/jpeg', b64, 'oferta.jpg');
-             } catch(err) {
-               console.warn('[JOB] Falha imagem:', err.message);
-             }
-          }
-
-          if (media) {
-             await client.sendMessage(group.chatId, media, { caption: messageBody });
-          } else {
-             await client.sendMessage(group.chatId, messageBody);
-          }
-          
-          console.log(`[JOB] ENVIADO para ${group.name} (${offerData.title})`);
-
-          db.logs.push({
-             id: Date.now().toString(),
-             when: new Date().toISOString(),
-             group: group.name,
-             productTitle: offerData.title,
-             price: offerData.price,
-             status: 'SENT'
-          });
-
-          if (!db.sentOffers[group.id]) db.sentOffers[group.id] = [];
-          db.sentOffers[group.id].push({
-             itemId: String(selectedNode.itemId),
-             timestamp: Date.now(),
-             keyword: keyword
-          });
-          
-          saveDb();
-          await new Promise(r => setTimeout(r, 2000));
-
-      } else {
-         console.warn('[JOB] WhatsApp desconectado. Pulando envio.');
-         break;
-      }
-
-    } catch (e) {
-      console.error(`[JOB] Erro no grupo ${group.name}:`, e.message);
-      db.logs.push({
-         id: Date.now().toString(),
-         when: new Date().toISOString(),
-         group: group.name,
-         productTitle: 'Erro',
-         price: '-',
-         status: 'ERROR',
-         errorMessage: e.message
-      });
-      saveDb();
     }
+  } catch (err) {
+      console.error('[JOB] Erro fatal no worker:', err);
+  } finally {
+      // CORREÇÃO B: Release lock
+      isJobRunning = false;
   }
 }
 
 function startScheduler() {
-  if (automationTimer) clearInterval(automationTimer);
+  if (automationTimer) {
+      clearInterval(automationTimer);
+      automationTimer = null;
+  }
   
   if (!db.automationConfig.active) {
     console.log('[SCHEDULER] Automação pausada.');
     return;
   }
 
-  const minutes = db.automationConfig.intervalMinutes || 60;
+  const minutes = Math.max(1, Number(db.automationConfig.intervalMinutes) || 60);
   console.log(`[SCHEDULER] Agendado para rodar a cada ${minutes} minutos.`);
   
   automationTimer = setInterval(processAutomationRun, minutes * 60 * 1000);
@@ -464,7 +477,6 @@ router.put('/groups/:id', (req, res) => {
     const group = db.groups.find(g => g.id === req.params.id);
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
     
-    // Update allowed fields
     if (req.body.name) group.name = req.body.name;
     if (req.body.keywords) group.keywords = req.body.keywords;
     if (req.body.negativeKeywords) group.negativeKeywords = req.body.negativeKeywords;
@@ -498,27 +510,41 @@ router.post('/groups/:id/join', async (req, res) => {
     if (!codeMatch) throw new Error('Link inválido.');
     
     const inviteCode = codeMatch[1];
-    let chatId;
+    let chatId = null;
+    
     try {
         const result = await client.acceptInvite(inviteCode);
-        // Proteção extra contra result undefined/null
-        if (!result) throw new Error('Falha ao entrar: resposta vazia do WhatsApp.');
         
-        chatId = typeof result === 'string' ? result : (result?.id?._serialized || result?._serialized);
+        // CORREÇÃO A: Guard clause para erro de _serialized
+        if (!result) {
+            console.warn('[JOIN] Accept invite retornou vazio. Tentando pegar ID via metadata...');
+        } else {
+             // Tenta extrair ID de várias formas possíveis que a lib retorna
+             chatId = typeof result === 'string' ? result : (result?.id?._serialized || result?._serialized || result?.id);
+        }
+
+        if (!chatId) {
+             // Fallback: tentar pegar ID via getInviteInfo
+             const metadata = await client.getInviteInfo(inviteCode);
+             if (metadata && metadata.id) {
+                 chatId = metadata.id._serialized;
+             }
+        }
     } catch (e) {
+        // Se erro for "already in group", tentamos pegar o ID igual
         if (e.message?.includes('already')) {
              try {
                 const metadata = await client.getInviteInfo(inviteCode);
                 if (metadata?.id) chatId = metadata.id._serialized;
              } catch(errMeta) {
-                 console.error('Erro ao obter info do convite:', errMeta);
+                 console.error('Erro ao obter info do convite (already):', errMeta);
              }
         } else {
             throw e;
         }
     }
 
-    if (!chatId) throw new Error('Falha ao obter ID do grupo (ChatId indefinido).');
+    if (!chatId) throw new Error('Não foi possível obter o Chat ID do grupo. Tente remover e adicionar novamente.');
 
     group.chatId = chatId;
     try {
@@ -552,6 +578,7 @@ router.patch('/automation/interval', (req, res) => {
 });
 
 router.post('/automation/run-once', async (req, res) => {
+  // Dispara sem await para não bloquear a resposta, mas o lock isJobRunning cuidará da concorrência
   processAutomationRun().catch(e => console.error(e));
   res.json({ ok: true });
 });
@@ -577,12 +604,24 @@ router.post('/shopee/test', async (req, res) => {
   
   try {
     const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+    // CORREÇÃO C: Teste usa a mesma lógica segura do worker
     const offers = await shopee.searchOffers('teste', 1);
+    
+    if (offers.length === 0) {
+        return res.json({ ok: true, message: 'Conexão OK, mas nenhuma oferta retornada para "teste".', count: 0 });
+    }
+
+    const item = offers[0];
+    const safeItem = {
+        name: item.productName || item.name || 'Sem nome', // Garante compatibilidade
+        price: item.price
+    };
+
     res.json({ 
         ok: true, 
         message: 'Conexão bem sucedida!', 
         count: offers.length,
-        sample: offers[0] ? { name: offers[0].productName || offers[0].name, price: offers[0].price } : null
+        sample: safeItem
     });
   } catch (e) {
     console.error('Shopee Test Error:', e.message);
