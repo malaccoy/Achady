@@ -7,14 +7,84 @@ const qrcode = require('qrcode');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// SECURITY: Trust Proxy para funcionar atrás do Nginx (Rate Limit e Logs corretos)
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
+
+// SECURITY: Rate Limiter para rotas sensíveis
+const sensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 50, // limite de 50 requisições por IP
+  message: { error: 'Muitas tentativas. Tente novamente mais tarde.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const PORT = process.env.PORT || 3001;
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'achady_db.json');
+
+// =======================
+// ENCRYPTION HELPERS (AES-256-GCM)
+// =======================
+const ALGORITHM = 'aes-256-gcm';
+
+function getMasterKey() {
+  if (!process.env.MASTER_KEY) return null;
+  // Garante chave de 32 bytes via scrypt para robustez
+  return crypto.scryptSync(process.env.MASTER_KEY, 'achady_salt', 32);
+}
+
+function encrypt(text) {
+  const key = getMasterKey();
+  if (!key) throw new Error('MASTER_KEY não configurada no servidor (.env)');
+  
+  const iv = crypto.randomBytes(12); // GCM recomenda 12 bytes IV
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  
+  // Formato: enc:IV:AuthTag:EncryptedContent
+  return `enc:${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decrypt(text) {
+  // Retrocompatibilidade: Se não começar com 'enc:', assume texto plano (legado)
+  if (!text || !text.startsWith('enc:')) return text;
+
+  const key = getMasterKey();
+  if (!key) {
+    console.error('[SECURITY] Tentativa de descriptografar sem MASTER_KEY.');
+    return null; 
+  }
+
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 4) throw new Error('Formato inválido');
+    
+    const iv = Buffer.from(parts[1], 'hex');
+    const authTag = Buffer.from(parts[2], 'hex');
+    const encryptedText = parts[3];
+    
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    console.error('[SECURITY] Falha na descriptografia:', e.message);
+    return null; // Falha segura
+  }
+}
 
 // =======================
 // PERSISTENCE LAYER (JSON DB)
@@ -309,7 +379,14 @@ async function processAutomationRun() {
       return;
     }
 
-    const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+    // SECURITY: Descriptografar secret apenas em tempo de execução
+    const plainSecret = decrypt(db.shopeeConfig.secret);
+    if (!plainSecret) {
+        console.error('[JOB] Falha ao descriptografar Secret Shopee. Verifique MASTER_KEY.');
+        return;
+    }
+
+    const shopee = new ShopeeClient(db.shopeeConfig.appId, plainSecret);
     const globalKeywords = db.automationConfig.keywords || ['oferta'];
     
     for (const group of activeGroups) {
@@ -595,24 +672,44 @@ router.post('/automation/run-once', async (req, res) => {
 router.get('/shopee/config', (req, res) => {
   const hasCreds = !!(db.shopeeConfig.appId && db.shopeeConfig.secret);
   const masked = hasCreds ? `${db.shopeeConfig.appId.slice(0,3)}****` : null;
+  // SECURITY: Nunca retorne o secret, nem criptografado.
   res.json({ hasCredentials: hasCreds, appIdMasked: masked });
 });
 
-router.post('/shopee/config', (req, res) => {
+// SECURITY: Rate limit aplicado apenas nesta rota de configuração
+router.post('/shopee/config', sensitiveLimiter, (req, res) => {
   const { appId, secret } = req.body;
   if (!appId || !secret) return res.status(400).json({ error: 'Dados inválidos' });
-  db.shopeeConfig = { appId, secret };
-  saveDb();
-  res.json({ ok: true });
+  
+  // Validation
+  if (String(appId).length < 5 || String(secret).length < 20) {
+      return res.status(400).json({ error: 'Formato de AppID ou Secret inválido.' });
+  }
+
+  try {
+    // SECURITY: Encrypt secret before saving
+    const encryptedSecret = encrypt(secret.trim());
+    db.shopeeConfig = { appId: appId.trim(), secret: encryptedSecret };
+    saveDb();
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[CONFIG] Erro de criptografia:', e.message);
+    res.status(500).json({ error: 'Erro ao salvar credenciais com segurança. Verifique MASTER_KEY no servidor.' });
+  }
 });
 
-router.post('/shopee/test', async (req, res) => {
+// SECURITY: Rate limit aplicado também na rota de teste
+router.post('/shopee/test', sensitiveLimiter, async (req, res) => {
   if (!db.shopeeConfig.appId || !db.shopeeConfig.secret) {
     return res.status(400).json({ error: 'Credenciais não configuradas' });
   }
   
   try {
-    const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+    // SECURITY: Decrypt
+    const plainSecret = decrypt(db.shopeeConfig.secret);
+    if (!plainSecret) throw new Error('Falha ao descriptografar credenciais.');
+
+    const shopee = new ShopeeClient(db.shopeeConfig.appId, plainSecret);
     // CORREÇÃO C: Teste usa a mesma lógica segura do worker
     const offers = await shopee.searchOffers('teste', 1);
     
@@ -633,6 +730,7 @@ router.post('/shopee/test', async (req, res) => {
         sample: safeItem
     });
   } catch (e) {
+    // SECURITY: Não logar o secret no erro
     console.error('Shopee Test Error:', e.message);
     res.status(500).json({ error: e.message });
   }
