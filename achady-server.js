@@ -135,14 +135,14 @@ class ShopeeClient {
   }
 
   async searchOffers(keyword, limit = 10) {
-    // sortType 5 = COMMISSION_RATE_DESC (High commission first)
-    // sortType 2 = POPULARITY
+    // sortType 5 = COMMISSION_RATE_DESC
+    // IMPORTANTE: Campo correto é productName, não name
     const query = `
       query($keyword: String, $limit: Int, $sortType: Int) {
         productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) {
           nodes {
             itemId
-            name
+            productName
             imageUrl
             price
             priceMin
@@ -185,7 +185,7 @@ function formatOfferData(node, shortLink) {
   const originalPrice = node.priceMax ? `R$ ${(Number(node.priceMax) * 1.2).toFixed(2)}` : ''; 
 
   return {
-    title: node.name,
+    title: node.productName || node.name || 'Produto Shopee', // Fallback para productName
     price: priceDisplay,
     precoOriginal: originalPrice, // compatibilidade com template antigo
     originalPrice: originalPrice,
@@ -214,7 +214,7 @@ const client = new Client({
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--single-process', // Pode ajudar em VPS com pouca RAM
+        '--single-process',
         '--disable-gpu'
     ],
   },
@@ -252,7 +252,7 @@ function ensureClientInitialized() {
     try {
         client.initialize().catch(err => {
             console.error('[WHATSAPP] Erro fatal na inicialização do Puppeteer:', err.message);
-            console.error('[DICA] Verifique se as dependências do Linux estão instaladas: libatk, libnss3, etc.');
+            console.error('[DICA] Execute no terminal: sudo apt-get update && sudo apt-get install -y libatk1.0-0 libatk-bridge2.0-0 libnss3 libgbm1');
         });
         clientInitialized = true;
     } catch (e) {
@@ -462,17 +462,24 @@ router.post('/groups/:id/join', async (req, res) => {
     let chatId;
     try {
         const result = await client.acceptInvite(inviteCode);
+        // Proteção extra contra result undefined/null
+        if (!result) throw new Error('Falha ao entrar: resposta vazia do WhatsApp.');
+        
         chatId = typeof result === 'string' ? result : (result?.id?._serialized || result?._serialized);
     } catch (e) {
         if (e.message?.includes('already')) {
-             const metadata = await client.getInviteInfo(inviteCode);
-             if (metadata?.id) chatId = metadata.id._serialized;
+             try {
+                const metadata = await client.getInviteInfo(inviteCode);
+                if (metadata?.id) chatId = metadata.id._serialized;
+             } catch(errMeta) {
+                 console.error('Erro ao obter info do convite:', errMeta);
+             }
         } else {
             throw e;
         }
     }
 
-    if (!chatId) throw new Error('Falha ao obter ID do grupo.');
+    if (!chatId) throw new Error('Falha ao obter ID do grupo (ChatId indefinido).');
 
     group.chatId = chatId;
     try {
@@ -536,7 +543,7 @@ router.post('/shopee/test', async (req, res) => {
         ok: true, 
         message: 'Conexão bem sucedida!', 
         count: offers.length,
-        sample: offers[0] ? { name: offers[0].name, price: offers[0].price } : null
+        sample: offers[0] ? { name: offers[0].productName || offers[0].name, price: offers[0].price } : null
     });
   } catch (e) {
     console.error('Shopee Test Error:', e.message);
