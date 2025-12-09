@@ -115,8 +115,8 @@ class ShopeeClient {
     };
 
     try {
-      // Timeout de 10s para evitar travar o job
-      const { data } = await axios.post(this.endpoint, payloadString, { headers, timeout: 10000 });
+      // Timeout de 15s
+      const { data } = await axios.post(this.endpoint, payloadString, { headers, timeout: 15000 });
       
       if (data.errors) {
         const errorMsg = data.errors.map(e => e.message).join(', ');
@@ -125,11 +125,10 @@ class ShopeeClient {
       return data.data;
     } catch (error) {
       if (error.response) {
-        // Tratamento de erros comuns
-        if (error.response.data && error.response.data.errors) {
-             throw new Error(`Shopee API Error: ${JSON.stringify(error.response.data.errors)}`);
-        }
-        throw new Error(`Shopee API Error (${error.response.status}): ${error.message}`);
+        const errDetail = error.response.data && error.response.data.errors 
+            ? JSON.stringify(error.response.data.errors) 
+            : error.message;
+        throw new Error(`Shopee API Error (${error.response.status}): ${errDetail}`);
       }
       throw error;
     }
@@ -155,7 +154,6 @@ class ShopeeClient {
         }
       }
     `;
-    // We fetch a bit more (10) to have candidates for deduplication logic
     const result = await this.request(query, { keyword, limit, sortType: 5 });
     return result?.productOfferV2?.nodes || [];
   }
@@ -184,9 +182,7 @@ function formatOfferData(node, shortLink) {
       priceDisplay = `R$ ${node.priceMin}`;
   }
   
-  // Se preço original não vem da API, simulamos algo ou deixamos vazio
-  // A API V2 nem sempre retorna originalPrice
-  const originalPrice = node.priceMax ? `R$ ${(node.priceMax * 1.2).toFixed(2)}` : ''; 
+  const originalPrice = node.priceMax ? `R$ ${(Number(node.priceMax) * 1.2).toFixed(2)}` : ''; 
 
   return {
     title: node.name,
@@ -210,7 +206,17 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'achady_persist', dataPath: DATA_DIR }),
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    // Argumentos críticos para rodar em VPS/Docker
+    args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process', // Pode ajudar em VPS com pouca RAM
+        '--disable-gpu'
+    ],
   },
 });
 
@@ -243,8 +249,15 @@ client.on('disconnected', (reason) => {
 function ensureClientInitialized() {
   if (!clientInitialized) {
     console.log('[WHATSAPP] Inicializando cliente...');
-    client.initialize();
-    clientInitialized = true;
+    try {
+        client.initialize().catch(err => {
+            console.error('[WHATSAPP] Erro fatal na inicialização do Puppeteer:', err.message);
+            console.error('[DICA] Verifique se as dependências do Linux estão instaladas: libatk, libnss3, etc.');
+        });
+        clientInitialized = true;
+    } catch (e) {
+        console.error('[WHATSAPP] Erro síncrono init:', e);
+    }
   }
 }
 
@@ -272,55 +285,44 @@ async function processAutomationRun() {
 
   const activeGroups = db.groups.filter(g => g.active && g.chatId);
   if (activeGroups.length === 0) {
-    console.log('[JOB] Nenhum grupo ativo configurado.');
+    console.log('[JOB] Nenhum grupo ativo configurado ou bot não entrou nos grupos.');
     return;
   }
 
   const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
-  
-  // Lista de keywords para rotacionar
   const keywords = db.automationConfig.keywords || ['oferta'];
   
-  // Strategy: 1 offer per group per run
   for (const group of activeGroups) {
     try {
-      // Pick a random keyword for variety
       const keyword = keywords[Math.floor(Math.random() * keywords.length)];
       console.log(`[JOB] Grupo "${group.name}": buscando por "${keyword}"...`);
 
-      // Search candidates
       const candidates = await shopee.searchOffers(keyword, 20);
       
-      // DEDUPLICATION: Filter out items sent in the last 72h
       const sentHistory = db.sentOffers[group.id] || [];
       const sentIds = new Set(sentHistory.map(h => String(h.itemId)));
       
       const newOffers = candidates.filter(node => !sentIds.has(String(node.itemId)));
 
       if (newOffers.length === 0) {
-        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta inédita encontrada para "${keyword}".`);
+        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta inédita encontrada.`);
         continue;
       }
 
-      // Pick the best one (first one is best ranked by commission due to sortType=5)
       const selectedNode = newOffers[0];
       
-      // Generate Short Link
       let finalLink = selectedNode.offerLink;
       try {
         const short = await shopee.generateShortLink(selectedNode.offerLink);
         if (short) finalLink = short;
       } catch (err) {
-        console.error('[JOB] Erro ao gerar shortlink (usando original):', err.message);
+        console.error('[JOB] Erro shortlink:', err.message);
       }
 
-      // Render
       const offerData = formatOfferData(selectedNode, finalLink);
       const messageBody = renderMessage(db.template, offerData);
       
-      // Send logic
       if (whatsappStatus === 'ready') {
-          // Download Image
           let media = null;
           if (offerData.imageUrl) {
              try {
@@ -328,7 +330,7 @@ async function processAutomationRun() {
                const b64 = Buffer.from(imgRes.data, 'binary').toString('base64');
                media = new MessageMedia('image/jpeg', b64, 'oferta.jpg');
              } catch(err) {
-               console.warn('[JOB] Falha ao baixar imagem, enviando apenas texto.');
+               console.warn('[JOB] Falha imagem:', err.message);
              }
           }
 
@@ -338,9 +340,8 @@ async function processAutomationRun() {
              await client.sendMessage(group.chatId, messageBody);
           }
           
-          console.log(`[JOB] ENVIADO para ${group.name}: ${offerData.title}`);
+          console.log(`[JOB] ENVIADO para ${group.name}`);
 
-          // Update DB (Logs + History)
           db.logs.push({
              id: Date.now().toString(),
              when: new Date().toISOString(),
@@ -358,22 +359,20 @@ async function processAutomationRun() {
           });
           
           saveDb();
-
-          // Wait a bit between groups to act human
           await new Promise(r => setTimeout(r, 2000));
 
       } else {
          console.warn('[JOB] WhatsApp desconectado. Pulando envio.');
-         break; // If whatsapp is down, stop processing groups
+         break;
       }
 
     } catch (e) {
-      console.error(`[JOB] Erro ao processar grupo ${group.name}:`, e.message);
+      console.error(`[JOB] Erro no grupo ${group.name}:`, e.message);
       db.logs.push({
          id: Date.now().toString(),
          when: new Date().toISOString(),
          group: group.name,
-         productTitle: 'Erro de Processamento',
+         productTitle: 'Erro',
          price: '-',
          status: 'ERROR',
          errorMessage: e.message
@@ -403,7 +402,6 @@ function startScheduler() {
 // =======================
 const router = express.Router();
 
-// --- WhatsApp Routes ---
 router.get('/whatsapp/qr', async (req, res) => {
   ensureClientInitialized();
   if (!lastQrString) return res.json({ status: whatsappStatus, qr: null });
@@ -419,7 +417,6 @@ router.get('/whatsapp/status', (req, res) => {
   res.json({ status: whatsappStatus });
 });
 
-// --- Groups Routes ---
 router.get('/groups', (req, res) => res.json(db.groups));
 
 router.post('/groups', (req, res) => {
@@ -458,21 +455,16 @@ router.post('/groups/:id/join', async (req, res) => {
   if (whatsappStatus !== 'ready') return res.status(400).json({ error: 'WhatsApp desconectado' });
 
   try {
-    // Regex para pegar código do convite
     const codeMatch = group.link.match(/chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{20,})/);
-    if (!codeMatch) throw new Error('Link inválido. Use formato https://chat.whatsapp.com/...');
+    if (!codeMatch) throw new Error('Link inválido.');
     
     const inviteCode = codeMatch[1];
-    
-    // Tenta entrar
     let chatId;
     try {
         const result = await client.acceptInvite(inviteCode);
-        // O result pode ser string (chatId) ou objeto dependendo da versão da lib
         chatId = typeof result === 'string' ? result : (result?.id?._serialized || result?._serialized);
     } catch (e) {
         if (e.message?.includes('already')) {
-            // Se ja esta no grupo, tentamos descobrir o ID via inviteInfo
              const metadata = await client.getInviteInfo(inviteCode);
              if (metadata?.id) chatId = metadata.id._serialized;
         } else {
@@ -480,10 +472,9 @@ router.post('/groups/:id/join', async (req, res) => {
         }
     }
 
-    if (!chatId) throw new Error('Bot entrou mas não foi possível obter ID do grupo.');
+    if (!chatId) throw new Error('Falha ao obter ID do grupo.');
 
     group.chatId = chatId;
-    // Tenta atualizar nome
     try {
         const chat = await client.getChatById(chatId);
         if (chat && chat.name) group.name = chat.name;
@@ -498,7 +489,6 @@ router.post('/groups/:id/join', async (req, res) => {
   }
 });
 
-// --- Automation & Config Routes ---
 router.get('/automation', (req, res) => res.json(db.automationConfig));
 
 router.patch('/automation/status', (req, res) => {
@@ -516,12 +506,10 @@ router.patch('/automation/interval', (req, res) => {
 });
 
 router.post('/automation/run-once', async (req, res) => {
-  // Roda em background para nao travar request
   processAutomationRun().catch(e => console.error(e));
   res.json({ ok: true });
 });
 
-// --- Shopee Config & Test ---
 router.get('/shopee/config', (req, res) => {
   const hasCreds = !!(db.shopeeConfig.appId && db.shopeeConfig.secret);
   const masked = hasCreds ? `${db.shopeeConfig.appId.slice(0,3)}****` : null;
@@ -543,12 +531,11 @@ router.post('/shopee/test', async (req, res) => {
   
   try {
     const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
-    const offers = await shopee.searchOffers('test', 1);
+    const offers = await shopee.searchOffers('teste', 1);
     res.json({ 
         ok: true, 
         message: 'Conexão bem sucedida!', 
         count: offers.length,
-        // Retorna sample para debug visual
         sample: offers[0] ? { name: offers[0].name, price: offers[0].price } : null
     });
   } catch (e) {
@@ -557,7 +544,6 @@ router.post('/shopee/test', async (req, res) => {
   }
 });
 
-// --- Template & Logs ---
 router.get('/template', (req, res) => res.json({ template: db.template }));
 router.post('/template', (req, res) => {
   db.template = req.body.template;
@@ -565,21 +551,14 @@ router.post('/template', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/logs', (req, res) => {
-    // Retorna logs mais recentes primeiro
-    res.json([...db.logs].reverse());
-});
+router.get('/logs', (req, res) => res.json([...db.logs].reverse()));
 
 router.post('/test/send', async (req, res) => {
   processAutomationRun().catch(e => console.error(e));
   res.json({ ok: true });
 });
 
-
-// Init
 app.use('/api', router);
-
-// Fallback para rotas raiz (retrocompatibilidade)
 app.use('/', router);
 
 app.listen(PORT, '0.0.0.0', () => {
