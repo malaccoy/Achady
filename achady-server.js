@@ -133,6 +133,11 @@ if (fs.existsSync(DB_FILE)) {
     db.automationConfig = { ...defaultState.automationConfig, ...loaded.automationConfig };
     db.shopeeConfig = { ...defaultState.shopeeConfig, ...loaded.shopeeConfig };
     db.sentOffers = { ...defaultState.sentOffers, ...loaded.sentOffers };
+
+    // Fallback if template is empty in DB
+    if (!db.template || db.template.trim() === '') {
+      db.template = defaultState.template;
+    }
   } catch (e) {
     console.error('[DB] Erro ao carregar banco de dados, usando padrao:', e.message);
   }
