@@ -312,6 +312,32 @@ function startAutomationLoop() {
 }
 
 // =======================
+// WhatsApp Join Helpers
+// =======================
+
+function extractInviteCode(link) {
+  try {
+    const clean = link.trim();
+    // Regex para pegar código de 20+ caracteres alfanuméricos
+    // Suporta formats: chat.whatsapp.com/CODE, chat.whatsapp.com/invite/CODE
+    const match = clean.match(/chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{20,})/);
+    return match ? match[1] : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function normalizeChatId(input) {
+  if (!input) return null;
+  if (typeof input === 'string') return input;
+  // Estrutura do objeto Id do wwebjs
+  if (input._serialized) return input._serialized;
+  // Estrutura de Chat que contém .id
+  if (input.id && input.id._serialized) return input.id._serialized;
+  return null;
+}
+
+// =======================
 // ROUTER SETUP
 // =======================
 const router = express.Router();
@@ -399,19 +425,94 @@ router.delete('/groups/:id', (req, res) => {
 router.post('/groups/:id/join', async (req, res) => {
   const { id } = req.params;
   const group = groups.find((g) => g.id === id);
-  if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
-  if (whatsappStatus !== 'ready') {
-    return res.status(400).json({ error: 'WhatsApp não está pronto. Conecte primeiro pelo QR.' });
+  
+  if (!group) {
+    return res.status(404).json({ ok: false, error: 'Grupo não encontrado' });
   }
+
+  if (whatsappStatus !== 'ready') {
+    return res.status(400).json({ ok: false, error: 'WhatsApp não está pronto. Conecte primeiro pelo QR.' });
+  }
+
   try {
-    const parts = group.link.split('/');
-    const inviteCode = parts[parts.length - 1];
-    const chat = await client.acceptInvite(inviteCode);
-    group.chatId = chat.id._serialized;
-    res.json({ message: 'Entrou no grupo com sucesso.', group });
+    // 1. Extração segura do Invite Code
+    const inviteCode = extractInviteCode(group.link);
+
+    if (!inviteCode) {
+       return res.status(400).json({ ok: false, error: 'Link de convite inválido ou formato não reconhecido.' });
+    }
+
+    console.log(`[WHATSAPP] join group id=${id} code=${inviteCode.substring(0, 6)}...`);
+
+    // 2. Tenta obter info do convite antes de entrar (útil para pegar nome e ID se já estiver no grupo)
+    let inviteInfo = null;
+    try {
+      inviteInfo = await client.getInviteInfo(inviteCode);
+    } catch (infoErr) {
+      console.warn('[WHATSAPP] Falha ao obter info do convite:', infoErr.message);
+    }
+
+    // 3. Tenta entrar no grupo
+    let targetChatId = null;
+
+    try {
+      const inviteResult = await client.acceptInvite(inviteCode);
+      // O result pode ser string, objeto ou undefined dependendo da versão
+      targetChatId = normalizeChatId(inviteResult);
+    } catch (joinErr) {
+      const msg = joinErr.message ? joinErr.message.toLowerCase() : '';
+      
+      // Se o erro indicar que JÁ ESTÁ no grupo, usamos o ID vindo do inviteInfo
+      if (msg.includes('already') || msg.includes('participant') || msg.includes('member') || msg.includes('joined')) {
+         console.log('[WHATSAPP] Bot já está no grupo, recuperando ID via inviteInfo.');
+         if (inviteInfo && inviteInfo.id) {
+            targetChatId = normalizeChatId(inviteInfo.id);
+         }
+      } else {
+        // Se for outro erro, lançamos para o catch principal
+        throw joinErr;
+      }
+    }
+
+    // 4. Fallback final para ID
+    if (!targetChatId && inviteInfo && inviteInfo.id) {
+       targetChatId = normalizeChatId(inviteInfo.id);
+    }
+
+    if (!targetChatId) {
+        throw new Error('Não foi possível identificar o ID do grupo após tentativa de entrada.');
+    }
+
+    // 5. Atualiza registro do grupo
+    group.chatId = targetChatId;
+    group.active = true;
+
+    // Atualiza nome se for genérico e tivermos info
+    if (group.name === 'Grupo sem nome' && inviteInfo && inviteInfo.subject) {
+      group.name = inviteInfo.subject;
+    } else {
+      // Tenta buscar nome atualizado do chat
+      try {
+        const chatInfo = await client.getChatById(targetChatId);
+        if (chatInfo && (chatInfo.name || chatInfo.formattedTitle)) {
+           group.name = chatInfo.name || chatInfo.formattedTitle;
+        }
+      } catch (metaErr) {}
+    }
+    
+    console.log(`[WHATSAPP] Sucesso join: ${group.name} (${targetChatId})`);
+
+    res.json({ 
+        ok: true, 
+        message: 'Entrou no grupo com sucesso.', 
+        chatId: targetChatId,
+        name: group.name,
+        group 
+    });
+
   } catch (err) {
-    console.error('[WHATSAPP] Erro ao entrar no grupo:', err.message);
-    res.status(500).json({ error: 'Erro ao entrar no grupo via link.' });
+    console.error('[WHATSAPP] join error:', err.message);
+    res.status(500).json({ ok: false, error: 'Erro ao entrar no grupo.', message: err.message });
   }
 });
 
