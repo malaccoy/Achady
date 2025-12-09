@@ -24,7 +24,16 @@ const DB_FILE = path.join(DATA_DIR, 'achady_db.json');
 const defaultState = {
   groups: [], // { id, name, link, active, chatId, keywords: [], negativeKeywords: [] }
   logs: [],   // { id, when, group, title, price, status, error? }
-  template: `🔥 Oferta Shopee!\n\n{{titulo}}\n\n💰 De {{precoOriginal}} por apenas {{preco}}\n⚡ {{desconto}} OFF\n\n🛒 Compre aqui: {{link}}`,
+  template: `🔥 Oferta Shopee! (por tempo limitado)
+
+🛍️ {{titulo}}
+
+💸 De: ~{{precoOriginal}}~
+🔥 Agora: {{preco}}  ({{desconto}} OFF)
+
+🛒 Link: {{link}}
+
+*O preço e a disponibilidade do produto podem variar, pois as promoções são por tempo limitado.`,
   automationConfig: {
     active: false,
     intervalMinutes: 60,

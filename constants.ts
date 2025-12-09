@@ -9,14 +9,13 @@ export const MOCK_PREVIEW_DATA = {
   link: "https://s.shopee.com.br/exemplo"
 };
 
-export const DEFAULT_TEMPLATE = `A SHÓ TÁ DEMAISSSS 😱🔥
+export const DEFAULT_TEMPLATE = `🔥 Oferta Shopee! (por tempo limitado)
 
-🎁 {{titulo}}
+🛍️ {{titulo}}
 
-💸 De: {{precoOriginal}}
-🔥 Por: {{preco}} ({{desconto}} OFF)
+💸 De: ~{{precoOriginal}}~
+🔥 Agora: {{preco}}  ({{desconto}} OFF)
 
-🛒 Compre aqui:
-{{link}}
+🛒 Link: {{link}}
 
-⚠️ O preço e disponibilidade do produto podem variar, pois as promoções são por tempo limitado.`;
+*O preço e a disponibilidade do produto podem variar, pois as promoções são por tempo limitado.`;
