@@ -160,18 +160,30 @@ export const sendTestOffer = async (): Promise<void> => {
 
 export const getLogs = async (): Promise<LogEntry[]> => {
   try {
-    // Backend logs: { when, group, title, price, status, error }
+    // Backend logs: { when, group, productTitle, price, status, errorMessage }
     const backendLogs = await request<any[]>('/logs');
     
-    return backendLogs.map((log: any, index: number) => ({
-      id: log.id || `${log.when}-${index}`,
-      timestamp: log.when,
-      groupName: log.group || 'Desconhecido',
-      productTitle: log.title || 'Sem título',
-      price: log.price || '-',
-      status: (log.status === 'enviado' ? 'SENT' : 'ERROR') as LogEntry['status'],
-      errorMessage: log.error
-    })).reverse();
+    return backendLogs.map((log: any, index: number) => {
+      // Determine proper status based on backend values
+      let status: LogEntry['status'] = 'ERROR';
+      if (log.status === 'SENT' || log.status === 'enviado') {
+        status = 'SENT';
+      } else if (log.status === 'PENDING') {
+        status = 'PENDING';
+      }
+
+      return {
+        id: log.id || `${log.when}-${index}`,
+        timestamp: log.when,
+        groupName: log.group || 'Desconhecido',
+        // Fix: Backend sends 'productTitle', not 'title'
+        productTitle: log.productTitle || log.title || 'Sem título',
+        price: log.price || '-',
+        status: status,
+        // Fix: Backend sends 'errorMessage', fallback to 'error'
+        errorMessage: log.errorMessage || log.error
+      };
+    }).reverse();
   } catch (e) {
     console.error("Error fetching logs:", e);
     return [];
