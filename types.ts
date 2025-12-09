@@ -9,6 +9,8 @@ export interface Group {
   link: string;
   active: boolean;
   chatId?: string;
+  keywords?: string[];
+  negativeKeywords?: string[];
 }
 
 export interface AutomationConfig {

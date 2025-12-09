@@ -62,6 +62,13 @@ export const addGroup = async (link: string): Promise<Group> => {
   });
 };
 
+export const updateGroup = async (id: string, data: Partial<Group>): Promise<Group> => {
+  return request<Group>(`/groups/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+};
+
 export const joinGroup = async (id: string): Promise<void> => {
   await request(`/groups/${id}/join`, { method: 'POST' });
 };

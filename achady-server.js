@@ -22,7 +22,7 @@ const DB_FILE = path.join(DATA_DIR, 'achady_db.json');
 
 // Default DB State
 const defaultState = {
-  groups: [], // { id, name, link, active, chatId? }
+  groups: [], // { id, name, link, active, chatId, keywords: [], negativeKeywords: [] }
   logs: [],   // { id, when, group, title, price, status, error? }
   template: `🔥 Oferta Shopee!\n\n{{titulo}}\n\n💰 De {{precoOriginal}} por apenas {{preco}}\n⚡ {{desconto}} OFF\n\n🛒 Compre aqui: {{link}}`,
   automationConfig: {
@@ -290,22 +290,46 @@ async function processAutomationRun() {
   }
 
   const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
-  const keywords = db.automationConfig.keywords || ['oferta'];
+  // Default Global Keywords if group specific ones are missing
+  const globalKeywords = db.automationConfig.keywords || ['oferta'];
   
   for (const group of activeGroups) {
     try {
-      const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+      // 1. Determine Keyword
+      let pool = group.keywords && group.keywords.length > 0 ? group.keywords : globalKeywords;
+      // Filter out empty strings
+      pool = pool.filter(k => k && k.trim().length > 0);
+      if(pool.length === 0) pool = ['promoção']; // Ultimate fallback
+
+      const keyword = pool[Math.floor(Math.random() * pool.length)];
       console.log(`[JOB] Grupo "${group.name}": buscando por "${keyword}"...`);
 
-      const candidates = await shopee.searchOffers(keyword, 20);
+      const candidates = await shopee.searchOffers(keyword, 30); // Search 30 to have room for filtering
       
       const sentHistory = db.sentOffers[group.id] || [];
       const sentIds = new Set(sentHistory.map(h => String(h.itemId)));
       
-      const newOffers = candidates.filter(node => !sentIds.has(String(node.itemId)));
+      // 2. Filter (Dedupe AND Blacklist)
+      const negativeKeywords = (group.negativeKeywords || []).map(k => k.toLowerCase());
+      
+      const newOffers = candidates.filter(node => {
+        // Check Dedupe
+        if (sentIds.has(String(node.itemId))) return false;
+        
+        // Check Blacklist
+        const title = (node.productName || node.name || '').toLowerCase();
+        const isBlacklisted = negativeKeywords.some(badWord => title.includes(badWord));
+        
+        if (isBlacklisted) {
+           console.log(`[JOB] Filtrado (Blacklist): "${title}" contém "${negativeKeywords.find(k => title.includes(k))}"`);
+           return false;
+        }
+
+        return true;
+      });
 
       if (newOffers.length === 0) {
-        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta inédita encontrada.`);
+        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta válida (ou não enviada) encontrada para "${keyword}".`);
         continue;
       }
 
@@ -340,7 +364,7 @@ async function processAutomationRun() {
              await client.sendMessage(group.chatId, messageBody);
           }
           
-          console.log(`[JOB] ENVIADO para ${group.name}`);
+          console.log(`[JOB] ENVIADO para ${group.name} (${offerData.title})`);
 
           db.logs.push({
              id: Date.now().toString(),
@@ -427,11 +451,26 @@ router.post('/groups', (req, res) => {
     link,
     name: name || 'Novo Grupo',
     active: true,
-    chatId: null
+    chatId: null,
+    keywords: [],
+    negativeKeywords: []
   };
   db.groups.push(newGroup);
   saveDb();
   res.json(newGroup);
+});
+
+router.put('/groups/:id', (req, res) => {
+    const group = db.groups.find(g => g.id === req.params.id);
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+    
+    // Update allowed fields
+    if (req.body.name) group.name = req.body.name;
+    if (req.body.keywords) group.keywords = req.body.keywords;
+    if (req.body.negativeKeywords) group.negativeKeywords = req.body.negativeKeywords;
+    
+    saveDb();
+    res.json(group);
 });
 
 router.delete('/groups/:id', (req, res) => {
