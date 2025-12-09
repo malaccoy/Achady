@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: achady_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-achady}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-achady_secure_pass}
+      POSTGRES_DB: achady_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - achady_net
+
+  bot:
+    build:
+      context: ./apps/bot
+      dockerfile: Dockerfile
+    container_name: achady_bot
+    restart: always
+    environment:
+      PORT: 3002
+      AUTH_PATH: /data/auth_info
+    volumes:
+      - bot_sessions:/data
+    networks:
+      - achady_net
+    expose:
+      - "3002"
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: achady_web
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-achady}:${DB_PASSWORD:-achady_secure_pass}@postgres:5432/achady_db?schema=public
+      BOT_API_URL: http://bot:3002
+    depends_on:
+      - postgres
+      - bot
+    networks:
+      - achady_net
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: achady_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/certbot/conf:/etc/letsencrypt
+      - ./infra/certbot/www:/var/www/certbot
+    depends_on:
+      - web
+    networks:
+      - achady_net
+
+networks:
+  achady_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  bot_sessions:
