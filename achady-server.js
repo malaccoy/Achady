@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
 
@@ -164,6 +164,7 @@ async function fetchShopeeOffer() {
             ? `${first.commissionRate}% comissão`
             : '',
           link: first.targetUrl || 'https://shopee.com.br',
+          imageUrl: first.imageUrl || null,
         };
       } else {
          console.warn('[SHOPEE API] Nenhuma oferta retornada na lista.');
@@ -187,6 +188,7 @@ async function fetchShopeeOffer() {
       originalPrice: 'R$ 99,90',
       discount: '50%',
       link: 'https://shopee.com.br',
+      imageUrl: null,
     };
   }
 
@@ -219,6 +221,7 @@ async function fetchShopeeOffer() {
       originalPrice: 'R$ 99,90',
       discount: '50%',
       link,
+      imageUrl: null,
     };
   } catch (err) {
     console.error('[SHOPEE] Erro no scraping:', err.message);
@@ -235,6 +238,21 @@ async function sendOfferToAllActiveGroups(offer) {
   const activeGroups = groups.filter((g) => g.active);
   const message = formatMessage(offer);
   const when = new Date().toISOString();
+
+  // Prepara mídia se houver imagem
+  let media = null;
+  if (offer.imageUrl) {
+    try {
+      console.log(`[WHATSAPP] Baixando imagem da oferta: ${offer.imageUrl}`);
+      const response = await axios.get(offer.imageUrl, { responseType: 'arraybuffer' });
+      const mimetype = response.headers['content-type'] || 'image/jpeg';
+      const data = Buffer.from(response.data, 'binary').toString('base64');
+      media = new MessageMedia(mimetype, data, 'oferta.jpg');
+    } catch (imgErr) {
+      console.error('[WHATSAPP] Erro ao baixar imagem (enviando apenas texto):', imgErr.message);
+      media = null;
+    }
+  }
 
   for (const g of activeGroups) {
     try {
@@ -254,7 +272,11 @@ async function sendOfferToAllActiveGroups(offer) {
         continue;
       }
 
-      await client.sendMessage(g.chatId, message);
+      if (media) {
+        await client.sendMessage(g.chatId, media, { caption: message });
+      } else {
+        await client.sendMessage(g.chatId, message);
+      }
 
       logs.push({
         when,
