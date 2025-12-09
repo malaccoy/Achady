@@ -1,51 +1,213 @@
-// achady-server.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const cheerio = require('cheerio');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
+const DATA_DIR = path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'achady_db.json');
 
 // =======================
-// "Banco de dados" em memória
+// PERSISTENCE LAYER (JSON DB)
 // =======================
-let groups = []; // { id, name, link, active, chatId? }
-let logs = [];   // { when, group, title, price, status, error? }
-let template =
-  '🔥 Oferta Shopee!\n' +
-  '{{titulo}}\n' +
-  'De {{precoOriginal}} por apenas {{preco}} ({{desconto}} OFF)\n' +
-  '👉 Compre agora: {{link}}';
 
-let automationConfig = {
-  active: false,
-  intervalMinutes: 5,
+// Default DB State
+const defaultState = {
+  groups: [], // { id, name, link, active, chatId? }
+  logs: [],   // { id, when, group, title, price, status, error? }
+  template: `🔥 Oferta Shopee!\n\n{{titulo}}\n\n💰 De {{precoOriginal}} por apenas {{preco}}\n⚡ {{desconto}} OFF\n\n🛒 Compre aqui: {{link}}`,
+  automationConfig: {
+    active: false,
+    intervalMinutes: 60,
+    keywords: ['promoção', 'casa', 'cozinha', 'celular', 'beleza', 'moda', 'tech']
+  },
+  shopeeConfig: {
+    appId: process.env.SHOPEE_APP_ID || '',
+    secret: process.env.SHOPEE_APP_SECRET || ''
+  },
+  sentOffers: {} // { groupId: [ { itemId, timestamp, keyword } ] }
 };
-let automationTimer = null;
 
-// Configuração da API de Afiliados Shopee
-let shopeeConfig = {
-  appId: process.env.SHOPEE_APP_ID || null,
-  secret: process.env.SHOPEE_APP_SECRET || null,
-};
+// Ensure Data Directory Exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Load DB
+let db = { ...defaultState };
+if (fs.existsSync(DB_FILE)) {
+  try {
+    const raw = fs.readFileSync(DB_FILE, 'utf-8');
+    const loaded = JSON.parse(raw);
+    db = { ...defaultState, ...loaded };
+    
+    // Merge deeper objects carefully
+    db.automationConfig = { ...defaultState.automationConfig, ...loaded.automationConfig };
+    db.shopeeConfig = { ...defaultState.shopeeConfig, ...loaded.shopeeConfig };
+    db.sentOffers = { ...defaultState.sentOffers, ...loaded.sentOffers };
+  } catch (e) {
+    console.error('[DB] Erro ao carregar banco de dados, usando padrao:', e.message);
+  }
+}
+
+// Save DB Helper
+function saveDb() {
+  try {
+    // Prune logs (keep last 200)
+    if (db.logs.length > 200) db.logs = db.logs.slice(-200);
+    
+    // Prune sentOffers (older than 72h) to keep DB size small but allow re-send after 3 days
+    const now = Date.now();
+    const THREE_DAYS = 72 * 60 * 60 * 1000;
+    
+    for (const groupId in db.sentOffers) {
+      if (Array.isArray(db.sentOffers[groupId])) {
+        db.sentOffers[groupId] = db.sentOffers[groupId].filter(item => (now - item.timestamp) < THREE_DAYS);
+      }
+    }
+
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  } catch (e) {
+    console.error('[DB] Erro ao salvar banco:', e.message);
+  }
+}
 
 // =======================
-// WhatsApp Client
+// SHOPEE API CLIENT
 // =======================
-let whatsappStatus = 'disconnected'; // disconnected | qr | ready | auth_failure
+class ShopeeClient {
+  constructor(appId, secret) {
+    this.appId = appId;
+    this.secret = secret;
+    this.endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
+  }
+
+  // Assinatura correta: SHA256(AppId + Timestamp + Payload + Secret)
+  generateSignature(payloadString, timestamp) {
+    const factor = this.appId + timestamp + payloadString + this.secret;
+    return crypto.createHash('sha256').update(factor).digest('hex');
+  }
+
+  async request(query, variables = {}) {
+    if (!this.appId || !this.secret) {
+      throw new Error('Credenciais da Shopee não configuradas.');
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const body = { query, variables };
+    
+    // IMPORTANTE: Stringify APENAS UMA VEZ para garantir consistência entre assinatura e envio
+    const payloadString = JSON.stringify(body);
+    const signature = this.generateSignature(payloadString, timestamp);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `SHA256 Credential=${this.appId}, Timestamp=${timestamp}, Signature=${signature}`
+    };
+
+    try {
+      // Timeout de 10s para evitar travar o job
+      const { data } = await axios.post(this.endpoint, payloadString, { headers, timeout: 10000 });
+      
+      if (data.errors) {
+        const errorMsg = data.errors.map(e => e.message).join(', ');
+        throw new Error(`Shopee GraphQL Error: ${errorMsg}`);
+      }
+      return data.data;
+    } catch (error) {
+      if (error.response) {
+        // Tratamento de erros comuns
+        if (error.response.data && error.response.data.errors) {
+             throw new Error(`Shopee API Error: ${JSON.stringify(error.response.data.errors)}`);
+        }
+        throw new Error(`Shopee API Error (${error.response.status}): ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  async searchOffers(keyword, limit = 10) {
+    // sortType 5 = COMMISSION_RATE_DESC (High commission first)
+    // sortType 2 = POPULARITY
+    const query = `
+      query($keyword: String, $limit: Int, $sortType: Int) {
+        productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) {
+          nodes {
+            itemId
+            name
+            imageUrl
+            price
+            priceMin
+            priceMax
+            offerLink
+            commissionRate
+            sales
+          }
+        }
+      }
+    `;
+    // We fetch a bit more (10) to have candidates for deduplication logic
+    const result = await this.request(query, { keyword, limit, sortType: 5 });
+    return result?.productOfferV2?.nodes || [];
+  }
+
+  async generateShortLink(originUrl) {
+    const query = `
+      mutation($originUrl: String!) {
+        generateShortLink(input: { originUrl: $originUrl }) {
+          shortLink
+        }
+      }
+    `;
+    const result = await this.request(query, { originUrl });
+    return result?.generateShortLink?.shortLink;
+  }
+}
+
+// Helper para formatar oferta para o template
+function formatOfferData(node, shortLink) {
+  let priceDisplay = node.price ? `R$ ${node.price}` : '';
+  
+  // Lógica de range de preço
+  if (node.priceMin && node.priceMax && node.priceMin !== node.priceMax) {
+      priceDisplay = `R$ ${node.priceMin} - R$ ${node.priceMax}`;
+  } else if (node.priceMin) {
+      priceDisplay = `R$ ${node.priceMin}`;
+  }
+  
+  // Se preço original não vem da API, simulamos algo ou deixamos vazio
+  // A API V2 nem sempre retorna originalPrice
+  const originalPrice = node.priceMax ? `R$ ${(node.priceMax * 1.2).toFixed(2)}` : ''; 
+
+  return {
+    title: node.name,
+    price: priceDisplay,
+    precoOriginal: originalPrice, // compatibilidade com template antigo
+    originalPrice: originalPrice,
+    discount: node.commissionRate ? `Até ${Math.floor(Number(node.commissionRate) * 100)}% Cashback` : 'Oferta Top',
+    link: shortLink || node.offerLink,
+    imageUrl: node.imageUrl
+  };
+}
+
+// =======================
+// WHATSAPP CLIENT
+// =======================
+let whatsappStatus = 'disconnected'; 
 let lastQrString = null;
 let clientInitialized = false;
 
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: 'achady' }),
+  authStrategy: new LocalAuth({ clientId: 'achady_persist', dataPath: DATA_DIR }),
   puppeteer: {
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -55,12 +217,17 @@ const client = new Client({
 client.on('qr', (qr) => {
   whatsappStatus = 'qr';
   lastQrString = qr;
-  console.log('[WHATSAPP] QR recebido, exiba no painel e leia com o celular.');
+  console.log('[WHATSAPP] Novo QR Code gerado.');
 });
 
 client.on('ready', () => {
   whatsappStatus = 'ready';
-  console.log('[WHATSAPP] Cliente pronto e conectado.');
+  lastQrString = null;
+  console.log('[WHATSAPP] Cliente conectado e pronto.');
+});
+
+client.on('authenticated', () => {
+  console.log('[WHATSAPP] Autenticado com sucesso.');
 });
 
 client.on('auth_failure', (msg) => {
@@ -75,41 +242,18 @@ client.on('disconnected', (reason) => {
 
 function ensureClientInitialized() {
   if (!clientInitialized) {
+    console.log('[WHATSAPP] Inicializando cliente...');
     client.initialize();
     clientInitialized = true;
-    console.log('[WHATSAPP] Inicializando cliente...');
   }
 }
 
 // =======================
-// Helpers Shopee API
+// AUTOMATION CORE
 // =======================
-function buildShopeeHeaders(payloadObj) {
-  const { appId, secret } = shopeeConfig;
+let automationTimer = null;
 
-  if (!appId || !secret) {
-    throw new Error('Credenciais da Shopee não configuradas');
-  }
-
-  const timestamp = Math.floor(Date.now() / 1000); // segundos
-  const payload = JSON.stringify(payloadObj);
-
-  // Fator = AppId + Timestamp + Payload + Secret
-  const factor = `${appId}${timestamp}${payload}${secret}`;
-  const signature = crypto
-    .createHash('sha256')
-    .update(factor)
-    .digest('hex'); // 64 chars, lowercase
-
-  return {
-    Authorization: `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-function formatMessage(offer) {
-  if (!offer) return 'Sem oferta disponível.';
-
+function renderMessage(template, offer) {
   return template
     .replace(/{{\s*titulo\s*}}/gi, offer.title || '')
     .replace(/{{\s*preco\s*}}/gi, offer.price || '')
@@ -118,507 +262,328 @@ function formatMessage(offer) {
     .replace(/{{\s*link\s*}}/gi, offer.link || '');
 }
 
-async function fetchShopeeOffer() {
-  // 1. Tenta usar API Oficial se configurada
-  if (shopeeConfig.appId && shopeeConfig.secret) {
-    try {
-      // Endpoint GraphQL da Shopee
-      const endpoint = 'https://open-api.affiliate.shopee.com.br/graphql';
-
-      const query = `
-        query brandOfferList($page: Int!, $size: Int!) {
-          brandOffer {
-            nodes(page: $page, size: $size) {
-              offerName
-              commissionRate
-              targetUrl
-              imageUrl
-            }
-          }
-        }
-      `;
-
-      const variables = { page: 1, size: 1 };
-      const payload = { query, variables };
-
-      const headers = buildShopeeHeaders(payload);
-
-      console.log('[SHOPEE API] Buscando oferta via GraphQL...');
-      const { data } = await axios.post(endpoint, payload, { headers });
-
-      if (data.errors && data.errors.length) {
-        console.error('[SHOPEE API] Erro GraphQL:', JSON.stringify(data.errors));
-        throw new Error('Erro na resposta GraphQL');
-      }
-
-      const nodes = data?.data?.brandOffer?.nodes || [];
-      const first = nodes[0];
-
-      if (first) {
-        const priceText = '—'; // API de afiliados foca em comissão, preço varia
-        return {
-          title: first.offerName || 'Oferta Shopee',
-          price: priceText,
-          originalPrice: '',
-          discount: first.commissionRate
-            ? `${first.commissionRate}% comissão`
-            : '',
-          link: first.targetUrl || 'https://shopee.com.br',
-          imageUrl: first.imageUrl || null,
-        };
-      } else {
-         console.warn('[SHOPEE API] Nenhuma oferta retornada na lista.');
-      }
-    } catch (err) {
-      console.error('[SHOPEE API] Erro ao buscar oferta (fallback para scraping):', err.message);
-    }
-  }
-
-  // 2. Fallback: SCRAPING ANTIGO
-  console.log('[SHOPEE] Usando método Scraping (Axios + HTML)...');
-  const url = process.env.SHOPEE_SEARCH_URL;
-
-  if (!url) {
-    console.warn(
-      '[SHOPEE] SHOEPEE_SEARCH_URL não configurada. Retornando oferta fake para testes.'
-    );
-    return {
-      title: 'Produto de teste ACHADY',
-      price: 'R$ 49,90',
-      originalPrice: 'R$ 99,90',
-      discount: '50%',
-      link: 'https://shopee.com.br',
-      imageUrl: null,
-    };
-  }
-
-  try {
-    const { data: html } = await axios.get(url, {
-      headers: {
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-        'accept-language': 'pt-BR,pt;q=0.9',
-      },
-    });
-
-    const $ = cheerio.load(html);
-
-    const firstItem = $('a').first();
-
-    if (!firstItem || !firstItem.attr('href')) {
-      console.warn('[SHOPEE] Nenhum item encontrado no HTML. Ajuste os seletores.');
-      return null;
-    }
-
-    const title = firstItem.text().trim() || 'Oferta Shopee';
-    const link = firstItem.attr('href').startsWith('http')
-      ? firstItem.attr('href')
-      : 'https://shopee.com.br' + firstItem.attr('href');
-
-    return {
-      title,
-      price: 'R$ 49,90',
-      originalPrice: 'R$ 99,90',
-      discount: '50%',
-      link,
-      imageUrl: null,
-    };
-  } catch (err) {
-    console.error('[SHOPEE] Erro no scraping:', err.message);
-    return null;
-  }
-}
-
-async function sendOfferToAllActiveGroups(offer) {
-  if (whatsappStatus !== 'ready') {
-    console.warn('[WHATSAPP] Não está pronto. Cancelando envio.');
+async function processAutomationRun() {
+  console.log(`[JOB ${new Date().toLocaleTimeString()}] Iniciando rodada de automação...`);
+  
+  if (!db.shopeeConfig.appId || !db.shopeeConfig.secret) {
+    console.log('[JOB] Abortando: Credenciais Shopee não configuradas.');
     return;
   }
 
-  const activeGroups = groups.filter((g) => g.active);
-  const message = formatMessage(offer);
-  const when = new Date().toISOString();
-
-  // Prepara mídia se houver imagem
-  let media = null;
-  if (offer.imageUrl) {
-    try {
-      console.log(`[WHATSAPP] Baixando imagem da oferta: ${offer.imageUrl}`);
-      const response = await axios.get(offer.imageUrl, { responseType: 'arraybuffer' });
-      const mimetype = response.headers['content-type'] || 'image/jpeg';
-      const data = Buffer.from(response.data, 'binary').toString('base64');
-      media = new MessageMedia(mimetype, data, 'oferta.jpg');
-    } catch (imgErr) {
-      console.error('[WHATSAPP] Erro ao baixar imagem (enviando apenas texto):', imgErr.message);
-      media = null;
-    }
+  const activeGroups = db.groups.filter(g => g.active && g.chatId);
+  if (activeGroups.length === 0) {
+    console.log('[JOB] Nenhum grupo ativo configurado.');
+    return;
   }
 
-  for (const g of activeGroups) {
+  const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+  
+  // Lista de keywords para rotacionar
+  const keywords = db.automationConfig.keywords || ['oferta'];
+  
+  // Strategy: 1 offer per group per run
+  for (const group of activeGroups) {
     try {
-      if (!g.chatId) {
-        console.warn(
-          '[WHATSAPP] Grupo sem chatId configurado. Use o join via link no painel.',
-          g
-        );
-        logs.push({
-          when,
-          group: g.name,
-          title: offer?.title,
-          price: offer?.price,
-          status: 'erro',
-          error: 'Grupo sem chatId configurado',
-        });
+      // Pick a random keyword for variety
+      const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+      console.log(`[JOB] Grupo "${group.name}": buscando por "${keyword}"...`);
+
+      // Search candidates
+      const candidates = await shopee.searchOffers(keyword, 20);
+      
+      // DEDUPLICATION: Filter out items sent in the last 72h
+      const sentHistory = db.sentOffers[group.id] || [];
+      const sentIds = new Set(sentHistory.map(h => String(h.itemId)));
+      
+      const newOffers = candidates.filter(node => !sentIds.has(String(node.itemId)));
+
+      if (newOffers.length === 0) {
+        console.log(`[JOB] Grupo "${group.name}": Nenhuma oferta inédita encontrada para "${keyword}".`);
         continue;
       }
 
-      if (media) {
-        await client.sendMessage(g.chatId, media, { caption: message });
-      } else {
-        await client.sendMessage(g.chatId, message);
+      // Pick the best one (first one is best ranked by commission due to sortType=5)
+      const selectedNode = newOffers[0];
+      
+      // Generate Short Link
+      let finalLink = selectedNode.offerLink;
+      try {
+        const short = await shopee.generateShortLink(selectedNode.offerLink);
+        if (short) finalLink = short;
+      } catch (err) {
+        console.error('[JOB] Erro ao gerar shortlink (usando original):', err.message);
       }
 
-      logs.push({
-        when,
-        group: g.name,
-        title: offer?.title,
-        price: offer?.price,
-        status: 'enviado',
+      // Render
+      const offerData = formatOfferData(selectedNode, finalLink);
+      const messageBody = renderMessage(db.template, offerData);
+      
+      // Send logic
+      if (whatsappStatus === 'ready') {
+          // Download Image
+          let media = null;
+          if (offerData.imageUrl) {
+             try {
+               const imgRes = await axios.get(offerData.imageUrl, { responseType: 'arraybuffer', timeout: 5000 });
+               const b64 = Buffer.from(imgRes.data, 'binary').toString('base64');
+               media = new MessageMedia('image/jpeg', b64, 'oferta.jpg');
+             } catch(err) {
+               console.warn('[JOB] Falha ao baixar imagem, enviando apenas texto.');
+             }
+          }
+
+          if (media) {
+             await client.sendMessage(group.chatId, media, { caption: messageBody });
+          } else {
+             await client.sendMessage(group.chatId, messageBody);
+          }
+          
+          console.log(`[JOB] ENVIADO para ${group.name}: ${offerData.title}`);
+
+          // Update DB (Logs + History)
+          db.logs.push({
+             id: Date.now().toString(),
+             when: new Date().toISOString(),
+             group: group.name,
+             productTitle: offerData.title,
+             price: offerData.price,
+             status: 'SENT'
+          });
+
+          if (!db.sentOffers[group.id]) db.sentOffers[group.id] = [];
+          db.sentOffers[group.id].push({
+             itemId: String(selectedNode.itemId),
+             timestamp: Date.now(),
+             keyword: keyword
+          });
+          
+          saveDb();
+
+          // Wait a bit between groups to act human
+          await new Promise(r => setTimeout(r, 2000));
+
+      } else {
+         console.warn('[JOB] WhatsApp desconectado. Pulando envio.');
+         break; // If whatsapp is down, stop processing groups
+      }
+
+    } catch (e) {
+      console.error(`[JOB] Erro ao processar grupo ${group.name}:`, e.message);
+      db.logs.push({
+         id: Date.now().toString(),
+         when: new Date().toISOString(),
+         group: group.name,
+         productTitle: 'Erro de Processamento',
+         price: '-',
+         status: 'ERROR',
+         errorMessage: e.message
       });
-    } catch (err) {
-      console.error('[WHATSAPP] Erro enviando para grupo', g.name, err.message);
-      logs.push({
-        when,
-        group: g.name,
-        title: offer?.title,
-        price: offer?.price,
-        status: 'erro',
-        error: err.message,
-      });
+      saveDb();
     }
   }
 }
 
-// =======================
-// Automação
-// =======================
-function startAutomationLoop() {
-  if (automationTimer) {
-    clearInterval(automationTimer);
-    automationTimer = null;
-  }
-
-  if (!automationConfig.active) {
-    console.log('[AUTOMACAO] Desativada.');
+function startScheduler() {
+  if (automationTimer) clearInterval(automationTimer);
+  
+  if (!db.automationConfig.active) {
+    console.log('[SCHEDULER] Automação pausada.');
     return;
   }
 
-  const ms = automationConfig.intervalMinutes * 60 * 1000;
-  console.log(
-    `[AUTOMACAO] Ativa. Rodando a cada ${automationConfig.intervalMinutes} minuto(s).`
-  );
-
-  automationTimer = setInterval(async () => {
-    console.log('[AUTOMACAO] Executando ciclo automático...');
-    try {
-      const offer = await fetchShopeeOffer();
-      if (!offer) {
-        console.log('[AUTOMACAO] Nenhuma oferta retornada.');
-        return;
-      }
-      await sendOfferToAllActiveGroups(offer);
-    } catch (err) {
-      console.error('[AUTOMACAO] Erro no ciclo:', err.message);
-    }
-  }, ms);
+  const minutes = db.automationConfig.intervalMinutes || 60;
+  console.log(`[SCHEDULER] Agendado para rodar a cada ${minutes} minutos.`);
+  
+  automationTimer = setInterval(processAutomationRun, minutes * 60 * 1000);
 }
 
-// =======================
-// WhatsApp Join Helpers
-// =======================
-
-function extractInviteCode(link) {
-  try {
-    const clean = link.trim();
-    // Regex para pegar código de 20+ caracteres alfanuméricos
-    // Suporta formats: chat.whatsapp.com/CODE, chat.whatsapp.com/invite/CODE
-    const match = clean.match(/chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{20,})/);
-    return match ? match[1] : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function normalizeChatId(input) {
-  if (!input) return null;
-  if (typeof input === 'string') return input;
-  // Estrutura do objeto Id do wwebjs
-  if (input._serialized) return input._serialized;
-  // Estrutura de Chat que contém .id
-  if (input.id && input.id._serialized) return input.id._serialized;
-  return null;
-}
 
 // =======================
-// ROUTER SETUP
+// ROUTES
 // =======================
 const router = express.Router();
 
-// --- WHATSAPP ROUTES ---
+// --- WhatsApp Routes ---
 router.get('/whatsapp/qr', async (req, res) => {
+  ensureClientInitialized();
+  if (!lastQrString) return res.json({ status: whatsappStatus, qr: null });
   try {
-    ensureClientInitialized();
-
-    if (!lastQrString) {
-      return res.json({ status: whatsappStatus, qr: null });
-    }
-
-    const dataUrl = await qrcode.toDataURL(lastQrString);
-    return res.json({ status: whatsappStatus, qr: dataUrl });
-  } catch (err) {
-    console.error('[API] /whatsapp/qr erro:', err.message);
-    return res.status(500).json({ error: 'Erro ao gerar QR Code.' });
+    const url = await qrcode.toDataURL(lastQrString);
+    res.json({ status: whatsappStatus, qr: url });
+  } catch (e) {
+    res.status(500).json({ error: 'Erro QR' });
   }
 });
 
 router.get('/whatsapp/status', (req, res) => {
-  return res.json({ status: whatsappStatus });
+  res.json({ status: whatsappStatus });
 });
 
-// --- SHOPEE CONFIG ROUTES ---
+// --- Groups Routes ---
+router.get('/groups', (req, res) => res.json(db.groups));
+
+router.post('/groups', (req, res) => {
+  const { link, name } = req.body;
+  if (!link) return res.status(400).json({ error: 'Link obrigatório' });
+  const newGroup = {
+    id: Date.now().toString(),
+    link,
+    name: name || 'Novo Grupo',
+    active: true,
+    chatId: null
+  };
+  db.groups.push(newGroup);
+  saveDb();
+  res.json(newGroup);
+});
+
+router.delete('/groups/:id', (req, res) => {
+  db.groups = db.groups.filter(g => g.id !== req.params.id);
+  saveDb();
+  res.status(204).send();
+});
+
+router.patch('/groups/:id/toggle', (req, res) => {
+  const g = db.groups.find(g => g.id === req.params.id);
+  if (g) {
+    g.active = !g.active;
+    saveDb();
+  }
+  res.json(g || {});
+});
+
+router.post('/groups/:id/join', async (req, res) => {
+  const group = db.groups.find(g => g.id === req.params.id);
+  if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+  if (whatsappStatus !== 'ready') return res.status(400).json({ error: 'WhatsApp desconectado' });
+
+  try {
+    // Regex para pegar código do convite
+    const codeMatch = group.link.match(/chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{20,})/);
+    if (!codeMatch) throw new Error('Link inválido. Use formato https://chat.whatsapp.com/...');
+    
+    const inviteCode = codeMatch[1];
+    
+    // Tenta entrar
+    let chatId;
+    try {
+        const result = await client.acceptInvite(inviteCode);
+        // O result pode ser string (chatId) ou objeto dependendo da versão da lib
+        chatId = typeof result === 'string' ? result : (result?.id?._serialized || result?._serialized);
+    } catch (e) {
+        if (e.message?.includes('already')) {
+            // Se ja esta no grupo, tentamos descobrir o ID via inviteInfo
+             const metadata = await client.getInviteInfo(inviteCode);
+             if (metadata?.id) chatId = metadata.id._serialized;
+        } else {
+            throw e;
+        }
+    }
+
+    if (!chatId) throw new Error('Bot entrou mas não foi possível obter ID do grupo.');
+
+    group.chatId = chatId;
+    // Tenta atualizar nome
+    try {
+        const chat = await client.getChatById(chatId);
+        if (chat && chat.name) group.name = chat.name;
+    } catch(e) {}
+    
+    saveDb();
+    
+    res.json({ ok: true, name: group.name, chatId });
+  } catch (e) {
+    console.error('Join error:', e);
+    res.status(500).json({ error: e.message || 'Erro ao entrar no grupo' });
+  }
+});
+
+// --- Automation & Config Routes ---
+router.get('/automation', (req, res) => res.json(db.automationConfig));
+
+router.patch('/automation/status', (req, res) => {
+  db.automationConfig.active = req.body.ativo;
+  saveDb();
+  startScheduler();
+  res.json(db.automationConfig);
+});
+
+router.patch('/automation/interval', (req, res) => {
+  db.automationConfig.intervalMinutes = Number(req.body.intervalMinutes);
+  saveDb();
+  startScheduler();
+  res.json(db.automationConfig);
+});
+
+router.post('/automation/run-once', async (req, res) => {
+  // Roda em background para nao travar request
+  processAutomationRun().catch(e => console.error(e));
+  res.json({ ok: true });
+});
+
+// --- Shopee Config & Test ---
 router.get('/shopee/config', (req, res) => {
-  res.json({
-    hasCredentials: !!(shopeeConfig.appId && shopeeConfig.secret),
-    appIdMasked: shopeeConfig.appId
-      ? shopeeConfig.appId.slice(0, 3) + '****' + shopeeConfig.appId.slice(-2)
-      : null,
-  });
+  const hasCreds = !!(db.shopeeConfig.appId && db.shopeeConfig.secret);
+  const masked = hasCreds ? `${db.shopeeConfig.appId.slice(0,3)}****` : null;
+  res.json({ hasCredentials: hasCreds, appIdMasked: masked });
 });
 
 router.post('/shopee/config', (req, res) => {
   const { appId, secret } = req.body;
-  if (!appId || !secret) {
-    return res.status(400).json({ error: 'appId e secret são obrigatórios' });
-  }
-  shopeeConfig.appId = appId;
-  shopeeConfig.secret = secret;
-  console.log('[SHOPEE API] Credenciais atualizadas via painel.');
+  if (!appId || !secret) return res.status(400).json({ error: 'Dados inválidos' });
+  db.shopeeConfig = { appId, secret };
+  saveDb();
   res.json({ ok: true });
 });
 
-// --- GROUP ROUTES ---
-router.get('/groups', (req, res) => {
-  res.json(groups);
-});
-
-router.post('/groups', (req, res) => {
-  const { link, name } = req.body;
-  if (!link) {
-    return res.status(400).json({ error: 'link é obrigatório' });
+router.post('/shopee/test', async (req, res) => {
+  if (!db.shopeeConfig.appId || !db.shopeeConfig.secret) {
+    return res.status(400).json({ error: 'Credenciais não configuradas' });
   }
-  const id = Date.now().toString();
-  const group = {
-    id,
-    link,
-    name: name || 'Grupo sem nome',
-    active: true,
-    chatId: null,
-  };
-  groups.push(group);
-  res.status(201).json(group);
-});
-
-router.patch('/groups/:id/toggle', (req, res) => {
-  const { id } = req.params;
-  const group = groups.find((g) => g.id === id);
-  if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
-  group.active = !group.active;
-  res.json(group);
-});
-
-router.delete('/groups/:id', (req, res) => {
-  const { id } = req.params;
-  const exists = groups.some((g) => g.id === id);
-  if (!exists) return res.status(404).json({ error: 'Grupo não encontrado' });
-  groups = groups.filter((g) => g.id !== id);
-  res.status(204).send();
-});
-
-router.post('/groups/:id/join', async (req, res) => {
-  const { id } = req.params;
-  const group = groups.find((g) => g.id === id);
   
-  if (!group) {
-    return res.status(404).json({ ok: false, error: 'Grupo não encontrado' });
-  }
-
-  if (whatsappStatus !== 'ready') {
-    return res.status(400).json({ ok: false, error: 'WhatsApp não está pronto. Conecte primeiro pelo QR.' });
-  }
-
   try {
-    // 1. Extração segura do Invite Code
-    const inviteCode = extractInviteCode(group.link);
-
-    if (!inviteCode) {
-       return res.status(400).json({ ok: false, error: 'Link de convite inválido ou formato não reconhecido.' });
-    }
-
-    console.log(`[WHATSAPP] join group id=${id} code=${inviteCode.substring(0, 6)}...`);
-
-    // 2. Tenta obter info do convite antes de entrar (útil para pegar nome e ID se já estiver no grupo)
-    let inviteInfo = null;
-    try {
-      inviteInfo = await client.getInviteInfo(inviteCode);
-    } catch (infoErr) {
-      console.warn('[WHATSAPP] Falha ao obter info do convite:', infoErr.message);
-    }
-
-    // 3. Tenta entrar no grupo
-    let targetChatId = null;
-
-    try {
-      const inviteResult = await client.acceptInvite(inviteCode);
-      // O result pode ser string, objeto ou undefined dependendo da versão
-      targetChatId = normalizeChatId(inviteResult);
-    } catch (joinErr) {
-      const msg = joinErr.message ? joinErr.message.toLowerCase() : '';
-      
-      // Se o erro indicar que JÁ ESTÁ no grupo, usamos o ID vindo do inviteInfo
-      if (msg.includes('already') || msg.includes('participant') || msg.includes('member') || msg.includes('joined')) {
-         console.log('[WHATSAPP] Bot já está no grupo, recuperando ID via inviteInfo.');
-         if (inviteInfo && inviteInfo.id) {
-            targetChatId = normalizeChatId(inviteInfo.id);
-         }
-      } else {
-        // Se for outro erro, lançamos para o catch principal
-        throw joinErr;
-      }
-    }
-
-    // 4. Fallback final para ID
-    if (!targetChatId && inviteInfo && inviteInfo.id) {
-       targetChatId = normalizeChatId(inviteInfo.id);
-    }
-
-    if (!targetChatId) {
-        throw new Error('Não foi possível identificar o ID do grupo após tentativa de entrada.');
-    }
-
-    // 5. Atualiza registro do grupo
-    group.chatId = targetChatId;
-    group.active = true;
-
-    // Atualiza nome se for genérico e tivermos info
-    if (group.name === 'Grupo sem nome' && inviteInfo && inviteInfo.subject) {
-      group.name = inviteInfo.subject;
-    } else {
-      // Tenta buscar nome atualizado do chat
-      try {
-        const chatInfo = await client.getChatById(targetChatId);
-        if (chatInfo && (chatInfo.name || chatInfo.formattedTitle)) {
-           group.name = chatInfo.name || chatInfo.formattedTitle;
-        }
-      } catch (metaErr) {}
-    }
-    
-    console.log(`[WHATSAPP] Sucesso join: ${group.name} (${targetChatId})`);
-
+    const shopee = new ShopeeClient(db.shopeeConfig.appId, db.shopeeConfig.secret);
+    const offers = await shopee.searchOffers('test', 1);
     res.json({ 
         ok: true, 
-        message: 'Entrou no grupo com sucesso.', 
-        chatId: targetChatId,
-        name: group.name,
-        group 
+        message: 'Conexão bem sucedida!', 
+        count: offers.length,
+        // Retorna sample para debug visual
+        sample: offers[0] ? { name: offers[0].name, price: offers[0].price } : null
     });
-
-  } catch (err) {
-    console.error('[WHATSAPP] join error:', err.message);
-    res.status(500).json({ ok: false, error: 'Erro ao entrar no grupo.', message: err.message });
+  } catch (e) {
+    console.error('Shopee Test Error:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// --- AUTOMATION ROUTES ---
-router.get('/automation', (req, res) => {
-  res.json(automationConfig);
-});
-
-router.patch('/automation/status', (req, res) => {
-  const { ativo } = req.body;
-  automationConfig.active = !!ativo;
-  startAutomationLoop();
-  res.json(automationConfig);
-});
-
-router.patch('/automation/interval', (req, res) => {
-  const { intervalMinutes } = req.body;
-  const n = Number(intervalMinutes);
-  if (!n || n <= 0) {
-    return res.status(400).json({ error: 'intervalMinutes inválido' });
-  }
-  automationConfig.intervalMinutes = n;
-  startAutomationLoop();
-  res.json(automationConfig);
-});
-
-router.post('/automation/run-once', async (req, res) => {
-  try {
-    const offer = await fetchShopeeOffer();
-    if (!offer) return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
-    await sendOfferToAllActiveGroups(offer);
-    res.json({ ok: true, offer });
-  } catch (err) {
-    console.error('[API] /automation/run-once erro:', err.message);
-    res.status(500).json({ error: 'Erro ao executar automação uma vez.' });
-  }
-});
-
-router.post('/test/send', async (req, res) => {
-  try {
-    const offer = await fetchShopeeOffer();
-    if (!offer) return res.status(500).json({ error: 'Nenhuma oferta encontrada.' });
-    await sendOfferToAllActiveGroups(offer);
-    res.json({ ok: true, offer });
-  } catch (err) {
-    console.error('[API] /test/send erro:', err.message);
-    res.status(500).json({ error: 'Erro ao enviar teste.' });
-  }
-});
-
-// --- TEMPLATE & LOGS ---
-router.get('/template', (req, res) => {
-  res.json({ template });
-});
-
+// --- Template & Logs ---
+router.get('/template', (req, res) => res.json({ template: db.template }));
 router.post('/template', (req, res) => {
-  const { template: newTemplate } = req.body;
-  if (!newTemplate) return res.status(400).json({ error: 'template é obrigatório' });
-  template = newTemplate;
-  res.json({ template });
+  db.template = req.body.template;
+  saveDb();
+  res.json({ ok: true });
 });
 
 router.get('/logs', (req, res) => {
-  const last = logs.slice(-200);
-  res.json(last);
+    // Retorna logs mais recentes primeiro
+    res.json([...db.logs].reverse());
 });
 
-// =======================
-// MOUNT ROUTER
-// =======================
-// Monta o roteador tanto em /api quanto na raiz
-// Isso resolve problemas de proxy que enviam /api/... ou /...
+router.post('/test/send', async (req, res) => {
+  processAutomationRun().catch(e => console.error(e));
+  res.json({ ok: true });
+});
+
+
+// Init
 app.use('/api', router);
+
+// Fallback para rotas raiz (retrocompatibilidade)
 app.use('/', router);
 
-// Rota raiz para Health Check
-app.get('/', (req, res) => {
-  res.send('ACHADY Backend Online 🚀');
-});
-
-// =======================
-// Start Server
-// =======================
-app.listen(PORT, () => {
-  console.log(`ACHADY backend rodando na porta ${PORT}`);
-  ensureClientInitialized(); // já começa a inicializar o WhatsApp
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`ACHADY Server rodando na porta ${PORT}`);
+  ensureClientInitialized();
+  startScheduler();
 });

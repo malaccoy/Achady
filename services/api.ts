@@ -115,6 +115,10 @@ export const saveShopeeConfig = async (appId: string, secret: string): Promise<v
   });
 };
 
+export const testShopeeConnection = async (): Promise<any> => {
+  return request('/shopee/test', { method: 'POST' });
+};
+
 // --- Template ---
 
 export const getTemplate = async (): Promise<{ template: string }> => {
@@ -153,7 +157,7 @@ export const getLogs = async (): Promise<LogEntry[]> => {
     const backendLogs = await request<any[]>('/logs');
     
     return backendLogs.map((log: any, index: number) => ({
-      id: `${log.when}-${index}`,
+      id: log.id || `${log.when}-${index}`,
       timestamp: log.when,
       groupName: log.group || 'Desconhecido',
       productTitle: log.title || 'Sem título',
