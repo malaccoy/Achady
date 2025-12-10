@@ -1,14 +1,16 @@
 {
   "name": "achady-dashboard",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node achady-server.js"
+    "start": "node achady-server.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@prisma/client": "^5.7.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "lucide-react": "^0.556.0",
@@ -19,7 +21,12 @@
     "express": "^4.19.0",
     "express-rate-limit": "^7.1.5",
     "qrcode": "^1.5.3",
-    "whatsapp-web.js": "^1.24.0"
+    "whatsapp-web.js": "^1.24.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.6",
+    "zod": "^3.22.4",
+    "nodemailer": "^6.9.7"
   },
   "devDependencies": {
     "@types/react": "^19.2.1",
@@ -30,6 +37,7 @@
     "tailwindcss": "^3.4.3",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
-    "@vercel/node": "^3.0.0"
+    "@vercel/node": "^3.0.0",
+    "prisma": "^5.7.0"
   }
 }
