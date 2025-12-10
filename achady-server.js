@@ -20,7 +20,7 @@ const prisma = new PrismaClient();
 
 // CONFIGURAÇÃO
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+const JWT_SECRET = process.env.JWT_SECRET || 'change_this_secret_in_prod';
 const APP_BASE_URL = process.env.APP_BASE_URL || 'https://app.achady.com.br';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
@@ -32,7 +32,7 @@ if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true }
 // SECURITY
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: true, // Permitir requisições do frontend
+  origin: true, // Allow frontend origin
   credentials: true
 }));
 app.use(express.json());
@@ -41,17 +41,17 @@ app.use(cookieParser());
 // Rate Limiters
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20, // 20 tentativas de login/cadastro por 15min
+  max: 10, // Strict on auth
   message: { error: 'Muitas tentativas. Aguarde um pouco.' }
 });
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300 // Uso geral da API
+  max: 300
 });
 
 // =======================
-// CRYPTO HELPERS
+// CRYPTO HELPERS (Shopee Secret)
 // =======================
 const ALGORITHM = 'aes-256-gcm';
 function getMasterKey() {
@@ -96,7 +96,7 @@ const transporter = nodemailer.createTransport({
 
 async function sendEmail(to, subject, html) {
   if (!process.env.SMTP_USER) {
-    console.log('[EMAIL MOCK]', to, subject);
+    console.log(`[EMAIL MOCK] To: ${to} | Subject: ${subject}`);
     return;
   }
   await transporter.sendMail({
@@ -110,7 +110,7 @@ async function sendEmail(to, subject, html) {
 // =======================
 class BotManager {
   constructor() {
-    this.sessions = new Map(); // userId -> { client, status, qr }
+    this.sessions = new Map(); // userId -> { client, status, qr, initializing }
   }
 
   getSession(userId) {
@@ -150,7 +150,6 @@ class BotManager {
     client.on('qr', (qr) => {
       session.status = 'qr';
       session.qr = qr;
-      // console.log(`[BOT ${userId}] QR Code gerado.`);
     });
 
     client.on('ready', () => {
@@ -162,7 +161,7 @@ class BotManager {
     client.on('disconnected', () => {
       session.status = 'disconnected';
       session.qr = null;
-      this.sessions.delete(userId); // Limpa da memória ao desconectar
+      this.sessions.delete(userId);
     });
 
     try {
@@ -178,7 +177,7 @@ class BotManager {
 
   async getClientStatus(userId) {
     const session = this.getSession(userId);
-    // Se não estiver rodando, tenta iniciar (Lazy Loading)
+    // Lazy Load: Se não estiver rodando, tenta iniciar agora
     if (!session.client && !session.initializing) {
       this.initializeClient(userId).catch(console.error);
       return { status: 'initializing', qr: null };
@@ -196,7 +195,7 @@ class BotManager {
           try { await session.client.destroy(); } catch(e) {}
           this.sessions.delete(userId);
       }
-      // Remove folder
+      // Clean up files
       const sessionPath = path.join(SESSIONS_DIR, `session-${userId}`);
       if(fs.existsSync(sessionPath)) {
           fs.rmSync(sessionPath, { recursive: true, force: true });
@@ -246,7 +245,8 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    const user = await prisma.user.create({
+    // Create User + Default Settings
+    await prisma.user.create({
       data: {
         email,
         passwordHash,
@@ -259,15 +259,12 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
       }
     });
 
-    // Mock email send if no SMTP config
-    if (!process.env.SMTP_USER) {
-        console.log(`[MOCK EMAIL] Para: ${email} | Token: ${verificationToken}`);
-    } else {
+    if (process.env.SMTP_USER) {
         const verifyLink = `${APP_BASE_URL}/verify-email?token=${verificationToken}`;
-        sendEmail(email, 'Verifique sua conta ACHADY', `<a href="${verifyLink}">Clique aqui para verificar seu email</a>`).catch(console.error);
+        sendEmail(email, 'Verifique sua conta ACHADY', `<p>Bem-vindo ao ACHADY.</p><p><a href="${verifyLink}">Clique aqui para verificar seu email</a></p>`).catch(console.error);
     }
 
-    res.json({ message: 'Conta criada! Verifique seu email.' });
+    res.json({ message: 'Conta criada! Faça login.' });
   } catch (e) {
     res.status(400).json({ error: e.errors ? e.errors[0].message : e.message });
   }
@@ -292,10 +289,10 @@ AuthRouter.post('/login', authLimiter, async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   });
 
-  // Inicializa bot em background
+  // Start Bot Session
   botManager.initializeClient(user.id).catch(console.error);
 
   res.json({ ok: true, user: { email: user.email, isVerified: user.isVerified } });
@@ -311,20 +308,49 @@ AuthRouter.get('/me', requireAuth, async (req, res) => {
     where: { id: req.userId },
     select: { email: true, isVerified: true }
   });
-  if(!user) return res.status(401).json({error: 'Usuario nao encontrado'});
+  if(!user) return res.status(401).json({error: 'User not found'});
   res.json(user);
 });
 
-AuthRouter.post('/verify-email', async (req, res) => {
-    const { token } = req.body;
-    const user = await prisma.user.findFirst({ where: { verificationToken: token } });
-    if (!user) return res.status(400).json({ error: 'Token inválido' });
-    
+AuthRouter.post('/request-reset', authLimiter, async (req, res) => {
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if(user) {
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { resetToken, resetTokenExpiry }
+        });
+        // Send Email
+        console.log(`[RESET] Token para ${email}: ${resetToken}`); // Log for dev
+        if(process.env.SMTP_USER) {
+            sendEmail(email, 'Redefinir Senha ACHADY', `Seu token: ${resetToken}`);
+        }
+    }
+    // Always return ok to prevent enumeration
+    res.json({ message: 'Se o email existir, enviamos instruções.' });
+});
+
+AuthRouter.post('/reset-password', authLimiter, async (req, res) => {
+    const { email, token, newPassword } = req.body;
+    const user = await prisma.user.findFirst({
+        where: { 
+            email, 
+            resetToken: token,
+            resetTokenExpiry: { gt: new Date() }
+        }
+    });
+
+    if(!user) return res.status(400).json({ error: 'Token inválido ou expirado' });
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({
         where: { id: user.id },
-        data: { isVerified: true, verificationToken: null }
+        data: { passwordHash, resetToken: null, resetTokenExpiry: null }
     });
-    res.json({ ok: true });
+
+    res.json({ message: 'Senha alterada com sucesso.' });
 });
 
 AuthRouter.delete('/account', requireAuth, async (req, res) => {
@@ -337,7 +363,7 @@ AuthRouter.delete('/account', requireAuth, async (req, res) => {
     // Cleanup Bot
     await botManager.stopClient(req.userId);
     
-    // Cascade delete via Prisma
+    // Cascade delete via Prisma handles groups, settings, logs
     await prisma.user.delete({ where: { id: req.userId } });
     
     res.clearCookie('token');
@@ -361,7 +387,6 @@ class ShopeeClient {
         const ts = Math.floor(Date.now() / 1000);
         const payload = JSON.stringify({ query, variables });
         const sig = this.generateSignature(payload, ts);
-        
         try {
             const { data } = await axios.post(this.endpoint, payload, {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `SHA256 Credential=${this.appId}, Timestamp=${ts}, Signature=${sig}` },
@@ -405,33 +430,32 @@ async function runAutomation() {
     isJobRunning = true;
     
     try {
+        // Find users who have automation enabled
         const users = await prisma.user.findMany({
             where: { settings: { automationActive: true } },
             include: { settings: true, groups: { where: { active: true } } }
         });
 
         for (const user of users) {
-            // Check User Interval logic (simple version: run every tick if active, ideal needs separate timestamp check)
-            // For production, check if (now - lastRun > interval)
-            
+            // Check credentials
             if (!user.settings.shopeeAppId || !user.settings.shopeeSecret) continue;
             const plainSecret = decrypt(user.settings.shopeeSecret);
             if (!plainSecret) continue;
 
             const client = botManager.getClient(user.id);
             if (!client) {
-                // Tenta inicializar se o usuário estiver ativo mas o bot caiu
-                botManager.initializeClient(user.id).catch(e => console.error(`[JOB] Falha init bot user ${user.id}`));
+                // If bot died, try to revive
+                botManager.initializeClient(user.id).catch(e => console.error(`[JOB] Init Fail User ${user.id}`));
                 continue; 
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
-            const globalKeywords = ['promoção', 'oferta', 'achadinho'];
+            const globalKeywords = ['promoção', 'oferta', 'casa', 'cozinha'];
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
                 
-                // Dedupe Logic
+                // Dedupe: Check history for THIS group
                 const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
                 const recentOffers = await prisma.sentOffer.findMany({
                     where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
@@ -439,7 +463,7 @@ async function runAutomation() {
                 });
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
 
-                // Keyword Logic
+                // Keyword Strategy
                 let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : globalKeywords;
                 if(keywords.length === 0) keywords = globalKeywords;
                 const keyword = keywords[Math.floor(Math.random() * keywords.length)];
@@ -448,9 +472,8 @@ async function runAutomation() {
                     const offers = await shopee.searchOffers(keyword);
                     const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
 
-                    // Blacklist Check
+                    // Blacklist
                     const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
-                    
                     const safeOffer = validOffers.find(o => {
                         const title = o.productName.toLowerCase();
                         return !blacklist.some(bad => title.includes(bad));
@@ -462,7 +485,7 @@ async function runAutomation() {
                         
                         const msg = renderMessage(user.settings.template, safeOffer);
                         
-                        // Envio WhatsApp
+                        // Send
                         if(safeOffer.imageUrl) {
                             const media = await MessageMedia.fromUrl(safeOffer.imageUrl);
                             await client.sendMessage(group.chatId, media, { caption: msg });
@@ -470,7 +493,7 @@ async function runAutomation() {
                             await client.sendMessage(group.chatId, msg);
                         }
 
-                        // Log & Dedupe
+                        // Record
                         await prisma.sentOffer.create({
                             data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                         });
@@ -482,19 +505,20 @@ async function runAutomation() {
                             }
                         });
                         
-                        console.log(`[JOB USER ${user.id}] Enviado para ${group.name}`);
-                        await new Promise(r => setTimeout(r, 5000)); // Delay entre grupos
+                        console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
+                        await new Promise(r => setTimeout(r, 5000)); // Delay per group
                     }
                 } catch (e) {
-                    console.error(`[JOB USER ${user.id}] Erro:`, e.message);
+                    console.error(`[JOB Error User ${user.id}]`, e.message);
                 }
             }
         }
-    } catch (e) { console.error('Scheduler Error:', e); }
+    } catch (e) { console.error('Scheduler Fatal:', e); }
     finally { isJobRunning = false; }
 }
 
-setInterval(runAutomation, 60 * 1000); // Roda a cada minuto (verifica quem deve rodar)
+// Run every minute (checks active users)
+setInterval(runAutomation, 60 * 1000);
 
 // =======================
 // PROTECTED API ROUTES
@@ -512,11 +536,8 @@ ApiRouter.get('/whatsapp/status', async (req, res) => {
 
 ApiRouter.get('/whatsapp/qr', async (req, res) => {
     const status = await botManager.getClientStatus(req.userId);
-    if(status.qr) {
-        const qrUrl = await qrcode.toDataURL(status.qr);
-        return res.json({ status: status.status, qr: qrUrl });
-    }
-    return res.json({ status: status.status, qr: null });
+    const qr = status.qr ? await qrcode.toDataURL(status.qr) : null;
+    res.json({ status: status.status, qr });
 });
 
 ApiRouter.get('/groups', async (req, res) => {
@@ -562,7 +583,7 @@ ApiRouter.delete('/groups/:id', async (req, res) => {
 
 ApiRouter.post('/groups/:id/join', async (req, res) => {
     const client = botManager.getClient(req.userId);
-    if (!client) return res.status(400).json({ error: 'Bot desconectado. Conecte o QR Code primeiro.' });
+    if (!client) return res.status(400).json({ error: 'Bot desconectado. Conecte o QR Code.' });
     
     const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
@@ -574,7 +595,6 @@ ApiRouter.post('/groups/:id/join', async (req, res) => {
             const resId = await client.acceptInvite(code);
             chatId = typeof resId === 'string' ? resId : (resId?._serialized || resId?.id?._serialized);
         } catch(e) {
-            // Already joined fallback
             const info = await client.getInviteInfo(code);
             chatId = info.id._serialized;
         }
@@ -583,14 +603,14 @@ ApiRouter.post('/groups/:id/join', async (req, res) => {
             await prisma.group.update({ where: { id: group.id }, data: { chatId } });
             res.json({ ok: true, chatId });
         } else {
-            throw new Error('Não foi possível obter Chat ID');
+            throw new Error('Não foi possível obter ID');
         }
     } catch (e) {
         res.status(500).json({ error: 'Erro ao entrar: ' + e.message });
     }
 });
 
-// Settings & Config
+// Settings Endpoints
 ApiRouter.get('/shopee/config', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
     const hasCreds = !!(settings?.shopeeAppId && settings?.shopeeSecret);
@@ -599,8 +619,9 @@ ApiRouter.get('/shopee/config', async (req, res) => {
 
 ApiRouter.post('/shopee/config', async (req, res) => {
     const { appId, secret } = req.body;
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user.isVerified) return res.status(403).json({ error: 'Verifique seu email antes de configurar.' });
+    // Optional: Enforce verification before adding keys
+    // const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    // if (!user.isVerified) return res.status(403).json({ error: 'Verifique seu email.' });
 
     await prisma.userSettings.upsert({
         where: { userId: req.userId },
@@ -612,20 +633,16 @@ ApiRouter.post('/shopee/config', async (req, res) => {
 
 ApiRouter.post('/shopee/test', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
-    if (!settings?.shopeeAppId || !settings?.shopeeSecret) return res.status(400).json({ error: 'Credenciais não configuradas' });
+    if (!settings?.shopeeAppId || !settings?.shopeeSecret) return res.status(400).json({ error: 'Configure as credenciais.' });
 
     const plainSecret = decrypt(settings.shopeeSecret);
     const shopee = new ShopeeClient(settings.shopeeAppId, plainSecret);
-    
     try {
         const offers = await shopee.searchOffers('teste');
         res.json({ count: offers.length });
-    } catch(e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Automation
 ApiRouter.get('/automation', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
     res.json({ active: settings?.automationActive || false, intervalMinutes: settings?.intervalMinutes || 60 });
@@ -651,7 +668,6 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
     res.json({ ok: true });
 });
 
-// Template
 ApiRouter.get('/template', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
     res.json({ template: settings?.template || '' });
@@ -667,7 +683,6 @@ ApiRouter.post('/template', async (req, res) => {
     res.json({ ok: true });
 });
 
-// Logs
 ApiRouter.get('/logs', async (req, res) => {
     const logs = await prisma.log.findMany({ 
         where: { userId: req.userId }, 
@@ -680,66 +695,61 @@ ApiRouter.get('/logs', async (req, res) => {
 app.use('/api', ApiRouter);
 
 // =======================
-// MIGRATION SCRIPT (AUTO RUN)
+// MIGRATION JSON -> DB
 // =======================
-async function runMigration() {
+async function runJsonMigration() {
+    const jsonPath = path.join(DATA_DIR, 'achady_db.json');
+    if (!fs.existsSync(jsonPath)) return;
+    
+    // Only migrate if DB is empty
+    const count = await prisma.user.count();
+    if (count > 0) return;
+
+    console.log('[MIGRATION] Importando dados legados do JSON...');
     try {
-        const count = await prisma.user.count();
-        if (count === 0 && fs.existsSync(path.join(DATA_DIR, 'achady_db.json'))) {
-            console.log('[MIGRATION] Banco vazio. Importando JSON legado...');
-            try {
-                const raw = fs.readFileSync(path.join(DATA_DIR, 'achady_db.json'));
-                const oldDb = JSON.parse(raw);
-                
-                // Create Admin
-                const passwordHash = await bcrypt.hash('Mudar123!', 12);
-                const user = await prisma.user.create({
-                    data: {
-                        email: 'admin@achady.com',
-                        passwordHash,
-                        isVerified: true,
-                        settings: {
-                            create: {
-                                shopeeAppId: oldDb.shopeeConfig?.appId,
-                                shopeeSecret: oldDb.shopeeConfig?.secret, // Já está criptografado no JSON? Se sim, ok.
-                                template: oldDb.template
-                            }
-                        }
-                    }
-                });
-                
-                // Migrate Groups
-                if(oldDb.groups) {
-                    for(const g of oldDb.groups) {
-                        await prisma.group.create({
-                            data: {
-                                userId: user.id,
-                                name: g.name,
-                                link: g.link,
-                                active: g.active,
-                                chatId: g.chatId,
-                                keywords: Array.isArray(g.keywords) ? g.keywords.join(',') : g.keywords
-                            }
-                        });
+        const raw = fs.readFileSync(jsonPath);
+        const oldDb = JSON.parse(raw);
+        
+        const passwordHash = await bcrypt.hash('Mudar123!', 12);
+        const admin = await prisma.user.create({
+            data: {
+                email: 'admin@achady.com',
+                passwordHash,
+                isVerified: true,
+                settings: {
+                    create: {
+                        shopeeAppId: oldDb.shopeeConfig?.appId,
+                        shopeeSecret: oldDb.shopeeConfig?.secret, // Assuming it's encrypted or string
+                        template: oldDb.template,
+                        automationActive: oldDb.automationConfig?.active || false,
+                        intervalMinutes: oldDb.automationConfig?.intervalMinutes || 60
                     }
                 }
-                console.log('[MIGRATION] Sucesso! Login: admin@achady.com / Mudar123!');
-            } catch(e) { console.error('Migration failed:', e); }
+            }
+        });
+
+        if (oldDb.groups) {
+            for (const g of oldDb.groups) {
+                await prisma.group.create({
+                    data: {
+                        userId: admin.id,
+                        name: g.name || 'Grupo Importado',
+                        link: g.link,
+                        chatId: g.chatId,
+                        active: g.active,
+                        keywords: Array.isArray(g.keywords) ? g.keywords.join(',') : g.keywords,
+                        negativeKeywords: Array.isArray(g.negativeKeywords) ? g.negativeKeywords.join(',') : g.negativeKeywords
+                    }
+                });
+            }
         }
+        console.log('[MIGRATION] Sucesso! Login: admin@achady.com | Senha: Mudar123!');
     } catch (e) {
-        if (e.code === 'P2021') {
-            console.error('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-            console.error('ERRO CRÍTICO: TABELAS DO BANCO DE DADOS NÃO ENCONTRADAS.');
-            console.error('Você esqueceu de rodar o comando de setup do banco de dados.');
-            console.error('Execute no terminal: npx prisma migrate dev --name init');
-            console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
-        } else {
-            console.error('Migration Check Failed:', e);
-        }
+        console.error('[MIGRATION] Falha:', e);
     }
 }
 
 app.listen(PORT, async () => {
   console.log(`ACHADY Server running on port ${PORT}`);
-  await runMigration();
+  await runJsonMigration();
 });
