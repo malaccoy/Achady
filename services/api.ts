@@ -10,19 +10,25 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...options.headers,
   };
 
-  const config = {
+  const config: RequestInit = {
     ...options,
     headers,
+    credentials: 'include', // IMPORTANTE: Envia cookies HttpOnly
   };
 
   const response = await fetch(url, config);
+
+  if (response.status === 401) {
+    // Redirecionar para login se necessário, ou lançar erro específico
+    window.location.href = '/login'; // Opcional: manipular via Router seria melhor
+    throw new Error('Não autorizado');
+  }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
     throw new Error(errorBody.error || `Erro na requisição: ${response.status}`);
   }
 
-  // Some endpoints might return empty body (like 204)
   if (response.status === 204) {
     return {} as T;
   }
@@ -30,18 +36,45 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return response.json();
 }
 
+// --- Auth ---
+
+export const login = async (email: string, password: string) => {
+    return request<any>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+    });
+};
+
+export const register = async (email: string, password: string, confirmPassword: string) => {
+    return request<any>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, confirmPassword })
+    });
+};
+
+export const logout = async () => {
+    return request('/auth/logout', { method: 'POST' });
+};
+
+export const getMe = async () => {
+    return request<any>('/auth/me');
+};
+
+export const deleteAccount = async (password: string, confirmation: string) => {
+    return request('/auth/account', {
+        method: 'DELETE',
+        body: JSON.stringify({ password, confirmation })
+    });
+};
+
 // --- WhatsApp Connection ---
 
 export const getWhatsappStatus = async (): Promise<{ status: string }> => {
-  const res = await fetch(`${API_BASE_URL}/whatsapp/status`);
-  if (!res.ok) throw new Error(`Erro na requisição: ${res.status}`);
-  return res.json() as Promise<{ status: string }>;
+  return request<{ status: string }>('/whatsapp/status');
 };
 
 export const getWhatsappQR = async (): Promise<{ status: string; qr: string | null }> => {
-  const res = await fetch(`${API_BASE_URL}/whatsapp/qr`);
-  if (!res.ok) throw new Error(`Erro na requisição: ${res.status}`);
-  return res.json() as Promise<{ status: string; qr: string | null }>;
+  return request<{ status: string; qr: string | null }>('/whatsapp/qr');
 };
 
 // --- Groups ---
@@ -129,42 +162,27 @@ export const testShopeeConnection = async (): Promise<any> => {
 // --- Template ---
 
 export const getTemplate = async (): Promise<{ template: string }> => {
-  const res = await fetch(`${API_BASE_URL}/template`);
-  if (!res.ok) throw new Error("Erro ao carregar modelo");
-  return res.json() as Promise<{ template: string }>;
+  return request<{ template: string }>('/template');
 };
 
 export const saveTemplate = async (template: string): Promise<void> => {
-  const res = await fetch(`${API_BASE_URL}/template`, {
+  await request('/template', {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ template }),
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Erro ao salvar modelo");
-  }
 };
 
 export const sendTestOffer = async (): Promise<void> => {
-  const res = await fetch(`${API_BASE_URL}/test/send`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Erro ao enviar teste");
-  }
+  await request('/test/send', { method: "POST" });
 };
 
 // --- Logs ---
 
 export const getLogs = async (): Promise<LogEntry[]> => {
   try {
-    // Backend logs: { when, group, productTitle, price, status, errorMessage }
     const backendLogs = await request<any[]>('/logs');
     
     return backendLogs.map((log: any, index: number) => {
-      // Determine proper status based on backend values
       let status: LogEntry['status'] = 'ERROR';
       if (log.status === 'SENT' || log.status === 'enviado') {
         status = 'SENT';
@@ -173,15 +191,13 @@ export const getLogs = async (): Promise<LogEntry[]> => {
       }
 
       return {
-        id: log.id || `${log.when}-${index}`,
-        timestamp: log.when,
-        groupName: log.group || 'Desconhecido',
-        // Fix: Backend sends 'productTitle', not 'title'
-        productTitle: log.productTitle || log.title || 'Sem título',
+        id: log.id || `${log.timestamp}-${index}`,
+        timestamp: log.timestamp,
+        groupName: log.groupName || 'Desconhecido',
+        productTitle: log.productTitle || 'Sem título',
         price: log.price || '-',
         status: status,
-        // Fix: Backend sends 'errorMessage', fallback to 'error'
-        errorMessage: log.errorMessage || log.error
+        errorMessage: log.errorMessage
       };
     }).reverse();
   } catch (e) {

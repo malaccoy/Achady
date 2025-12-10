@@ -32,7 +32,7 @@ if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true }
 // SECURITY
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: true, // Permitir requisições do frontend (ajustar para produção se necessário)
+  origin: true, // Permitir requisições do frontend
   credentials: true
 }));
 app.use(express.json());
@@ -150,7 +150,7 @@ class BotManager {
     client.on('qr', (qr) => {
       session.status = 'qr';
       session.qr = qr;
-      console.log(`[BOT ${userId}] QR Code gerado.`);
+      // console.log(`[BOT ${userId}] QR Code gerado.`);
     });
 
     client.on('ready', () => {
@@ -259,8 +259,13 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
       }
     });
 
-    const verifyLink = `${APP_BASE_URL}/verify-email?token=${verificationToken}`;
-    sendEmail(email, 'Verifique sua conta ACHADY', `<a href="${verifyLink}">Clique aqui para verificar seu email</a>`).catch(console.error);
+    // Mock email send if no SMTP config
+    if (!process.env.SMTP_USER) {
+        console.log(`[MOCK EMAIL] Para: ${email} | Token: ${verificationToken}`);
+    } else {
+        const verifyLink = `${APP_BASE_URL}/verify-email?token=${verificationToken}`;
+        sendEmail(email, 'Verifique sua conta ACHADY', `<a href="${verifyLink}">Clique aqui para verificar seu email</a>`).catch(console.error);
+    }
 
     res.json({ message: 'Conta criada! Verifique seu email.' });
   } catch (e) {
@@ -414,7 +419,11 @@ async function runAutomation() {
             if (!plainSecret) continue;
 
             const client = botManager.getClient(user.id);
-            if (!client) continue; // Bot offline
+            if (!client) {
+                // Tenta inicializar se o usuário estiver ativo mas o bot caiu
+                botManager.initializeClient(user.id).catch(e => console.error(`[JOB] Falha init bot user ${user.id}`));
+                continue; 
+            }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
             const globalKeywords = ['promoção', 'oferta', 'achadinho'];
@@ -438,17 +447,24 @@ async function runAutomation() {
                 try {
                     const offers = await shopee.searchOffers(keyword);
                     const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
+
+                    // Blacklist Check
+                    const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
                     
-                    if (validOffers.length > 0) {
-                        const offer = validOffers[0];
-                        const shortLink = await shopee.generateShortLink(offer.offerLink);
-                        offer.shortLink = shortLink;
+                    const safeOffer = validOffers.find(o => {
+                        const title = o.productName.toLowerCase();
+                        return !blacklist.some(bad => title.includes(bad));
+                    });
+                    
+                    if (safeOffer) {
+                        const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
+                        safeOffer.shortLink = shortLink;
                         
-                        const msg = renderMessage(user.settings.template, offer);
+                        const msg = renderMessage(user.settings.template, safeOffer);
                         
                         // Envio WhatsApp
-                        if(offer.imageUrl) {
-                            const media = await MessageMedia.fromUrl(offer.imageUrl);
+                        if(safeOffer.imageUrl) {
+                            const media = await MessageMedia.fromUrl(safeOffer.imageUrl);
                             await client.sendMessage(group.chatId, media, { caption: msg });
                         } else {
                             await client.sendMessage(group.chatId, msg);
@@ -456,13 +472,13 @@ async function runAutomation() {
 
                         // Log & Dedupe
                         await prisma.sentOffer.create({
-                            data: { userId: user.id, groupId: group.id, itemId: String(offer.itemId), keyword }
+                            data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                         });
                         
                         await prisma.log.create({
                             data: { 
-                                userId: user.id, groupName: group.name, productTitle: offer.productName,
-                                price: String(offer.price), status: 'SENT'
+                                userId: user.id, groupName: group.name, productTitle: safeOffer.productName,
+                                price: String(safeOffer.price), status: 'SENT'
                             }
                         });
                         
@@ -494,6 +510,15 @@ ApiRouter.get('/whatsapp/status', async (req, res) => {
     res.json(status);
 });
 
+ApiRouter.get('/whatsapp/qr', async (req, res) => {
+    const status = await botManager.getClientStatus(req.userId);
+    if(status.qr) {
+        const qrUrl = await qrcode.toDataURL(status.qr);
+        return res.json({ status: status.status, qr: qrUrl });
+    }
+    return res.json({ status: status.status, qr: null });
+});
+
 ApiRouter.get('/groups', async (req, res) => {
     const groups = await prisma.group.findMany({ where: { userId: req.userId } });
     res.json(groups.map(g => ({...g, keywords: g.keywords ? g.keywords.split(',') : [], negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : []})));
@@ -507,26 +532,59 @@ ApiRouter.post('/groups', async (req, res) => {
     res.json(group);
 });
 
+ApiRouter.put('/groups/:id', async (req, res) => {
+    const { keywords, negativeKeywords } = req.body;
+    const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+
+    await prisma.group.update({
+        where: { id: req.params.id },
+        data: {
+            keywords: Array.isArray(keywords) ? keywords.join(',') : keywords,
+            negativeKeywords: Array.isArray(negativeKeywords) ? negativeKeywords.join(',') : negativeKeywords
+        }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.patch('/groups/:id/toggle', async (req, res) => {
+    const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+
+    await prisma.group.update({ where: { id: group.id }, data: { active: !group.active } });
+    res.json({ ok: true });
+});
+
+ApiRouter.delete('/groups/:id', async (req, res) => {
+    await prisma.group.deleteMany({ where: { id: req.params.id, userId: req.userId } });
+    res.json({ ok: true });
+});
+
 ApiRouter.post('/groups/:id/join', async (req, res) => {
     const client = botManager.getClient(req.userId);
-    if (!client) return res.status(400).json({ error: 'Bot desconectado' });
+    if (!client) return res.status(400).json({ error: 'Bot desconectado. Conecte o QR Code primeiro.' });
     
     const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
     try {
         const code = group.link.match(/chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{20,})/)[1];
-        const resId = await client.acceptInvite(code);
-        
-        let chatId = typeof resId === 'string' ? resId : (resId?._serialized || resId?.id?._serialized);
-        // Fallback for already in group
-        if(!chatId) {
+        let chatId;
+        try {
+            const resId = await client.acceptInvite(code);
+            chatId = typeof resId === 'string' ? resId : (resId?._serialized || resId?.id?._serialized);
+        } catch(e) {
+            // Already joined fallback
             const info = await client.getInviteInfo(code);
             chatId = info.id._serialized;
         }
 
-        await prisma.group.update({ where: { id: group.id }, data: { chatId } });
-        res.json({ ok: true, chatId });
+        if(chatId) {
+            await prisma.group.update({ where: { id: group.id }, data: { chatId } });
+            res.json({ ok: true, chatId });
+        } else {
+            throw new Error('Não foi possível obter Chat ID');
+        }
     } catch (e) {
         res.status(500).json({ error: 'Erro ao entrar: ' + e.message });
     }
@@ -552,6 +610,63 @@ ApiRouter.post('/shopee/config', async (req, res) => {
     res.json({ ok: true });
 });
 
+ApiRouter.post('/shopee/test', async (req, res) => {
+    const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
+    if (!settings?.shopeeAppId || !settings?.shopeeSecret) return res.status(400).json({ error: 'Credenciais não configuradas' });
+
+    const plainSecret = decrypt(settings.shopeeSecret);
+    const shopee = new ShopeeClient(settings.shopeeAppId, plainSecret);
+    
+    try {
+        const offers = await shopee.searchOffers('teste');
+        res.json({ count: offers.length });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Automation
+ApiRouter.get('/automation', async (req, res) => {
+    const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
+    res.json({ active: settings?.automationActive || false, intervalMinutes: settings?.intervalMinutes || 60 });
+});
+
+ApiRouter.patch('/automation/status', async (req, res) => {
+    const { ativo } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { automationActive: ativo },
+        create: { userId: req.userId, automationActive: ativo }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.patch('/automation/interval', async (req, res) => {
+    const { intervalMinutes } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { intervalMinutes },
+        create: { userId: req.userId, intervalMinutes }
+    });
+    res.json({ ok: true });
+});
+
+// Template
+ApiRouter.get('/template', async (req, res) => {
+    const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
+    res.json({ template: settings?.template || '' });
+});
+
+ApiRouter.post('/template', async (req, res) => {
+    const { template } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { template },
+        create: { userId: req.userId, template }
+    });
+    res.json({ ok: true });
+});
+
 // Logs
 ApiRouter.get('/logs', async (req, res) => {
     const logs = await prisma.log.findMany({ 
@@ -568,47 +683,59 @@ app.use('/api', ApiRouter);
 // MIGRATION SCRIPT (AUTO RUN)
 // =======================
 async function runMigration() {
-    const count = await prisma.user.count();
-    if (count === 0 && fs.existsSync(path.join(DATA_DIR, 'achady_db.json'))) {
-        console.log('[MIGRATION] Banco vazio. Importando JSON legado...');
-        try {
-            const raw = fs.readFileSync(path.join(DATA_DIR, 'achady_db.json'));
-            const oldDb = JSON.parse(raw);
-            
-            // Create Admin
-            const passwordHash = await bcrypt.hash('Mudar123!', 12);
-            const user = await prisma.user.create({
-                data: {
-                    email: 'admin@achady.com',
-                    passwordHash,
-                    isVerified: true,
-                    settings: {
-                        create: {
-                            shopeeAppId: oldDb.shopeeConfig?.appId,
-                            shopeeSecret: oldDb.shopeeConfig?.secret, // Já está criptografado no JSON? Se sim, ok.
-                            template: oldDb.template
+    try {
+        const count = await prisma.user.count();
+        if (count === 0 && fs.existsSync(path.join(DATA_DIR, 'achady_db.json'))) {
+            console.log('[MIGRATION] Banco vazio. Importando JSON legado...');
+            try {
+                const raw = fs.readFileSync(path.join(DATA_DIR, 'achady_db.json'));
+                const oldDb = JSON.parse(raw);
+                
+                // Create Admin
+                const passwordHash = await bcrypt.hash('Mudar123!', 12);
+                const user = await prisma.user.create({
+                    data: {
+                        email: 'admin@achady.com',
+                        passwordHash,
+                        isVerified: true,
+                        settings: {
+                            create: {
+                                shopeeAppId: oldDb.shopeeConfig?.appId,
+                                shopeeSecret: oldDb.shopeeConfig?.secret, // Já está criptografado no JSON? Se sim, ok.
+                                template: oldDb.template
+                            }
                         }
                     }
+                });
+                
+                // Migrate Groups
+                if(oldDb.groups) {
+                    for(const g of oldDb.groups) {
+                        await prisma.group.create({
+                            data: {
+                                userId: user.id,
+                                name: g.name,
+                                link: g.link,
+                                active: g.active,
+                                chatId: g.chatId,
+                                keywords: Array.isArray(g.keywords) ? g.keywords.join(',') : g.keywords
+                            }
+                        });
+                    }
                 }
-            });
-            
-            // Migrate Groups
-            if(oldDb.groups) {
-                for(const g of oldDb.groups) {
-                    await prisma.group.create({
-                        data: {
-                            userId: user.id,
-                            name: g.name,
-                            link: g.link,
-                            active: g.active,
-                            chatId: g.chatId,
-                            keywords: Array.isArray(g.keywords) ? g.keywords.join(',') : g.keywords
-                        }
-                    });
-                }
-            }
-            console.log('[MIGRATION] Sucesso! Login: admin@achady.com / Mudar123!');
-        } catch(e) { console.error('Migration failed:', e); }
+                console.log('[MIGRATION] Sucesso! Login: admin@achady.com / Mudar123!');
+            } catch(e) { console.error('Migration failed:', e); }
+        }
+    } catch (e) {
+        if (e.code === 'P2021') {
+            console.error('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+            console.error('ERRO CRÍTICO: TABELAS DO BANCO DE DADOS NÃO ENCONTRADAS.');
+            console.error('Você esqueceu de rodar o comando de setup do banco de dados.');
+            console.error('Execute no terminal: npx prisma migrate dev --name init');
+            console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
+        } else {
+            console.error('Migration Check Failed:', e);
+        }
     }
 }
 
