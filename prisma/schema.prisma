@@ -12,6 +12,10 @@ model User {
   email          String    @unique
   passwordHash   String?   // null se for conta apenas OAuth
   emailVerified  Boolean   @default(false)
+  verificationToken String?        // token de verificação de email (opcional)
+  resetToken        String?        // token de reset de senha (opcional)
+  resetTokenExpiry  DateTime?      // expiração do reset de senha
+
   lastLoginAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -33,29 +37,29 @@ model User {
 
 model UserSettings {
   id               String   @id @default(cuid())
-  userId            String   @unique
-  shopeeAppId       String?
-  shopeeSecret      String?
-  template          String?
-  automationActive  Boolean  @default(false)
-  intervalMinutes   Int      @default(5)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  userId           String   @unique
+  shopeeAppId      String?
+  shopeeSecret     String?
+  template         String?
+  automationActive Boolean  @default(false)
+  intervalMinutes  Int      @default(5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Group {
   id               String   @id @default(cuid())
-  userId            String
-  name              String
-  link              String?
-  chatId            String?
-  active            Boolean  @default(true)
-  keywords          String   @default("") // CSV ou texto livre
-  negativeKeywords  String   @default("")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  userId           String
+  name             String
+  link             String?
+  chatId           String?
+  active           Boolean  @default(true)
+  keywords         String   @default("") // CSV ou texto livre
+  negativeKeywords String   @default("")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -64,12 +68,12 @@ model Group {
 
 model Session {
   id           String   @id @default(cuid())
-  userId        String
-  sessionToken  String   @unique
-  expiresAt     DateTime
-  ip            String?
-  userAgent     String?
-  createdAt     DateTime @default(now())
+  userId       String
+  sessionToken String   @unique
+  expiresAt    DateTime
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -77,17 +81,17 @@ model Session {
 }
 
 model OAuthAccount {
-  id                String   @id @default(cuid())
-  userId             String
-  provider           String   // "google", "github", etc.
-  providerAccountId  String
-  accessToken        String?
-  refreshToken       String?
-  expiresAt          Int?
-  tokenType          String?
-  scope              String?
-  idToken            String?
-  createdAt          DateTime @default(now())
+  id               String   @id @default(cuid())
+  userId           String
+  provider         String   // "google", "github", etc.
+  providerAccountId String
+  accessToken      String?
+  refreshToken     String?
+  expiresAt        Int?
+  tokenType        String?
+  scope            String?
+  idToken          String?
+  createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -97,11 +101,11 @@ model OAuthAccount {
 
 model RefreshToken {
   id        String   @id @default(cuid())
-  userId     String
-  tokenHash  String   @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime @default(now())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -109,12 +113,12 @@ model RefreshToken {
 }
 
 model EmailVerificationToken {
-  id          String   @id @default(cuid())
-  userId       String
-  tokenHash    String   @unique
-  expiresAt    DateTime
-  consumedAt   DateTime?
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -122,12 +126,12 @@ model EmailVerificationToken {
 }
 
 model PasswordResetToken {
-  id          String   @id @default(cuid())
-  userId       String
-  tokenHash    String   @unique
-  expiresAt    DateTime
-  consumedAt   DateTime?
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -137,22 +141,22 @@ model PasswordResetToken {
 // Opcional: multi-tenant real (um cliente = uma "empresa", com vários usuários)
 // Sem enum (SQLite), role como String.
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   memberships Membership[]
 }
 
 model Membership {
-  id          String   @id @default(cuid())
-  userId       String
-  orgId        String
-  role         String   @default("OWNER") // OWNER | ADMIN | MEMBER (valida no app)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  orgId     String
+  role      String   @default("OWNER") // OWNER | ADMIN | MEMBER (valida no app)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
