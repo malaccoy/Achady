@@ -32,7 +32,7 @@ if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true }
 // SECURITY
 app.set('trust proxy', 1);
 app.use(cors({
-  origin: true, // Allow frontend origin
+  origin: true, // Allow frontend origin dynamically
   credentials: true
 }));
 app.use(express.json());
@@ -148,19 +148,22 @@ class BotManager {
     });
 
     client.on('qr', (qr) => {
-      session.status = 'qr';
-      session.qr = qr;
+      const s = this.getSession(userId);
+      s.status = 'qr';
+      s.qr = qr;
     });
 
     client.on('ready', () => {
-      session.status = 'ready';
-      session.qr = null;
+      const s = this.getSession(userId);
+      s.status = 'ready';
+      s.qr = null;
       console.log(`[BOT ${userId}] Pronto.`);
     });
 
     client.on('disconnected', () => {
-      session.status = 'disconnected';
-      session.qr = null;
+      const s = this.getSession(userId);
+      s.status = 'disconnected';
+      s.qr = null;
       this.sessions.delete(userId);
     });
 
@@ -186,7 +189,7 @@ class BotManager {
   }
 
   getClient(userId) {
-    return this.sessions.get(userId)?.client;
+    return this.sessions.get(userId)?.client || null;
   }
 
   async stopClient(userId) {
@@ -233,8 +236,8 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
     password: z.string().min(8),
     confirmPassword: z.string()
   }).refine((data) => data.password === data.confirmPassword, {
-    message: "Senhas não conferem",
-    path: ["confirmPassword"],
+    message: 'Senhas não conferem',
+    path: ['confirmPassword']
   });
 
   try {
@@ -250,10 +253,16 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
       data: {
         email,
         passwordHash,
-        verificationToken,
+        // emailVerified: false (default)
         settings: {
           create: {
-            template: `🔥 Oferta Shopee! (por tempo limitado)\n\n🛍️ {{titulo}}\n\n💸 De: ~{{precoOriginal}}~\n🔥 Agora: {{preco}}  ({{desconto}} OFF)\n\n🛒 Link: {{link}}\n\n*O preço e a disponibilidade do produto podem variar.`
+            template:
+              `🔥 Oferta Shopee! (por tempo limitado)\n\n` +
+              `🛍️ {{titulo}}\n\n` +
+              `💸 De: ~{{precoOriginal}}~\n` +
+              `🔥 Agora: {{preco}}  ({{desconto}} OFF)\n\n` +
+              `🛒 Link: {{link}}\n\n` +
+              `*O preço e a disponibilidade do produto podem variar.`
           }
         }
       }
@@ -278,7 +287,7 @@ AuthRouter.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  if (!user || !(await bcrypt.compare(password, user.passwordHash || ''))) {
     return res.status(401).json({ error: 'Credenciais inválidas' });
   }
 
@@ -291,19 +300,20 @@ AuthRouter.post('/login', authLimiter, async (req, res) => {
 
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production', // ok em HTTP se NODE_ENV não estiver "production"
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
   });
 
   // Start Bot Session
   botManager.initializeClient(user.id).catch(console.error);
 
+  // IMPORTANTE: campo no Prisma é emailVerified, mas o frontend espera isVerified
   res.json({
     ok: true,
     user: {
       email: user.email,
-      isVerified: !!user.emailVerified
+      isVerified: user.emailVerified ?? false
     }
   });
 });
@@ -313,11 +323,11 @@ AuthRouter.post('/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// Rota /auth/me: usada pelo frontend pra saber se está logado
+// Rota /auth/me: usada pelo frontend para saber se está logado
 AuthRouter.get('/me', async (req, res) => {
   const token = req.cookies.token;
 
-  // Sem token -> não está logado
+  // Sem token => não está logado
   if (!token) {
     return res.json(null);
   }
@@ -329,7 +339,10 @@ AuthRouter.get('/me', async (req, res) => {
     // Busca o usuário
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { email: true, emailVerified: true }
+      select: {
+        email: true,
+        emailVerified: true
+      }
     });
 
     // Usuário não existe mais -> limpa cookie e responde null
@@ -338,10 +351,10 @@ AuthRouter.get('/me', async (req, res) => {
       return res.json(null);
     }
 
-    // Tudo certo
+    // Tudo certo – mapeia emailVerified -> isVerified para o frontend
     return res.json({
       email: user.email,
-      isVerified: !!user.emailVerified
+      isVerified: user.emailVerified ?? false
     });
   } catch (e) {
     // Token inválido / expirado -> limpa cookie e responde null
@@ -396,7 +409,9 @@ AuthRouter.delete('/account', requireAuth, async (req, res) => {
   if (confirmation !== 'EXCLUIR') return res.status(400).json({ error: 'Confirmação incorreta' });
 
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
-  if (!await bcrypt.compare(password, user.passwordHash)) return res.status(401).json({ error: 'Senha incorreta' });
+  if (!user || !(await bcrypt.compare(password, user.passwordHash || ''))) {
+    return res.status(401).json({ error: 'Senha incorreta' });
+  }
 
   // Cleanup Bot
   await botManager.stopClient(req.userId);
@@ -427,20 +442,31 @@ class ShopeeClient {
     const sig = this.generateSignature(payload, ts);
     try {
       const { data } = await axios.post(this.endpoint, payload, {
-        headers: { 'Content-Type': 'application/json', 'Authorization': `SHA256 Credential=${this.appId}, Timestamp=${ts}, Signature=${sig}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `SHA256 Credential=${this.appId}, Timestamp=${ts}, Signature=${sig}`
+        },
         timeout: 15000
       });
       if (data.errors) throw new Error(data.errors[0].message);
       return data.data;
-    } catch (e) { throw new Error(e.message); }
+    } catch (e) {
+      throw new Error(e.message);
+    }
   }
   async searchOffers(keyword) {
-    const q = `query($keyword: String, $limit: Int, $sortType: Int) { productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) { nodes { itemId productName imageUrl price priceMin priceMax offerLink commissionRate } } }`;
+    const q = `query($keyword: String, $limit: Int, $sortType: Int) {
+      productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) {
+        nodes { itemId productName imageUrl price priceMin priceMax offerLink commissionRate }
+      }
+    }`;
     const res = await this.request(q, { keyword, limit: 20, sortType: 5 });
     return res?.productOfferV2?.nodes || [];
   }
   async generateShortLink(originUrl) {
-    const q = `mutation($originUrl: String!) { generateShortLink(input: { originUrl: $originUrl }) { shortLink } }`;
+    const q = `mutation($originUrl: String!) {
+      generateShortLink(input: { originUrl: $originUrl }) { shortLink }
+    }`;
     const res = await this.request(q, { originUrl });
     return res?.generateShortLink?.shortLink;
   }
@@ -455,7 +481,10 @@ function renderMessage(template, offer) {
     .replace(/{{\s*titulo\s*}}/gi, offer.productName)
     .replace(/{{\s*preco\s*}}/gi, `R$ ${price}`)
     .replace(/{{\s*precoOriginal\s*}}/gi, `R$ ${original}`)
-    .replace(/{{\s*desconto\s*}}/gi, offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : 'Oferta')
+    .replace(
+      /{{\s*desconto\s*}}/gi,
+      offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : 'Oferta'
+    )
     .replace(/{{\s*link\s*}}/gi, offer.shortLink || offer.offerLink);
 }
 
@@ -476,14 +505,16 @@ async function runAutomation() {
 
     for (const user of users) {
       // Check credentials
-      if (!user.settings.shopeeAppId || !user.settings.shopeeSecret) continue;
+      if (!user.settings?.shopeeAppId || !user.settings?.shopeeSecret) continue;
       const plainSecret = decrypt(user.settings.shopeeSecret);
       if (!plainSecret) continue;
 
       const client = botManager.getClient(user.id);
       if (!client) {
         // If bot died, try to revive
-        botManager.initializeClient(user.id).catch(e => console.error(`[JOB] Init Fail User ${user.id}`));
+        botManager
+          .initializeClient(user.id)
+          .catch((e) => console.error(`[JOB] Init Fail User ${user.id}`, e));
         continue;
       }
 
@@ -499,22 +530,24 @@ async function runAutomation() {
           where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
           select: { itemId: true }
         });
-        const sentIds = new Set(recentOffers.map(o => o.itemId));
+        const sentIds = new Set(recentOffers.map((o) => o.itemId));
 
         // Keyword Strategy
-        let keywords = group.keywords ? group.keywords.split(',').filter(k => k) : globalKeywords;
+        let keywords = group.keywords ? group.keywords.split(',').filter((k) => k) : globalKeywords;
         if (keywords.length === 0) keywords = globalKeywords;
         const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
         try {
           const offers = await shopee.searchOffers(keyword);
-          const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
+          const validOffers = offers.filter((o) => !sentIds.has(String(o.itemId)));
 
           // Blacklist
-          const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s => s.trim().toLowerCase()).filter(s => s) : [];
-          const safeOffer = validOffers.find(o => {
+          const blacklist = group.negativeKeywords
+            ? group.negativeKeywords.split(',').map((s) => s.trim().toLowerCase()).filter((s) => s)
+            : [];
+          const safeOffer = validOffers.find((o) => {
             const title = o.productName.toLowerCase();
-            return !blacklist.some(bad => title.includes(bad));
+            return !blacklist.some((bad) => title.includes(bad));
           });
 
           if (safeOffer) {
@@ -538,21 +571,27 @@ async function runAutomation() {
 
             await prisma.log.create({
               data: {
-                userId: user.id, groupName: group.name, productTitle: safeOffer.productName,
-                price: String(safeOffer.price), status: 'SENT'
+                userId: user.id,
+                groupName: group.name,
+                productTitle: safeOffer.productName,
+                price: String(safeOffer.price),
+                status: 'SENT'
               }
             });
 
             console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
-            await new Promise(r => setTimeout(r, 5000)); // Delay per group
+            await new Promise((r) => setTimeout(r, 5000)); // Delay per group
           }
         } catch (e) {
           console.error(`[JOB Error User ${user.id}]`, e.message);
         }
       }
     }
-  } catch (e) { console.error('Scheduler Fatal:', e); }
-  finally { isJobRunning = false; }
+  } catch (e) {
+    console.error('Scheduler Fatal:', e);
+  } finally {
+    isJobRunning = false;
+  }
 }
 
 // Run every minute (checks active users)
@@ -565,6 +604,7 @@ app.use('/auth', AuthRouter);
 
 const ApiRouter = express.Router();
 ApiRouter.use(requireAuth);
+ApiRouter.use(apiLimiter);
 
 ApiRouter.get('/whatsapp/status', async (req, res) => {
   const status = await botManager.getClientStatus(req.userId);
@@ -580,11 +620,13 @@ ApiRouter.get('/whatsapp/qr', async (req, res) => {
 
 ApiRouter.get('/groups', async (req, res) => {
   const groups = await prisma.group.findMany({ where: { userId: req.userId } });
-  res.json(groups.map(g => ({
-    ...g,
-    keywords: g.keywords ? g.keywords.split(',') : [],
-    negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : []
-  })));
+  res.json(
+    groups.map((g) => ({
+      ...g,
+      keywords: g.keywords ? g.keywords.split(',') : [],
+      negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : []
+    }))
+  );
 });
 
 ApiRouter.post('/groups', async (req, res) => {
@@ -597,21 +639,27 @@ ApiRouter.post('/groups', async (req, res) => {
 
 ApiRouter.put('/groups/:id', async (req, res) => {
   const { keywords, negativeKeywords } = req.body;
-  const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+  const group = await prisma.group.findUnique({
+    where: { id: req.params.id, userId: req.userId }
+  });
   if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
   await prisma.group.update({
     where: { id: req.params.id },
     data: {
       keywords: Array.isArray(keywords) ? keywords.join(',') : keywords,
-      negativeKeywords: Array.isArray(negativeKeywords) ? negativeKeywords.join(',') : negativeKeywords
+      negativeKeywords: Array.isArray(negativeKeywords)
+        ? negativeKeywords.join(',')
+        : negativeKeywords
     }
   });
   res.json({ ok: true });
 });
 
 ApiRouter.patch('/groups/:id/toggle', async (req, res) => {
-  const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+  const group = await prisma.group.findUnique({
+    where: { id: req.params.id, userId: req.userId }
+  });
   if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
   await prisma.group.update({ where: { id: group.id }, data: { active: !group.active } });
@@ -627,7 +675,9 @@ ApiRouter.post('/groups/:id/join', async (req, res) => {
   const client = botManager.getClient(req.userId);
   if (!client) return res.status(400).json({ error: 'Bot desconectado. Conecte o QR Code.' });
 
-  const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+  const group = await prisma.group.findUnique({
+    where: { id: req.params.id, userId: req.userId }
+  });
   if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
   try {
@@ -656,7 +706,10 @@ ApiRouter.post('/groups/:id/join', async (req, res) => {
 ApiRouter.get('/shopee/config', async (req, res) => {
   const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
   const hasCreds = !!(settings?.shopeeAppId && settings?.shopeeSecret);
-  res.json({ hasCredentials: hasCreds, appIdMasked: hasCreds ? `${settings.shopeeAppId.substring(0, 3)}***` : null });
+  res.json({
+    hasCredentials: hasCreds,
+    appIdMasked: hasCreds ? `${settings.shopeeAppId.substring(0, 3)}***` : null
+  });
 });
 
 ApiRouter.post('/shopee/config', async (req, res) => {
@@ -675,19 +728,26 @@ ApiRouter.post('/shopee/config', async (req, res) => {
 
 ApiRouter.post('/shopee/test', async (req, res) => {
   const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
-  if (!settings?.shopeeAppId || !settings?.shopeeSecret) return res.status(400).json({ error: 'Configure as credenciais.' });
+  if (!settings?.shopeeAppId || !settings?.shopeeSecret) {
+    return res.status(400).json({ error: 'Configure as credenciais.' });
+  }
 
   const plainSecret = decrypt(settings.shopeeSecret);
   const shopee = new ShopeeClient(settings.shopeeAppId, plainSecret);
   try {
     const offers = await shopee.searchOffers('teste');
     res.json({ count: offers.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 ApiRouter.get('/automation', async (req, res) => {
   const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
-  res.json({ active: settings?.automationActive || false, intervalMinutes: settings?.intervalMinutes || 60 });
+  res.json({
+    active: settings?.automationActive || false,
+    intervalMinutes: settings?.intervalMinutes || 60
+  });
 });
 
 ApiRouter.patch('/automation/status', async (req, res) => {
@@ -757,7 +817,7 @@ async function runJsonMigration() {
       data: {
         email: 'admin@achady.com',
         passwordHash,
-        emailVerified: new Date(),
+        emailVerified: true,
         settings: {
           create: {
             shopeeAppId: oldDb.shopeeConfig?.appId,
@@ -780,12 +840,16 @@ async function runJsonMigration() {
             chatId: g.chatId,
             active: g.active,
             keywords: Array.isArray(g.keywords) ? g.keywords.join(',') : g.keywords,
-            negativeKeywords: Array.isArray(g.negativeKeywords) ? g.negativeKeywords.join(',') : g.negativeKeywords
+            negativeKeywords: Array.isArray(g.negativeKeywords)
+              ? g.negativeKeywords.join(',')
+              : g.negativeKeywords
           }
         });
       }
     }
-    console.log('[MIGRATION] Sucesso! Login: admin@achady.com | Senha: Mudar123!');
+    console.log(
+      '[MIGRATION] Sucesso! Login: admin@achady.com | Senha: Mudar123!'
+    );
   } catch (e) {
     console.error('[MIGRATION] Falha:', e);
   }
@@ -793,5 +857,6 @@ async function runJsonMigration() {
 
 app.listen(PORT, async () => {
   console.log(`ACHADY Server running on port ${PORT}`);
+  console.log('ACHADY DEBUG DB_URL =', process.env.DB_URL);
   await runJsonMigration();
 });
