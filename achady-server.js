@@ -614,6 +614,8 @@ async function runAutomation() {
                     const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
                     
                     // Get last sent offer for smart mode comparison
+                    // NOTE: This makes an additional API call which could impact performance.
+                    // Future optimization: Store offer details in SentOffer or implement caching.
                     let lastSentOfferData = null;
                     if (smartMode) {
                         const lastSent = await prisma.sentOffer.findFirst({
@@ -621,11 +623,13 @@ async function runAutomation() {
                             orderBy: { sentAt: 'desc' },
                             take: 1
                         });
-                        // Store the last sent itemId to compare with current offers
-                        if (lastSent) {
-                            // Try to find it in recent offers to get full data
-                            const recentSearches = await shopee.searchOffers(lastSent.keyword || keyword);
-                            lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                        if (lastSent && lastSent.keyword) {
+                            try {
+                                const recentSearches = await shopee.searchOffers(lastSent.keyword);
+                                lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                            } catch (e) {
+                                console.error(`[JOB] Error fetching last offer for smart mode:`, e.message);
+                            }
                         }
                     }
                     
@@ -1048,6 +1052,8 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                 const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
                 
                 // Get last sent offer for smart mode comparison
+                // NOTE: This makes an additional API call which could impact performance.
+                // Future optimization: Store offer details in SentOffer or implement caching.
                 let lastSentOfferData = null;
                 if (smartMode) {
                     const lastSent = await prisma.sentOffer.findFirst({
@@ -1055,9 +1061,13 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                         orderBy: { sentAt: 'desc' },
                         take: 1
                     });
-                    if (lastSent) {
-                        const recentSearches = await shopee.searchOffers(lastSent.keyword || keyword);
-                        lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                    if (lastSent && lastSent.keyword) {
+                        try {
+                            const recentSearches = await shopee.searchOffers(lastSent.keyword);
+                            lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                        } catch (e) {
+                            console.error(`[RUN-ONCE] Error fetching last offer for smart mode:`, e.message);
+                        }
                     }
                 }
                 

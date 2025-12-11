@@ -12,6 +12,8 @@ import {
 import { Zap, Play, Clock, Save, Loader2, Calendar, TrendingUp, Users, Filter } from 'lucide-react';
 import { AutomationStats } from '../types';
 
+const MAX_OFFERS_PER_DAY_LIMIT = 100;
+
 export const AutomationControl: React.FC = () => {
   const [active, setActive] = useState(false);
   const [interval, setIntervalVal] = useState(60);
@@ -201,7 +203,7 @@ export const AutomationControl: React.FC = () => {
                     <input 
                         type="number" 
                         min="1" 
-                        max="100"
+                        max={MAX_OFFERS_PER_DAY_LIMIT}
                         value={maxOffersPerDay}
                         onChange={(e) => setMaxOffersPerDay(Number(e.target.value))}
                         className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
