@@ -600,6 +600,41 @@ ApiRouter.get('/whatsapp/qr', async (req, res) => {
     res.json({ status: status.status, qr });
 });
 
+ApiRouter.get('/system/diagnostics', async (req, res) => {
+    try {
+        // Get WhatsApp status
+        const whatsappStatus = await botManager.getClientStatus(req.userId);
+        
+        // Get Shopee API config
+        const settings = await prisma.userSettings.findUnique({ 
+            where: { userId: req.userId },
+            select: { shopeeAppId: true, shopeeSecret: true, automationActive: true }
+        });
+        const shopeeConfigured = !!(settings?.shopeeAppId && settings?.shopeeSecret);
+        
+        // Get last message sent from logs
+        const lastLog = await prisma.log.findFirst({
+            where: { userId: req.userId, status: 'SENT' },
+            orderBy: { timestamp: 'desc' },
+            select: { timestamp: true, groupName: true }
+        });
+        
+        res.json({
+            whatsappConnected: whatsappStatus.status === 'ready',
+            shopeeConfigured,
+            automationActive: settings?.automationActive || false,
+            lastMessageSent: lastLog ? {
+                timestamp: lastLog.timestamp.toISOString(),
+                groupName: lastLog.groupName
+            } : null,
+            lastStatusCheck: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('[DIAGNOSTICS ERROR]', e);
+        res.status(500).json({ error: 'Erro ao buscar diagnósticos' });
+    }
+});
+
 ApiRouter.get('/groups', async (req, res) => {
     const groups = await prisma.group.findMany({ where: { userId: req.userId } });
     res.json(groups.map(g => ({...g, keywords: g.keywords ? g.keywords.split(',') : [], negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : []})));
