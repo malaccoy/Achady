@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getTemplate, saveTemplate, sendTestOffer } from '../services/api';
 import { MOCK_PREVIEW_DATA, DEFAULT_TEMPLATE } from '../constants';
 import { MessageSquare, Save, Send, Loader2, Info, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 
 const variables = ["{{titulo}}", "{{preco}}", "{{precoOriginal}}", "{{desconto}}", "{{link}}"];
 
@@ -36,6 +37,7 @@ const VariableChips: React.FC<VariableChipsProps> = ({ onInsert }) => {
 };
 
 export const TemplateEditor: React.FC = () => {
+  const { showToast } = useToast();
   const [template, setTemplate] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
@@ -66,11 +68,13 @@ export const TemplateEditor: React.FC = () => {
     try {
       await saveTemplate(template);
       setStatusMsg({ type: 'success', text: 'Modelo salvo com sucesso!' });
+      showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
       
       // Clear success message after 3 seconds
       setTimeout(() => setStatusMsg(null), 3000);
     } catch (e: any) {
       setStatusMsg({ type: 'error', text: e.message || 'Erro ao salvar modelo.' });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setLoading(false);
     }
@@ -82,9 +86,11 @@ export const TemplateEditor: React.FC = () => {
     try {
       await sendTestOffer();
       setStatusMsg({ type: 'success', text: 'Oferta de teste enviada para os grupos ativos.' });
+      showToast({ type: 'success', message: 'Mensagem de teste enviada.' });
       setTimeout(() => setStatusMsg(null), 3000);
     } catch(e: any) {
       setStatusMsg({ type: 'error', text: e.message || 'Erro ao enviar teste.' });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setSendingTest(false);
     }

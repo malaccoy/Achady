@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { getAutomationConfig, setAutomationStatus, setAutomationInterval, runAutomationOnce } from '../services/api';
 import { Zap, Play, Clock, Save, Loader2 } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 
 export const AutomationControl: React.FC = () => {
+  const { showToast } = useToast();
   const [active, setActive] = useState(false);
   const [interval, setIntervalVal] = useState(60);
   const [loading, setLoading] = useState(false);
@@ -26,8 +28,10 @@ export const AutomationControl: React.FC = () => {
         await setAutomationStatus(active);
         await setAutomationInterval(interval);
         setMessage({ type: 'success', text: 'Configurações salvas com sucesso!' });
+        showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
     } catch (e) {
         setMessage({ type: 'error', text: 'Erro ao salvar configurações.' });
+        showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
         setLoading(false);
     }

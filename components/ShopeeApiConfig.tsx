@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { getShopeeConfig, saveShopeeConfig, testShopeeConnection } from "../services/api";
 import { ShoppingBag, Save, Key, Lock, Loader2, CheckCircle2, Zap, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { useToast } from "../contexts/ToastContext";
 
 export const ShopeeApiConfig: React.FC = () => {
+  const { showToast } = useToast();
   const [appId, setAppId] = useState("");
   const [secret, setSecret] = useState("");
   const [loading, setLoading] = useState(false);
@@ -36,11 +38,13 @@ export const ShopeeApiConfig: React.FC = () => {
     try {
       await saveShopeeConfig(appId.trim(), secret.trim());
       setStatusMessage({ type: 'success', text: "Salvo com sucesso! Agora clique em TESTAR." });
+      showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
       setMasked(appId.trim().slice(0, 3) + "****" + appId.trim().slice(-2));
       setAppId("");
       setSecret("");
     } catch (err: any) {
         setStatusMessage({ type: 'error', text: err.response?.data?.error || err.message || "Erro ao salvar credenciais." });
+        showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setLoading(false);
     }
@@ -59,6 +63,7 @@ export const ShopeeApiConfig: React.FC = () => {
         type: 'success', 
         text: `SUCESSO! Shopee API respondeu. Encontramos ${res.count} ofertas de teste.` 
       });
+      showToast({ type: 'success', message: 'Conexão OK com a API Shopee.' });
     } catch (e: any) {
       console.error(e);
       setConnectionTestState('error');
@@ -67,6 +72,7 @@ export const ShopeeApiConfig: React.FC = () => {
         type: 'error', 
         text: `FALHA: ${e.message || 'Verifique AppID/Secret e IP Whitelist.'}` 
       });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setTesting(false);
     }
