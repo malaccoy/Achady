@@ -229,25 +229,30 @@ export const GroupManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Add Button */}
+      {/* Page Title and Description */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-100 mb-2">Grupos WhatsApp</h1>
+        <p className="text-sm text-slate-400">
+          Gerencie os grupos WhatsApp onde o bot enviará ofertas da Shopee automaticamente.
+        </p>
+      </div>
+
+      {/* Card: Add Group Form */}
       <div className="card p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-            <Users className="w-6 h-6 text-orange-500" />
-            Grupos WhatsApp
-          </h2>
+          <h2 className="text-lg font-bold text-slate-100">Adicionar Grupo</h2>
           <button 
             onClick={() => setShowAddForm(!showAddForm)}
             className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            Adicionar Grupo
+            {showAddForm ? 'Cancelar' : 'Novo Grupo'}
           </button>
         </div>
 
         {/* Add Group Form */}
         {showAddForm && (
-          <form onSubmit={handleAddGroup} className="border-t border-slate-700 pt-4 mt-4">
+          <form onSubmit={handleAddGroup} className="border-t border-slate-700 pt-4 mt-4 space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-1">Link de Convite do Grupo *</label>
@@ -280,7 +285,7 @@ export const GroupManager: React.FC = () => {
                 </datalist>
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2">
               <button 
                 type="submit" 
                 disabled={adding}
@@ -289,25 +294,16 @@ export const GroupManager: React.FC = () => {
                 {adding ? <Loader2 className="animate-spin w-4 h-4"/> : <Plus className="w-4 h-4" />}
                 Salvar Grupo
               </button>
-              <button 
-                type="button"
-                onClick={() => setShowAddForm(false)}
-                className="text-slate-400 hover:text-white px-4 py-2"
-              >
-                Cancelar
-              </button>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
+            <p className="text-xs text-slate-500">
               Após salvar, clique em "Entrar" na tabela abaixo para que o bot entre no grupo automaticamente.
             </p>
           </form>
         )}
       </div>
 
-      {/* Groups Table */}
+      {/* Card: Groups Table */}
       <div className="card overflow-hidden">
-        {/* Filter Tabs */}
-        <div className="p-4 border-b border-slate-700/50 bg-slate-900/30">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex gap-2">
               <button
