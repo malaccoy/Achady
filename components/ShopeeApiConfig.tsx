@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { getShopeeConfig, saveShopeeConfig, testShopeeConnection } from "../services/api";
 import { ShoppingBag, Save, Key, Lock, Loader2, CheckCircle2, Zap, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { useToast } from "./ToastContext";
 
 export const ShopeeApiConfig: React.FC = () => {
+  const { showToast } = useToast();
   const [appId, setAppId] = useState("");
   const [secret, setSecret] = useState("");
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'info' | 'error', text: string } | null>(null);
   const [masked, setMasked] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
-  const [connectionTestState, setConnectionTestState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -19,28 +18,24 @@ export const ShopeeApiConfig: React.FC = () => {
         const cfg = await getShopeeConfig();
         if (cfg.hasCredentials) {
           setMasked(cfg.appIdMasked);
-          setStatusMessage({ type: 'success', text: "Credenciais configuradas e salvas." });
-        } else {
-            setStatusMessage({ type: 'info', text: "Nenhuma credencial configurada." });
         }
       } catch (e) {
-        setStatusMessage({ type: 'error', text: "Erro ao conectar com o servidor. Verifique se o backend está rodando." });
+        showToast({ type: 'error', message: 'Erro ao conectar com o servidor. Verifique se o backend está rodando.' });
       }
     })();
-  }, []);
+  }, [showToast]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setStatusMessage(null);
     try {
       await saveShopeeConfig(appId.trim(), secret.trim());
-      setStatusMessage({ type: 'success', text: "Salvo com sucesso! Agora clique em TESTAR." });
+      showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
       setMasked(appId.trim().slice(0, 3) + "****" + appId.trim().slice(-2));
       setAppId("");
       setSecret("");
     } catch (err: any) {
-        setStatusMessage({ type: 'error', text: err.response?.data?.error || err.message || "Erro ao salvar credenciais." });
+      showToast({ type: 'error', message: err.response?.data?.error || err.message || 'Algo deu errado. Tente novamente.' });
     } finally {
       setLoading(false);
     }
@@ -48,25 +43,12 @@ export const ShopeeApiConfig: React.FC = () => {
 
   async function handleTest() {
     setTesting(true);
-    setConnectionTestState('testing');
-    setStatusMessage(null);
-    setConnectionMessage(null);
     try {
       const res = await testShopeeConnection();
-      setConnectionTestState('success');
-      setConnectionMessage('Conexão OK com a API Shopee.');
-      setStatusMessage({ 
-        type: 'success', 
-        text: `SUCESSO! Shopee API respondeu. Encontramos ${res.count} ofertas de teste.` 
-      });
+      showToast({ type: 'success', message: 'Conexão OK com a API Shopee.' });
     } catch (e: any) {
       console.error(e);
-      setConnectionTestState('error');
-      setConnectionMessage('Falha ao conectar. Verifique App ID e Secret.');
-      setStatusMessage({ 
-        type: 'error', 
-        text: `FALHA: ${e.message || 'Verifique AppID/Secret e IP Whitelist.'}` 
-      });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setTesting(false);
     }
@@ -128,32 +110,6 @@ export const ShopeeApiConfig: React.FC = () => {
                 {testing ? 'Testando...' : 'Testar Conexão Agora'}
               </button>
             </div>
-            {/* Connection Test Feedback */}
-            {connectionMessage && connectionTestState !== 'idle' && (
-              <div className={`mt-3 text-sm flex items-center gap-2 ${
-                connectionTestState === 'success' ? 'text-green-400' : 'text-red-400'
-              }`}>
-                {connectionTestState === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4" />
-                )}
-                <span>{connectionMessage}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Status Messages */}
-        {statusMessage && (
-          <div className={`mb-6 p-4 rounded-md text-sm border flex items-start gap-3 animate-in fade-in slide-in-from-top-2
-            ${statusMessage.type === 'success' ? 'bg-green-900/20 text-green-200 border-green-900/30' : 
-              statusMessage.type === 'error' ? 'bg-red-900/20 text-red-200 border-red-900/30' :
-              'bg-blue-900/20 text-blue-200 border-blue-900/30'
-            }`}>
-            {statusMessage.type === 'success' && <CheckCircle2 className="w-5 h-5 shrink-0 text-green-400" />}
-            {statusMessage.type === 'error' && <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />}
-            <span className="mt-0.5">{statusMessage.text}</span>
           </div>
         )}
 

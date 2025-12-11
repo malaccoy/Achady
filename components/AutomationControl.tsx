@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { getAutomationConfig, setAutomationStatus, setAutomationInterval, runAutomationOnce } from '../services/api';
 import { Zap, Play, Clock, Save, Loader2 } from 'lucide-react';
+import { useToast } from './ToastContext';
 
 export const AutomationControl: React.FC = () => {
+  const { showToast } = useToast();
   const [active, setActive] = useState(false);
   const [interval, setIntervalVal] = useState(60);
   const [loading, setLoading] = useState(false);
   const [runningOnce, setRunningOnce] = useState(false);
-  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
   const [runResult, setRunResult] = useState<{sent: number, time: string} | null>(null);
 
   useEffect(() => {
@@ -21,13 +22,12 @@ export const AutomationControl: React.FC = () => {
 
   const handleSave = async () => {
     setLoading(true);
-    setMessage(null);
     try {
         await setAutomationStatus(active);
         await setAutomationInterval(interval);
-        setMessage({ type: 'success', text: 'Configurações salvas com sucesso!' });
+        showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
     } catch (e) {
-        setMessage({ type: 'error', text: 'Erro ao salvar configurações.' });
+        showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
         setLoading(false);
     }
@@ -41,8 +41,9 @@ export const AutomationControl: React.FC = () => {
         const now = new Date();
         const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         setRunResult({ sent: result.sent || 0, time });
+        showToast({ type: 'success', message: 'Mensagem de teste enviada.' });
     } catch (e: any) {
-        alert("Erro ao disparar automação: " + (e.message || "Erro desconhecido"));
+        showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
         setRunningOnce(false);
     }
@@ -116,12 +117,6 @@ export const AutomationControl: React.FC = () => {
               O bot buscará novas ofertas na Shopee e enviará aos grupos nesse intervalo.
             </p>
           </div>
-
-          {message && (
-            <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-900/30 text-green-300 border border-green-900/50' : 'bg-red-900/30 text-red-300 border border-red-900/50'}`}>
-              {message.text}
-            </div>
-          )}
 
           <button 
             onClick={handleSave}

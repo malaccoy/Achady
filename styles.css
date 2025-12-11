@@ -210,6 +210,19 @@ body {
   gap: 16px;
   overflow-y: auto;
   height: 100vh;
+  animation: fade-in 220ms ease-out;
+}
+
+/* Fade-in animation for main content */
+@keyframes fade-in {
+  from { 
+    opacity: 0; 
+    transform: translateY(4px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
 }
 
 /* Main Container for Centered Content */
@@ -225,6 +238,7 @@ body {
   max-width: 1120px;
   margin: 0 auto;
   padding: 32px 24px 40px;
+  animation: fade-in 220ms ease-out;
 }
 
 .achady-main-header {
@@ -429,6 +443,27 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ---------- BUTTON STYLES ---------- */
+
+/* Global button transitions for micro-interactions */
+.app-button,
+button.btn-primary,
+.btn-primary,
+button.btn-secondary,
+.btn-secondary,
+button.btn-success,
+.btn-success {
+  transition: background 140ms ease-out, border-color 140ms ease-out, transform 120ms ease-out, box-shadow 140ms ease-out;
+}
+
+.app-button:hover,
+button.btn-primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled),
+button.btn-secondary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled),
+button.btn-success:hover:not(:disabled),
+.btn-success:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
 
 /* Botão Primário (Shopee Orange) */
 button.btn-primary,
@@ -1072,3 +1107,61 @@ textarea.template-editor:focus {
   border: 1px solid rgba(34, 197, 94, 0.55);
   margin-bottom: 16px;
 }
+
+/* ---------- TOAST NOTIFICATIONS ---------- */
+.toast-container {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  min-width: 260px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: toast-slide-in 220ms ease-out;
+  transition: transform 120ms ease-out, opacity 120ms ease-out;
+}
+
+.toast:hover {
+  transform: translateY(-2px);
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast--success {
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.7);
+  color: #bbf7d0;
+}
+
+.toast--error {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.7);
+  color: #fecaca;
+}
+
+.toast--info {
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.7);
+  color: #bfdbfe;
+}
+

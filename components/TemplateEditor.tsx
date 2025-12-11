@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getTemplate, saveTemplate, sendTestOffer } from '../services/api';
 import { MOCK_PREVIEW_DATA, DEFAULT_TEMPLATE } from '../constants';
 import { MessageSquare, Save, Send, Loader2, Info, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useToast } from './ToastContext';
 
 const variables = ["{{titulo}}", "{{preco}}", "{{precoOriginal}}", "{{desconto}}", "{{link}}"];
 
@@ -36,10 +37,10 @@ const VariableChips: React.FC<VariableChipsProps> = ({ onInsert }) => {
 };
 
 export const TemplateEditor: React.FC = () => {
+  const { showToast } = useToast();
   const [template, setTemplate] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -62,15 +63,11 @@ export const TemplateEditor: React.FC = () => {
 
   const handleSave = async () => {
     setLoading(true);
-    setStatusMsg(null);
     try {
       await saveTemplate(template);
-      setStatusMsg({ type: 'success', text: 'Modelo salvo com sucesso!' });
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setStatusMsg(null), 3000);
+      showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
     } catch (e: any) {
-      setStatusMsg({ type: 'error', text: e.message || 'Erro ao salvar modelo.' });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setLoading(false);
     }
@@ -78,13 +75,11 @@ export const TemplateEditor: React.FC = () => {
 
   const handleSendTest = async () => {
     setSendingTest(true);
-    setStatusMsg(null);
     try {
       await sendTestOffer();
-      setStatusMsg({ type: 'success', text: 'Oferta de teste enviada para os grupos ativos.' });
-      setTimeout(() => setStatusMsg(null), 3000);
+      showToast({ type: 'success', message: 'Mensagem de teste enviada.' });
     } catch(e: any) {
-      setStatusMsg({ type: 'error', text: e.message || 'Erro ao enviar teste.' });
+      showToast({ type: 'error', message: 'Algo deu errado. Tente novamente.' });
     } finally {
       setSendingTest(false);
     }
@@ -112,8 +107,7 @@ export const TemplateEditor: React.FC = () => {
 
   const handleResetTemplate = () => {
     setTemplate(DEFAULT_TEMPLATE);
-    setStatusMsg({ type: 'success', text: 'Modelo restaurado para o padrão!' });
-    setTimeout(() => setStatusMsg(null), 3000);
+    showToast({ type: 'success', message: 'Configurações salvas com sucesso.' });
   };
 
   // Real-time preview generator
@@ -173,14 +167,7 @@ export const TemplateEditor: React.FC = () => {
             </button>
 
             {/* Status Message */}
-            {statusMsg && (
-              <div className={`mt-4 p-3 rounded text-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-1
-                ${statusMsg.type === 'success' ? 'bg-green-900/20 text-green-300 border border-green-900/30' : 'bg-red-900/20 text-red-300 border border-red-900/30'}`}>
-                {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4"/> : <AlertTriangle className="w-4 h-4"/>}
-                {statusMsg.text}
-              </div>
-            )}
-
+            
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 mt-4">
               <button 
