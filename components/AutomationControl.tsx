@@ -56,13 +56,27 @@ export const AutomationControl: React.FC = () => {
 
       {/* Card: Automation Control */}
       <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-6">Controle de Automação</h2>
+        {/* Title with Status Badge */}
+        <div className="flex items-center gap-3 mb-6">
+          <h2 className="text-lg font-bold text-slate-100">Controle de Automação</h2>
+          {active ? (
+            <span className="badge-success">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+              Automação Ativa
+            </span>
+          ) : (
+            <span className="badge-error">
+              <span className="w-2 h-2 rounded-full bg-red-400"></span>
+              Automação Desativada
+            </span>
+          )}
+        </div>
 
         <div className="space-y-6">
           {/* Status Toggle */}
           <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
             <div>
-              <h3 className="font-medium text-slate-200 mb-1">Status da Automação</h3>
+              <h3 className="font-medium text-slate-200 mb-1">Controle de Envio</h3>
               <p className="text-sm text-slate-500">Ativa ou desativa o envio automático</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -72,19 +86,19 @@ export const AutomationControl: React.FC = () => {
                 checked={active}
                 onChange={(e) => setActive(e.target.checked)}
               />
-              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+              <div className="w-14 h-7 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 peer-focus:ring-offset-2 peer-focus:ring-offset-slate-900 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-orange-600"></div>
             </label>
           </div>
 
           {/* Interval Select */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Intervalo de Busca (Minutos)
+          <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
+            <label className="text-sm font-medium text-slate-300 whitespace-nowrap">
+              Intervalo de Busca:
             </label>
             <select 
               value={interval}
               onChange={(e) => setIntervalVal(Number(e.target.value))}
-              className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+              className="flex-1 max-w-xs p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
             >
               <option value={5}>A cada 5 minutos</option>
               <option value={15}>A cada 15 minutos</option>
@@ -113,15 +127,15 @@ export const AutomationControl: React.FC = () => {
       {/* Card: Manual Test */}
       <div className="card p-6">
         <h2 className="text-lg font-bold text-slate-100 mb-4">Teste Manual</h2>
-        <p className="text-sm text-slate-400 mb-4">
+        <p className="text-sm text-slate-400 mb-6">
           Força uma busca e envio imediato via API Shopee, independente do intervalo configurado.
         </p>
         <button 
           onClick={handleRunNow}
           disabled={runningOnce}
-          className="w-full btn-primary"
+          className="w-full btn-primary text-base py-4"
         >
-          {runningOnce ? <Loader2 className="animate-spin w-5 h-5" /> : <Play className="w-5 h-5" />}
+          {runningOnce ? <Loader2 className="animate-spin w-6 h-6" /> : <Play className="w-6 h-6" />}
           Rodar Agora (Buscar e Enviar)
         </button>
       </div>
