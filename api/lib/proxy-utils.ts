@@ -34,8 +34,9 @@ export function createProxyHandler(options: ProxyOptions) {
         },
       };
 
-      // Handle POST/PUT requests with body
-      if (method !== "GET" && method !== "HEAD" && req.body) {
+      // Handle POST/PUT/PATCH/DELETE requests with body
+      const methodsWithBody = ["POST", "PUT", "PATCH", "DELETE"];
+      if (methodsWithBody.includes(method) && req.body !== undefined) {
         const bodyData = JSON.stringify(req.body);
         requestOptions.headers = {
           ...requestOptions.headers,
@@ -44,18 +45,11 @@ export function createProxyHandler(options: ProxyOptions) {
         };
 
         const proxyReq = http.request(requestOptions, (proxyRes) => {
-          let data = "";
-          proxyRes.on("data", (chunk) => (data += chunk));
-          proxyRes.on("end", () => {
-            const statusCode = proxyRes.statusCode ?? 500;
-            copyHeaders(proxyRes.headers, res);
-            res.status(statusCode).send(data);
-          });
+          handleResponse(proxyRes, res, logPrefix, options.path);
         });
 
         proxyReq.on("error", (err) => {
-          console.error(`[${logPrefix}] erro:`, err);
-          res.status(500).json({ error: `Erro ao acessar ${options.path} na VPS.` });
+          handleError(err, res, logPrefix, options.path);
         });
 
         proxyReq.write(bodyData);
@@ -63,20 +57,13 @@ export function createProxyHandler(options: ProxyOptions) {
         return;
       }
 
-      // Handle GET/HEAD requests
+      // Handle GET/HEAD requests or requests without body
       const proxyReq = http.request(requestOptions, (proxyRes) => {
-        let data = "";
-        proxyRes.on("data", (chunk) => (data += chunk));
-        proxyRes.on("end", () => {
-          const statusCode = proxyRes.statusCode ?? 500;
-          copyHeaders(proxyRes.headers, res);
-          res.status(statusCode).send(data);
-        });
+        handleResponse(proxyRes, res, logPrefix, options.path);
       });
 
       proxyReq.on("error", (err) => {
-        console.error(`[${logPrefix}] erro:`, err);
-        res.status(500).json({ error: `Erro ao acessar ${options.path} na VPS.` });
+        handleError(err, res, logPrefix, options.path);
       });
 
       proxyReq.end();
@@ -85,6 +72,37 @@ export function createProxyHandler(options: ProxyOptions) {
       res.status(500).json({ error: `Falha interna na função ${options.path}.` });
     }
   };
+}
+
+/**
+ * Handle the response from the upstream VPS server
+ */
+function handleResponse(
+  proxyRes: http.IncomingMessage,
+  res: VercelResponse,
+  logPrefix: string,
+  path: string
+): void {
+  let data = "";
+  proxyRes.on("data", (chunk) => (data += chunk));
+  proxyRes.on("end", () => {
+    const statusCode = proxyRes.statusCode ?? 500;
+    copyHeaders(proxyRes.headers, res);
+    res.status(statusCode).send(data);
+  });
+}
+
+/**
+ * Handle errors from the upstream VPS server
+ */
+function handleError(
+  err: Error,
+  res: VercelResponse,
+  logPrefix: string,
+  path: string
+): void {
+  console.error(`[${logPrefix}] erro:`, err);
+  res.status(500).json({ error: `Erro ao acessar ${path} na VPS.` });
 }
 
 /**
