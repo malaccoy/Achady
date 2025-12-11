@@ -905,6 +905,116 @@ ApiRouter.get('/logs', async (req, res) => {
     res.json(logs);
 });
 
+ApiRouter.get('/reports', async (req, res) => {
+    try {
+        const { period = 'today', groupName } = req.query;
+        const userId = req.userId;
+        
+        // Calculate date range
+        const now = new Date();
+        let startDate = new Date();
+        
+        switch (period) {
+            case 'today':
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case '7days':
+                startDate.setDate(now.getDate() - 7);
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case '30days':
+                startDate.setDate(now.getDate() - 30);
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            default:
+                startDate.setHours(0, 0, 0, 0);
+        }
+        
+        // Build where clause
+        const whereClause = {
+            userId: userId,
+            timestamp: { gte: startDate }
+        };
+        
+        if (groupName && groupName !== 'all') {
+            whereClause.groupName = groupName;
+        }
+        
+        // Fetch logs for the period
+        const logs = await prisma.log.findMany({
+            where: whereClause,
+            orderBy: { timestamp: 'desc' }
+        });
+        
+        // Calculate daily metrics
+        const offersToday = logs.filter(log => log.status === 'SENT').length;
+        
+        // Group by group name
+        const groupMap = {};
+        logs.forEach(log => {
+            if (log.status === 'SENT') {
+                if (!groupMap[log.groupName]) {
+                    groupMap[log.groupName] = 0;
+                }
+                groupMap[log.groupName]++;
+            }
+        });
+        
+        const offersByGroup = Object.entries(groupMap)
+            .map(([groupName, count]) => ({ groupName, count }))
+            .sort((a, b) => b.count - a.count);
+        
+        // Count errors (simulating blacklist and no-keywords)
+        const errorLogs = logs.filter(log => log.status === 'ERROR');
+        const blacklistedCount = errorLogs.filter(log => 
+            log.errorMessage && log.errorMessage.toLowerCase().includes('blacklist')
+        ).length;
+        const noKeywordsCount = errorLogs.filter(log => 
+            log.errorMessage && (
+                log.errorMessage.toLowerCase().includes('keyword') ||
+                log.errorMessage.toLowerCase().includes('palavra-chave')
+            )
+        ).length;
+        
+        // Rankings - Top Groups
+        const topGroups = offersByGroup.slice(0, 10);
+        
+        // Rankings - Top Categories (placeholder - we don't have category data yet)
+        // In future, extract from productTitle or add category field
+        const topCategories = [];
+        
+        const reportsData = {
+            dailyMetrics: {
+                offersToday,
+                offersByGroup,
+                blacklistedCount,
+                noKeywordsCount
+            },
+            rankings: {
+                topGroups,
+                topCategories
+            }
+        };
+        
+        res.json(reportsData);
+    } catch (error) {
+        console.error('Error generating reports:', error);
+        res.status(500).json({ 
+            error: 'Erro ao gerar relatórios',
+            dailyMetrics: {
+                offersToday: 0,
+                offersByGroup: [],
+                blacklistedCount: 0,
+                noKeywordsCount: 0
+            },
+            rankings: {
+                topGroups: [],
+                topCategories: []
+            }
+        });
+    }
+});
+
 app.use('/api', ApiRouter);
 
 app.listen(PORT, async () => {

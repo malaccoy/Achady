@@ -6,6 +6,7 @@ import { AutomationControl } from './components/AutomationControl';
 import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
 import { ShopeeApiConfig } from './components/ShopeeApiConfig';
+import { Reports } from './components/Reports';
 import { Auth } from './components/Auth';
 import { getMe, logout } from './services/api';
 import { LogOut, Loader2 } from 'lucide-react';
@@ -43,6 +44,7 @@ function App() {
       case "shopee": return <ShopeeApiConfig />;
       case "template": return <TemplateEditor />;
       case "logs": return <LogsTable />;
+      case "reports": return <Reports />;
       default: return <StatusConnection />;
     }
   };

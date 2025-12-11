@@ -218,3 +218,30 @@ export const getLogs = async (): Promise<LogEntry[]> => {
     return [];
   }
 };
+
+// --- Reports ---
+
+export const getReports = async (period: string = 'today', groupName?: string): Promise<any> => {
+  try {
+    const params = new URLSearchParams();
+    params.append('period', period);
+    if (groupName) {
+      params.append('groupName', groupName);
+    }
+    return await request<any>(`/reports?${params.toString()}`);
+  } catch (e) {
+    console.error("Error fetching reports:", e);
+    return {
+      dailyMetrics: {
+        offersToday: 0,
+        offersByGroup: [],
+        blacklistedCount: 0,
+        noKeywordsCount: 0,
+      },
+      rankings: {
+        topGroups: [],
+        topCategories: [],
+      },
+    };
+  }
+};

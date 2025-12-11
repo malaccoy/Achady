@@ -7,7 +7,8 @@ export type MenuItemId =
   | "automation"
   | "shopee"
   | "template"
-  | "logs";
+  | "logs"
+  | "reports";
 
 interface LayoutProps {
   activeSection: MenuItemId;
@@ -22,6 +23,7 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "shopee", label: "Config API Shopee" },
   { id: "template", label: "Modelo de Mensagem" },
   { id: "logs", label: "Logs de Envio" },
+  { id: "reports", label: "Relatórios" },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({
