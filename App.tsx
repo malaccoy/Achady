@@ -7,7 +7,6 @@ import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
 import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 import { Auth } from './components/Auth';
-import { AccountBadge } from './components/AccountBadge';
 import { getMe, logout } from './services/api';
 import { Loader2 } from 'lucide-react';
 
@@ -61,10 +60,12 @@ function App() {
   }
 
   return (
-    <Layout activeSection={activeSection} onChangeSection={setActiveSection}>
-        <div className="mb-4 flex justify-end">
-            <AccountBadge email={user?.email || ''} onClick={handleLogout} />
-        </div>
+    <Layout 
+      activeSection={activeSection} 
+      onChangeSection={setActiveSection}
+      userEmail={user?.email}
+      onLogout={handleLogout}
+    >
       {renderContent()}
     </Layout>
   );
