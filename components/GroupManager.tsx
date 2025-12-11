@@ -508,9 +508,6 @@ export const GroupManager: React.FC = () => {
                 <label className="block text-sm font-medium text-blue-300 mb-2">
                   Palavras-chave Específicas (Prioritárias)
                 </label>
-                <p className="text-xs text-slate-500 mb-2">
-                  Separe por vírgula. Ex: casa, sala, decoração, banheiro
-                </p>
                 <div className="flex gap-2 mb-2">
                   <input
                     type="text"
@@ -533,19 +530,23 @@ export const GroupManager: React.FC = () => {
                     Adicionar
                   </button>
                 </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  Separe por vírgula. Ex: casa, sala, decoração, banheiro
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {editKeywords.map((keyword, index) => (
                     <span
                       key={index}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-900/30 text-blue-300 border border-blue-900/50 rounded-full text-sm"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 text-slate-200 border border-slate-700/60 rounded-full text-sm hover:bg-slate-700/80 hover:border-slate-600 transition-all"
                     >
                       {keyword}
                       <button
                         type="button"
                         onClick={() => removeKeyword(index)}
-                        className="hover:text-blue-100"
+                        className="hover:text-red-400 transition-colors"
+                        title="Remover"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   ))}
@@ -560,11 +561,7 @@ export const GroupManager: React.FC = () => {
                 <label className="block text-sm font-medium text-red-300 mb-2">
                   Blacklist (Palavras Negativas)
                 </label>
-                <p className="text-xs text-slate-400 mb-2">
-                  <AlertCircle className="w-3 h-3 inline mr-1" />
-                  Se o título tiver QUALQUER uma dessas palavras, o produto é ignorado.
-                </p>
-                <div className="flex gap-2 mb-2">
+                <div className="flex gap-2 mb-3">
                   <input
                     type="text"
                     placeholder="Ex: usado, seminovo, capinha..."
@@ -586,19 +583,24 @@ export const GroupManager: React.FC = () => {
                     Adicionar
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2 mb-2">
+                <p className="text-xs text-slate-400 mb-2 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Se o título tiver QUALQUER uma dessas palavras, o produto é ignorado.
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
                   {editNegative.map((negative, index) => (
                     <span
                       key={index}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-red-900/30 text-red-300 border border-red-900/50 rounded-full text-sm"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 text-slate-200 border border-slate-700/60 rounded-full text-sm hover:bg-slate-700/80 hover:border-slate-600 transition-all"
                     >
                       {negative}
                       <button
                         type="button"
                         onClick={() => removeNegative(index)}
-                        className="hover:text-red-100"
+                        className="hover:text-red-400 transition-colors"
+                        title="Remover"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </span>
                   ))}
@@ -609,9 +611,9 @@ export const GroupManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={addQuickBlacklist}
-                  className="text-xs flex items-center gap-1 text-yellow-400 hover:text-yellow-300 transition-colors"
+                  className="text-xs flex items-center gap-1.5 bg-transparent text-orange-400 hover:text-orange-300 transition-colors px-0 py-0"
                 >
-                  <Lightbulb className="w-4 h-4" />
+                  <Lightbulb className="w-3.5 h-3.5" />
                   Sugestões rápidas: {QUICK_BLACKLIST_TERMS.join(', ')}
                 </button>
               </div>
