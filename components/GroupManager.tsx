@@ -304,6 +304,8 @@ export const GroupManager: React.FC = () => {
 
       {/* Card: Groups Table */}
       <div className="card overflow-hidden">
+        <div className="p-6 border-b border-slate-700/50">
+          <h2 className="text-lg font-bold text-slate-100 mb-4">Lista de Grupos</h2>
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex gap-2">
               <button

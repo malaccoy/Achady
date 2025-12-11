@@ -123,6 +123,7 @@ export const StatusConnection: React.FC = () => {
           <CheckCircle2 className="w-5 h-5 text-orange-500" />
           Status do Sistema
         </h2>
+        <div className="space-y-3">
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
             {diagnostics?.whatsappConnected ? (
