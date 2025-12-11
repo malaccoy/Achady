@@ -19,8 +19,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const response = await fetch(url, config);
 
   if (response.status === 401) {
-    // Redirecionar para login se necessário, ou lançar erro específico
-    window.location.href = '/login'; // Opcional: manipular via Router seria melhor
+    // Redirecionar para login causava loop infinito. 
+    // O App.tsx já lida com o estado de deslogado ao capturar este erro.
     throw new Error('Não autorizado');
   }
 
