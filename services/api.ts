@@ -1,10 +1,8 @@
 import { API_BASE_URL } from '../constants';
 import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse } from '../types';
 
-// Helper for JSON requests
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
+// Helper for making HTTP requests with common config
+async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -36,39 +34,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return response.json();
 }
 
+// Helper for API requests (under /api prefix)
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  return makeRequest<T>(url, options);
+}
+
 // Helper for auth requests (auth routes are not under /api prefix)
 async function authRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = endpoint; // Auth endpoints are absolute paths like /auth/login
-  
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
-
-  const config: RequestInit = {
-    ...options,
-    headers,
-    credentials: 'include', // IMPORTANTE: Envia cookies HttpOnly
-  };
-
-  const response = await fetch(url, config);
-
-  if (response.status === 401) {
-    // Redirecionar para login via window.location causava loop infinito.
-    // O App.tsx já captura este erro e muda o estado para exibir <Auth />
-    throw new Error('Não autorizado');
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.error || `Erro na requisição: ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
+  return makeRequest<T>(endpoint, options);
 }
 
 // --- Auth ---
