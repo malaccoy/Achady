@@ -137,9 +137,9 @@ export const StatusConnection: React.FC = () => {
             </div>
           ) : (
             <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ 
-              background: 'rgba(251, 191, 36, 0.12)', 
-              border: '1px solid rgba(251, 191, 36, 0.5)',
-              color: '#fbbf24'
+              background: 'var(--warning-soft)', 
+              border: '1px solid var(--warning-border)',
+              color: 'var(--warning)'
             }}>
               <AlertTriangle className="w-5 h-5" />
               <span className="font-semibold text-sm">Atenção — verifique os itens abaixo</span>
@@ -151,7 +151,7 @@ export const StatusConnection: React.FC = () => {
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.whatsappConnected ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              background: diagnostics?.whatsappConnected ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
               border: diagnostics?.whatsappConnected ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
             }}>
               {diagnostics?.whatsappConnected ? (
@@ -171,7 +171,7 @@ export const StatusConnection: React.FC = () => {
           {/* Shopee API Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.shopeeConfigured ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              background: diagnostics?.shopeeConfigured ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
               border: diagnostics?.shopeeConfigured ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
             }}>
               {diagnostics?.shopeeConfigured ? (
@@ -191,7 +191,7 @@ export const StatusConnection: React.FC = () => {
           {/* Automation Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.automationActive ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              background: diagnostics?.automationActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
               border: diagnostics?.automationActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
             }}>
               {diagnostics?.automationActive ? (
