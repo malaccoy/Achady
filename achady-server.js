@@ -416,9 +416,18 @@ class ShopeeClient {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `SHA256 Credential=${this.appId}, Timestamp=${ts}, Signature=${sig}` },
                 timeout: 15000
             });
-            if (data.errors) throw new Error(data.errors[0].message);
+            if (data.errors && data.errors.length > 0) {
+                const errorMessage = data.errors[0]?.message || JSON.stringify(data.errors);
+                throw new Error(`Shopee API Error: ${errorMessage}`);
+            }
             return data.data;
-        } catch (e) { throw new Error(e.message); }
+        } catch (e) {
+            // Preserve axios error details for better debugging
+            if (e.response) {
+                throw new Error(`Shopee API HTTP Error ${e.response.status}: ${e.response.data?.message || e.message}`);
+            }
+            throw new Error(e.message || 'Unknown Shopee API error');
+        }
     }
     async searchOffers(keyword) {
         const q = `query($keyword: String, $limit: Int, $sortType: Int) { productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) { nodes { itemId productName imageUrl price priceMin priceMax offerLink commissionRate } } }`;
@@ -434,15 +443,18 @@ class ShopeeClient {
 
 function renderMessage(template, offer) {
     let text = template || '';
-    const price = offer.priceMin || offer.price;
-    const original = offer.priceMax ? (offer.priceMax * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
+    // Safely get price values, defaulting to 0 if undefined/null
+    const priceValue = offer.priceMin || offer.price || 0;
+    const price = typeof priceValue === 'number' ? priceValue : parseFloat(priceValue) || 0;
+    const maxPrice = offer.priceMax || price;
+    const original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
     
     return text
-        .replace(/{{\s*titulo\s*}}/gi, offer.productName)
-        .replace(/{{\s*preco\s*}}/gi, `R$ ${price}`)
+        .replace(/{{\s*titulo\s*}}/gi, offer.productName || 'Produto')
+        .replace(/{{\s*preco\s*}}/gi, `R$ ${price.toFixed(2)}`)
         .replace(/{{\s*precoOriginal\s*}}/gi, `R$ ${original}`)
         .replace(/{{\s*desconto\s*}}/gi, offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : 'Oferta')
-        .replace(/{{\s*link\s*}}/gi, offer.shortLink || offer.offerLink);
+        .replace(/{{\s*link\s*}}/gi, offer.shortLink || offer.offerLink || '');
 }
 
 // =======================
@@ -530,7 +542,7 @@ async function runAutomation() {
                         await prisma.log.create({
                             data: { 
                                 userId: user.id, groupName: group.name, productTitle: safeOffer.productName,
-                                price: String(safeOffer.price), status: 'SENT'
+                                price: String(safeOffer.price || 0), status: 'SENT'
                             }
                         });
                         
@@ -538,7 +550,22 @@ async function runAutomation() {
                         await new Promise(r => setTimeout(r, 5000)); // Delay per group
                     }
                 } catch (e) {
-                    console.error(`[JOB Error User ${user.id}]`, e.message);
+                    console.error(`[JOB Error User ${user.id} Group ${group.name}]`, e.message);
+                    // Log the error to the database for visibility in the UI
+                    try {
+                        await prisma.log.create({
+                            data: { 
+                                userId: user.id, 
+                                groupName: group.name, 
+                                productTitle: 'Erro ao buscar/enviar oferta',
+                                price: '-', 
+                                status: 'ERROR',
+                                errorMessage: e.message
+                            }
+                        });
+                    } catch (logErr) {
+                        console.error(`[JOB] Failed to log error:`, logErr.message);
+                    }
                 }
             }
         }
