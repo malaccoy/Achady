@@ -1,4 +1,11 @@
 require('dotenv').config();
+const path = require('path');
+
+// Set default DATABASE_URL for Prisma if not provided
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = `file:${path.join(__dirname, 'dev.db')}`;
+}
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -6,7 +13,6 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const crypto = require('crypto');
 const fs = require('fs');
-const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
