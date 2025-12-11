@@ -159,7 +159,7 @@ export const AutomationControl: React.FC = () => {
         </button>
         {runResult && (
           <p className="run-feedback">
-            Ofertas enviadas para {runResult.sent} grupo(s) às {runResult.time}.
+            Ofertas enviadas para {runResult.sent} {runResult.sent === 1 ? 'grupo' : 'grupos'} às {runResult.time}.
           </p>
         )}
       </div>

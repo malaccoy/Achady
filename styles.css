@@ -971,6 +971,11 @@ textarea.template-editor:focus {
   transition: transform 120ms ease-out;
 }
 
+.toggle--off {
+  background: #020617;
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
 .toggle--on {
   background: rgba(34, 197, 94, 0.2);
   border-color: rgba(34, 197, 94, 0.7);
