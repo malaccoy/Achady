@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics } from '../types';
+import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics, ReportsData } from '../types';
 
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -221,14 +221,14 @@ export const getLogs = async (): Promise<LogEntry[]> => {
 
 // --- Reports ---
 
-export const getReports = async (period: string = 'today', groupName?: string): Promise<any> => {
+export const getReports = async (period: string = 'today', groupName?: string): Promise<ReportsData> => {
   try {
     const params = new URLSearchParams();
     params.append('period', period);
     if (groupName) {
       params.append('groupName', groupName);
     }
-    return await request<any>(`/reports?${params.toString()}`);
+    return await request<ReportsData>(`/reports?${params.toString()}`);
   } catch (e) {
     console.error("Error fetching reports:", e);
     return {

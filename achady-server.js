@@ -949,32 +949,29 @@ ApiRouter.get('/reports', async (req, res) => {
         // Calculate daily metrics
         const offersToday = logs.filter(log => log.status === 'SENT').length;
         
-        // Group by group name
-        const groupMap = {};
+        // Group by group name using Map for better performance
+        const groupMap = new Map();
+        let blacklistedCount = 0;
+        let noKeywordsCount = 0;
+        
+        // Single pass through logs for efficiency
         logs.forEach(log => {
             if (log.status === 'SENT') {
-                if (!groupMap[log.groupName]) {
-                    groupMap[log.groupName] = 0;
+                const count = groupMap.get(log.groupName) || 0;
+                groupMap.set(log.groupName, count + 1);
+            } else if (log.status === 'ERROR' && log.errorMessage) {
+                const errorMsg = log.errorMessage.toLowerCase();
+                if (errorMsg.includes('blacklist')) {
+                    blacklistedCount++;
+                } else if (errorMsg.includes('keyword') || errorMsg.includes('palavra-chave')) {
+                    noKeywordsCount++;
                 }
-                groupMap[log.groupName]++;
             }
         });
         
-        const offersByGroup = Object.entries(groupMap)
+        const offersByGroup = Array.from(groupMap.entries())
             .map(([groupName, count]) => ({ groupName, count }))
             .sort((a, b) => b.count - a.count);
-        
-        // Count errors (simulating blacklist and no-keywords)
-        const errorLogs = logs.filter(log => log.status === 'ERROR');
-        const blacklistedCount = errorLogs.filter(log => 
-            log.errorMessage && log.errorMessage.toLowerCase().includes('blacklist')
-        ).length;
-        const noKeywordsCount = errorLogs.filter(log => 
-            log.errorMessage && (
-                log.errorMessage.toLowerCase().includes('keyword') ||
-                log.errorMessage.toLowerCase().includes('palavra-chave')
-            )
-        ).length;
         
         // Rankings - Top Groups
         const topGroups = offersByGroup.slice(0, 10);

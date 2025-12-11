@@ -1,19 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getReports } from '../services/api';
+import { ReportsData } from '../types';
 import { BarChart3, TrendingUp, Users, Filter, Calendar, RefreshCcw, Package, XCircle, Search } from 'lucide-react';
-
-interface ReportsData {
-  dailyMetrics: {
-    offersToday: number;
-    offersByGroup: { groupName: string; count: number }[];
-    blacklistedCount: number;
-    noKeywordsCount: number;
-  };
-  rankings: {
-    topGroups: { groupName: string; count: number }[];
-    topCategories: { category: string; count: number }[];
-  };
-}
 
 type DateFilter = 'today' | '7days' | '30days';
 

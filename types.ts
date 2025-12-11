@@ -56,3 +56,16 @@ export enum Tab {
   LOGS = 'LOGS',
   SHOPEE = 'SHOPEE',
 }
+
+export interface ReportsData {
+  dailyMetrics: {
+    offersToday: number;
+    offersByGroup: Array<{ groupName: string; count: number }>;
+    blacklistedCount: number;
+    noKeywordsCount: number;
+  };
+  rankings: {
+    topGroups: Array<{ groupName: string; count: number }>;
+    topCategories: Array<{ category: string; count: number }>;
+  };
+}
