@@ -155,8 +155,8 @@ export const setAutomationInterval = async (minutes: number): Promise<void> => {
   });
 };
 
-export const runAutomationOnce = async (): Promise<void> => {
-  await request('/automation/run-once', { method: 'POST' });
+export const runAutomationOnce = async (): Promise<{ ok: boolean; sent: number; errors: number }> => {
+  return request<{ ok: boolean; sent: number; errors: number }>('/automation/run-once', { method: 'POST' });
 };
 
 // --- Shopee API ---
