@@ -841,7 +841,7 @@ textarea.template-editor:focus {
   gap: 8px;
   padding: 6px 10px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.85);
+  background: var(--bg-card-soft);
 }
 
 .status-row__icon {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getWhatsappStatus, getWhatsappQR, getSystemDiagnostics } from '../services/api';
-import { RefreshCw, QrCode, ShieldCheck, Loader2, AlertTriangle, Smartphone, CheckCircle2, Clock, Info } from 'lucide-react';
+import { RefreshCw, QrCode, ShieldCheck, Loader2, Smartphone, CheckCircle2, Clock, Info, Check, X, AlertTriangle } from 'lucide-react';
 import { SystemDiagnostics } from '../types';
 
 // Helper function to check if all systems are healthy
@@ -137,7 +137,7 @@ export const StatusConnection: React.FC = () => {
         {/* Summary Badge */}
         <div className={`status-summary status-summary--${isSystemHealthy(diagnostics) ? 'ok' : 'warning'}`}>
           <span className="status-summary__icon">
-            {isSystemHealthy(diagnostics) ? '✔' : '⚠'}
+            {isSystemHealthy(diagnostics) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
           </span>
           <span className="status-summary__text">
             {isSystemHealthy(diagnostics) 
@@ -150,7 +150,7 @@ export const StatusConnection: React.FC = () => {
           {/* WhatsApp Status */}
           <li className={`status-row status-row--${diagnostics?.whatsappConnected ? 'ok' : 'error'}`}>
             <span className="status-row__icon">
-              {diagnostics?.whatsappConnected ? '✓' : '✕'}
+              {diagnostics?.whatsappConnected ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
             <span className="status-row__label">WhatsApp:</span>
             <span className="status-row__value">
@@ -161,7 +161,7 @@ export const StatusConnection: React.FC = () => {
           {/* Shopee API Status */}
           <li className={`status-row status-row--${diagnostics?.shopeeConfigured ? 'ok' : 'error'}`}>
             <span className="status-row__icon">
-              {diagnostics?.shopeeConfigured ? '✓' : '✕'}
+              {diagnostics?.shopeeConfigured ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
             <span className="status-row__label">Shopee API:</span>
             <span className="status-row__value">
@@ -172,7 +172,7 @@ export const StatusConnection: React.FC = () => {
           {/* Automation Status */}
           <li className={`status-row status-row--${diagnostics?.automationActive ? 'ok' : 'error'}`}>
             <span className="status-row__icon">
-              {diagnostics?.automationActive ? '✓' : '✕'}
+              {diagnostics?.automationActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
             <span className="status-row__label">Automação:</span>
             <span className="status-row__value">
