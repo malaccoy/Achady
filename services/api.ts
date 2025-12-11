@@ -101,10 +101,10 @@ export const getGroups = async (): Promise<Group[]> => {
   }
 };
 
-export const addGroup = async (link: string): Promise<Group> => {
+export const addGroup = async (link: string, category?: string): Promise<Group> => {
   return request<Group>('/groups', {
     method: 'POST',
-    body: JSON.stringify({ link }),
+    body: JSON.stringify({ link, category }),
   });
 };
 

@@ -75,7 +75,7 @@ export const GroupManager: React.FC = () => {
     if (!newGroupLink) return;
     setAdding(true);
     try {
-      await addGroup(newGroupLink);
+      await addGroup(newGroupLink, newGroupCategory || undefined);
       setNewGroupLink('');
       setNewGroupCategory('');
       setShowAddForm(false);
