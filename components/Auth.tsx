@@ -43,6 +43,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         }
     };
 
+    const handleForgotPassword = () => {
+        setView('forgot');
+    };
+
+    const handleGoToSignup = () => {
+        setView('register');
+    };
+
     return (
         <main className="login-page">
             <div className="login-grid">
@@ -64,81 +72,162 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Email</label>
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
-                            <input 
-                                type="email" 
-                                required
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                placeholder="seu@email.com"
-                            />
-                        </div>
-                    </div>
+                    {view === 'login' && (
+                        <>
+                            <div className="login-field">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    placeholder="seu@email.com"
+                                    className="login-input"
+                                    autoComplete="email"
+                                    required
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                />
+                            </div>
 
-                    {view !== 'forgot' && (
-                        <div>
-                            <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Senha</label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
-                                <input 
-                                    type="password" 
+                            <div className="login-field">
+                                <label>Senha</label>
+                                <input
+                                    type="password"
+                                    placeholder="Sua senha"
+                                    className="login-input"
+                                    autoComplete="current-password"
                                     required
                                     minLength={8}
                                     value={password}
                                     onChange={e => setPassword(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                    placeholder="••••••••"
                                 />
                             </div>
-                        </div>
+
+                            <div className="login-links">
+                                <button
+                                    type="button"
+                                    className="login-link"
+                                    onClick={handleForgotPassword}
+                                >
+                                    Esqueceu a senha?
+                                </button>
+                            </div>
+
+                            <button type="submit" className="login-button-primary btn-primary" disabled={loading}>
+                                {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <><LogIn className="w-5 h-5" /> Entrar</>}
+                            </button>
+
+                            <p className="login-create">
+                                Não tem uma conta?{" "}
+                                <button
+                                    type="button"
+                                    className="login-link"
+                                    onClick={handleGoToSignup}
+                                >
+                                    Criar agora
+                                </button>
+                            </p>
+
+                            <p className="login-helper">
+                                Login seguro. Seus dados são usados apenas para conectar sua conta Shopee.
+                            </p>
+                        </>
                     )}
 
                     {view === 'register' && (
-                        <div className="animate-in fade-in slide-in-from-top-2">
-                            <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Confirmar Senha</label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
-                                <input 
-                                    type="password" 
-                                    required
-                                    value={confirmPassword}
-                                    onChange={e => setConfirmPassword(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                    placeholder="••••••••"
-                                />
+                        <>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Email</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+                                    <input 
+                                        type="email" 
+                                        required
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                                        placeholder="seu@email.com"
+                                    />
+                                </div>
                             </div>
-                        </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Senha</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+                                    <input 
+                                        type="password" 
+                                        required
+                                        minLength={8}
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="animate-in fade-in slide-in-from-top-2">
+                                <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Confirmar Senha</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+                                    <input 
+                                        type="password" 
+                                        required
+                                        value={confirmPassword}
+                                        onChange={e => setConfirmPassword(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                                        placeholder="••••••••"
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full btn-primary mt-6"
+                            >
+                                {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <><UserPlus className="w-5 h-5" /> Criar Conta</>}
+                            </button>
+                        </>
                     )}
 
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className="w-full btn-primary mt-6"
-                    >
-                        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : (
-                            view === 'login' ? <><LogIn className="w-5 h-5" /> Entrar</> : 
-                            view === 'register' ? <><UserPlus className="w-5 h-5" /> Criar Conta</> :
-                            <>Recuperar Senha</>
-                        )}
-                    </button>
+                    {view === 'forgot' && (
+                        <>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-400 mb-1 uppercase tracking-wider">Email</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+                                    <input 
+                                        type="email" 
+                                        required
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                                        placeholder="seu@email.com"
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full btn-primary mt-6"
+                            >
+                                {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <>Recuperar Senha</>}
+                            </button>
+                        </>
+                    )}
                 </form>
 
                     <div className="mt-6 text-center border-t border-slate-700/50 pt-6 flex flex-col gap-2">
-                        {view === 'login' && (
-                            <>
-                                <button onClick={() => setView('register')} className="text-slate-400 hover:text-white text-sm transition-colors">
-                                    Não tem uma conta? <span className="text-orange-400">Criar agora</span>
-                                </button>
-                            </>
-                        )}
-                        
                         {view === 'register' && (
                             <button onClick={() => setView('login')} className="text-slate-400 hover:text-white text-sm transition-colors">
                                 Já tem conta? <span className="text-orange-400">Fazer login</span>
+                            </button>
+                        )}
+                        
+                        {view === 'forgot' && (
+                            <button onClick={() => setView('login')} className="text-slate-400 hover:text-white text-sm transition-colors">
+                                Voltar para <span className="text-orange-400">Login</span>
                             </button>
                         )}
                     </div>
