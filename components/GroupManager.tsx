@@ -319,7 +319,7 @@ export const GroupManager: React.FC = () => {
                 onClick={() => setFilter('active')}
                 className={`group-filter ${filter === 'active' ? 'group-filter--active' : ''}`}
               >
-                Ativos ({groups.filter(g => g.active && g.chatId).length})
+                Ativos ({groups.filter(g => g.active).length})
               </button>
               <button
                 onClick={() => setFilter('paused')}
@@ -347,8 +347,10 @@ export const GroupManager: React.FC = () => {
             </button>
           </div>
         ) : filteredGroups.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            {filter === 'all' ? 'Nenhum grupo cadastrado.' : `Nenhum grupo ${filter === 'active' ? 'ativo' : 'pausado'}.`}
+          <div className="empty-state">
+            <p className="empty-state__title">
+              {filter === 'all' ? 'Nenhum grupo cadastrado.' : `Nenhum grupo ${filter === 'active' ? 'ativo' : 'pausado'}.`}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
