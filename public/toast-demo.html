@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toast Notification Demo - ACHADY</title>
+    <style>
+        :root {
+            --bg-body: #050816;
+            --bg-gradient-from: #020617;
+            --bg-gradient-to: #02001a;
+            --bg-card: #0b1020;
+            --border-subtle: rgba(148, 163, 184, 0.25);
+            --text-primary: #f9fafb;
+            --accent-primary: #ff6b00;
+            --accent-primary-hover: #ff7f1a;
+            --radius-md: 10px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: var(--text-primary);
+            background: radial-gradient(circle at top left, var(--bg-gradient-from), var(--bg-gradient-to));
+            background-color: var(--bg-body);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .demo-container {
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border-subtle);
+            animation: fade-in 220ms ease-out;
+        }
+
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            margin: 0 0 12px 0;
+            font-size: 2rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin: 0 0 32px 0;
+            color: #9ca3af;
+            font-size: 0.95rem;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .app-button {
+            background: var(--accent-primary);
+            color: #ffffff;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background 140ms ease-out, border-color 140ms ease-out, transform 120ms ease-out;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .app-button:hover:not(:disabled) {
+            background: var(--accent-primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .app-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .app-button.btn-success {
+            background: #22c55e;
+        }
+
+        .app-button.btn-success:hover {
+            background: #16a34a;
+        }
+
+        .app-button.btn-error {
+            background: #ef4444;
+        }
+
+        .app-button.btn-error:hover {
+            background: #dc2626;
+        }
+
+        .app-button.btn-info {
+            background: #3b82f6;
+        }
+
+        .app-button.btn-info:hover {
+            background: #2563eb;
+        }
+
+        /* Toast Styles */
+        .toast-container {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        .toast {
+            min-width: 260px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+            animation: toast-slide-in 250ms ease-out;
+            cursor: pointer;
+            pointer-events: all;
+            transition: transform 120ms ease-out, opacity 120ms ease-out;
+        }
+
+        .toast:hover {
+            transform: translateY(-2px);
+        }
+
+        @keyframes toast-slide-in {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .toast--success {
+            background: rgba(34, 197, 94, 0.14);
+            border: 1px solid rgba(34, 197, 94, 0.7);
+            color: #bbf7d0;
+        }
+
+        .toast--error {
+            background: rgba(239, 68, 68, 0.16);
+            border: 1px solid rgba(239, 68, 68, 0.7);
+            color: #fecaca;
+        }
+
+        .toast--info {
+            background: rgba(59, 130, 246, 0.14);
+            border: 1px solid rgba(59, 130, 246, 0.7);
+            color: #bfdbfe;
+        }
+
+        @media (max-width: 640px) {
+            .toast-container {
+                right: 12px;
+                bottom: 12px;
+                left: 12px;
+            }
+            
+            .toast {
+                min-width: unset;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎉 Toast Demo</h1>
+        <p>Teste as notificações de toast implementadas no ACHADY Bot. Clique nos botões abaixo para ver diferentes tipos de notificações.</p>
+        
+        <div class="button-group">
+            <button class="app-button btn-success" onclick="showToast('success', 'Configurações salvas com sucesso.')">
+                ✓ Configurações Salvas
+            </button>
+            <button class="app-button btn-success" onclick="showToast('success', 'Mensagem de teste enviada.')">
+                ✓ Teste Enviado
+            </button>
+            <button class="app-button btn-success" onclick="showToast('success', 'Conexão OK com a API Shopee.')">
+                ✓ Conexão OK
+            </button>
+            <button class="app-button btn-error" onclick="showToast('error', 'Algo deu errado. Tente novamente.')">
+                ✗ Erro Genérico
+            </button>
+            <button class="app-button btn-info" onclick="showToast('info', 'Processando sua solicitação...')">
+                ℹ Info
+            </button>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+        let toastId = 0;
+
+        function showToast(type, message) {
+            const container = document.getElementById('toast-container');
+            const id = 'toast-' + (toastId++);
+            
+            const toast = document.createElement('div');
+            toast.id = id;
+            toast.className = `toast toast--${type}`;
+            toast.textContent = message;
+            toast.onclick = () => removeToast(id);
+            
+            container.appendChild(toast);
+            
+            // Auto-dismiss after 4 seconds
+            setTimeout(() => removeToast(id), 4000);
+        }
+
+        function removeToast(id) {
+            const toast = document.getElementById(id);
+            if (toast) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100px)';
+                setTimeout(() => toast.remove(), 200);
+            }
+        }
+    </script>
+</body>
+</html>
