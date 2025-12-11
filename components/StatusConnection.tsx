@@ -145,18 +145,19 @@ export const StatusConnection: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Title and Description */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Status & Conexão</h1>
-        <p className="text-sm text-slate-400">
-          Conecte o bot do ACHADY ao seu WhatsApp escaneando o QR Code. O processo é manual para garantir controle.
-        </p>
-      </div>
+    <main className="app-main">
+      <div className="space-y-6">
+        {/* Page Title and Description */}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Status & Conexão</h1>
+          <p className="text-sm text-slate-400">
+            Conecte o bot do ACHADY ao seu WhatsApp escaneando o QR Code. O processo é manual para garantir controle.
+          </p>
+        </div>
 
-      {/* Card 1: System Status */}
-      <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-6 flex items-center gap-2">
+        {/* Card 1: System Status */}
+        <div className="app-card">
+        <h2 className="app-card__title flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-orange-500" />
           Status do Sistema
         </h2>
@@ -218,10 +219,10 @@ export const StatusConnection: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 2: Diagnostic Information */}
-      {diagnostics && (
-        <div className="card p-6">
-          <h2 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
+        {/* Card 2: Diagnostic Information */}
+        {diagnostics && (
+          <div className="app-card">
+            <h2 className="app-card__title flex items-center gap-2">
             <Info className="w-5 h-5 text-orange-500" />
             Informações de Diagnóstico
           </h2>
@@ -267,12 +268,12 @@ export const StatusConnection: React.FC = () => {
             <span className="font-bold text-orange-400">3.</span>
             <span>Escaneie o código QR exibido e aguarde o status ficar em <strong className="text-green-400">verde</strong> como "Conectado"</span>
           </li>
-        </ol>
-      </div>
+          </ol>
+        </div>
 
-      {/* Card 4: Actions and QR Code */}
-      <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-4">Ações e QR Code</h2>
+        {/* Card 4: Actions and QR Code */}
+        <div className="app-card">
+          <h2 className="app-card__title">Ações e QR Code</h2>
         
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -331,8 +332,9 @@ export const StatusConnection: React.FC = () => {
               <p className="text-sm">Aguardando ação...</p>
             </div>
           )}
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 };

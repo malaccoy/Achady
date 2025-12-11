@@ -220,6 +220,13 @@ body {
   padding: 0;
 }
 
+/* App Main Wrapper - Premium SaaS Container */
+.app-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 40px;
+}
+
 .achady-main-header {
   display: flex;
   align-items: center;
@@ -283,6 +290,39 @@ h2 {
 
 /* ---------- COMPONENTS ---------- */
 
+/* Premium Card Styles */
+.app-card {
+  background: #020617;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.9);
+  padding: 24px 24px 28px;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
+  transition: box-shadow 160ms ease-out, transform 160ms ease-out, border-color 160ms ease-out;
+  margin-bottom: 20px;
+}
+
+.app-card:hover {
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.7);
+  transform: translateY(-1px);
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
+/* Card Title Styles */
+h2.app-card__title,
+h3.app-card__title {
+  margin-bottom: 16px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.app-card__subtitle {
+  margin-bottom: 20px;
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+/* Legacy card support */
 .card {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
@@ -349,6 +389,32 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.2);
 }
 
+/* Premium App-specific Form Elements */
+.app-input,
+.app-select {
+  background-color: var(--bg-gradient-from);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.app-input:focus,
+.app-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.7);
+  border-color: #f97316;
+}
+
+/* Premium Button Focus States */
+.app-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.7);
+  border-color: #f97316;
+}
+
 /* Mobile Menu Toggle */
 .mobile-menu-btn {
   display: none;
@@ -366,7 +432,8 @@ input:focus, select:focus, textarea:focus {
 
 /* Botão Primário (Shopee Orange) */
 button.btn-primary,
-.btn-primary {
+.btn-primary,
+.app-button.btn-primary {
   background: var(--accent-primary);
   color: #ffffff;
   border: none;
@@ -383,26 +450,37 @@ button.btn-primary,
 }
 
 button.btn-primary:hover:not(:disabled),
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled),
+.app-button.btn-primary:hover:not(:disabled) {
   background: var(--accent-primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 button.btn-primary:active:not(:disabled),
-.btn-primary:active:not(:disabled) {
+.btn-primary:active:not(:disabled),
+.app-button.btn-primary:active:not(:disabled) {
   transform: translateY(0);
 }
 
 button.btn-primary:disabled,
-.btn-primary:disabled {
+.btn-primary:disabled,
+.app-button.btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+button.btn-primary:focus-visible,
+.btn-primary:focus-visible,
+.app-button.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.7), 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
 /* Botão Secundário (Transparent com border) */
 button.btn-secondary,
-.btn-secondary {
+.btn-secondary,
+.app-button.btn-secondary {
   background: transparent;
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
@@ -419,20 +497,31 @@ button.btn-secondary,
 }
 
 button.btn-secondary:hover:not(:disabled),
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover:not(:disabled),
+.app-button.btn-secondary:hover:not(:disabled) {
   background: rgba(148, 163, 184, 0.08);
   border-color: var(--accent-primary);
 }
 
 button.btn-secondary:disabled,
-.btn-secondary:disabled {
+.btn-secondary:disabled,
+.app-button.btn-secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+button.btn-secondary:focus-visible,
+.btn-secondary:focus-visible,
+.app-button.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.7);
+  border-color: #f97316;
+}
+
 /* Botão Success (Verde WhatsApp) */
 button.btn-success,
-.btn-success {
+.btn-success,
+.app-button.btn-success {
   background: var(--accent-success);
   color: #ffffff;
   border: none;
@@ -449,10 +538,18 @@ button.btn-success,
 }
 
 button.btn-success:hover:not(:disabled),
-.btn-success:hover:not(:disabled) {
+.btn-success:hover:not(:disabled),
+.app-button.btn-success:hover:not(:disabled) {
   background: #16a34a;
   transform: translateY(-1px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+button.btn-success:focus-visible,
+.btn-success:focus-visible,
+.app-button.btn-success:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.7), 0 10px 25px rgba(0, 0, 0, 0.4);
 }
 
 /* Badges / Status com cores específicas */
