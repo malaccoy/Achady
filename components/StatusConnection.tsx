@@ -3,6 +3,43 @@ import { getWhatsappStatus, getWhatsappQR, getSystemDiagnostics } from '../servi
 import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone, CheckCircle2, XCircle, Clock, MessageSquare, ShoppingBag, Zap, Info } from 'lucide-react';
 import { SystemDiagnostics } from '../types';
 
+// Style constants for badges
+const successBadgeStyle = { 
+  background: 'var(--accent-success-soft)', 
+  border: '1px solid var(--accent-success)',
+  color: 'var(--accent-success)'
+};
+
+const warningBadgeStyle = { 
+  background: 'var(--warning-soft)', 
+  border: '1px solid var(--warning-border)',
+  color: 'var(--warning)'
+};
+
+// Helper function to check if all systems are healthy
+const isSystemHealthy = (diagnostics: SystemDiagnostics | null) => {
+  return diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive;
+};
+
+// Helper function to get status circle style
+const getStatusCircleStyle = (isActive: boolean) => ({
+  background: isActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
+  border: isActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+});
+
+// Helper function to get status text color
+const getStatusTextColor = (isActive: boolean) => 
+  isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
+
+// Helper function to render status icon
+const renderStatusIcon = (isActive: boolean) => {
+  return isActive ? (
+    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+  ) : (
+    <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+  );
+};
+
 export const StatusConnection: React.FC = () => {
   const [status, setStatus] = useState<string>("desconhecido");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -107,43 +144,6 @@ export const StatusConnection: React.FC = () => {
     });
   };
 
-  // Helper function to check if all systems are healthy
-  const isSystemHealthy = () => {
-    return diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive;
-  };
-
-  // Style constants for badges
-  const successBadgeStyle = { 
-    background: 'var(--accent-success-soft)', 
-    border: '1px solid var(--accent-success)',
-    color: 'var(--accent-success)'
-  };
-
-  const warningBadgeStyle = { 
-    background: 'var(--warning-soft)', 
-    border: '1px solid var(--warning-border)',
-    color: 'var(--warning)'
-  };
-
-  // Helper function to get status circle style
-  const getStatusCircleStyle = (isActive: boolean) => ({
-    background: isActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
-    border: isActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
-  });
-
-  // Helper function to get status text color
-  const getStatusTextColor = (isActive: boolean) => 
-    isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
-
-  // Helper function to render status icon
-  const renderStatusIcon = (isActive: boolean) => {
-    return isActive ? (
-      <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
-    ) : (
-      <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
-    );
-  };
-
   return (
     <div className="space-y-6">
       {/* Page Title and Description */}
@@ -163,7 +163,7 @@ export const StatusConnection: React.FC = () => {
 
         {/* Summary Badge */}
         <div className="mb-6">
-          {isSystemHealthy() ? (
+          {isSystemHealthy(diagnostics) ? (
             <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={successBadgeStyle}>
               <CheckCircle2 className="w-5 h-5" />
               <span className="font-semibold text-sm">Tudo certo — sistema conectado</span>
