@@ -19,10 +19,10 @@ export const AccountBadge: React.FC<AccountBadgeProps> = ({ email, onClick }) =>
       title={email}
     >
       <div className="account-badge__icon">
-        <User className="w-3.5 h-3.5" />
+        <User />
       </div>
       <span className="account-badge__email">{email}</span>
-      <ChevronDown className="account-badge__arrow w-3.5 h-3.5" />
+      <ChevronDown className="account-badge__arrow" />
     </button>
   );
 };

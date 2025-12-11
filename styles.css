@@ -525,6 +525,11 @@ button.btn-success:hover:not(:disabled),
   color: var(--text-secondary);
 }
 
+.account-badge__icon svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
 .account-badge__email {
   font-weight: 500;
   color: var(--text-primary);
@@ -534,6 +539,8 @@ button.btn-success:hover:not(:disabled),
 }
 
 .account-badge__arrow {
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--text-secondary);
   transition: transform var(--transition-fast);
 }
