@@ -23,6 +23,7 @@
   --spacing-card: 28px;
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
   --transition-fast: 150ms ease-out;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
 /* ---------- RESET BÁSICO ---------- */
@@ -636,7 +637,7 @@ button.btn-success:hover:not(:disabled),
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 999px;
   padding: 4px 10px;
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   color: #e5e7eb;
   cursor: pointer;
@@ -658,7 +659,7 @@ textarea.template-editor {
   border: 1px solid rgba(148, 163, 184, 0.4);
   background: #020617;
   color: #e5e7eb;
-  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   resize: vertical;
 }
