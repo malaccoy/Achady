@@ -119,44 +119,92 @@ export const StatusConnection: React.FC = () => {
 
       {/* Card 1: System Status */}
       <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-bold text-slate-100 mb-6 flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-orange-500" />
           Status do Sistema
         </h2>
-        <div className="space-y-3">
+
+        {/* Summary Badge */}
+        <div className="mb-6">
+          {diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive ? (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ 
+              background: 'var(--accent-success-soft)', 
+              border: '1px solid var(--accent-success)',
+              color: 'var(--accent-success)'
+            }}>
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-semibold text-sm">Tudo certo — sistema conectado</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ 
+              background: 'rgba(251, 191, 36, 0.12)', 
+              border: '1px solid rgba(251, 191, 36, 0.5)',
+              color: '#fbbf24'
+            }}>
+              <AlertTriangle className="w-5 h-5" />
+              <span className="font-semibold text-sm">Atenção — verifique os itens abaixo</span>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.whatsappConnected ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <XCircle className="w-4 h-4 text-red-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>WhatsApp:</strong> {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
+              background: diagnostics?.whatsappConnected ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              border: diagnostics?.whatsappConnected ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+            }}>
+              {diagnostics?.whatsappConnected ? (
+                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+              ) : (
+                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+              )}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">WhatsApp:</strong>{' '}
+              <span style={{ color: diagnostics?.whatsappConnected ? 'var(--accent-success)' : '#94a3b8' }}>
+                {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
+              </span>
             </span>
           </div>
 
           {/* Shopee API Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.shopeeConfigured ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-yellow-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>Shopee API:</strong> {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
+              background: diagnostics?.shopeeConfigured ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              border: diagnostics?.shopeeConfigured ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+            }}>
+              {diagnostics?.shopeeConfigured ? (
+                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+              ) : (
+                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+              )}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">Shopee API:</strong>{' '}
+              <span style={{ color: diagnostics?.shopeeConfigured ? 'var(--accent-success)' : '#94a3b8' }}>
+                {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
+              </span>
             </span>
           </div>
 
           {/* Automation Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.automationActive ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <XCircle className="w-4 h-4 text-slate-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>Automação:</strong> {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
+              background: diagnostics?.automationActive ? 'var(--accent-success-soft)' : 'rgba(249, 115, 115, 0.12)',
+              border: diagnostics?.automationActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+            }}>
+              {diagnostics?.automationActive ? (
+                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+              ) : (
+                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+              )}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">Automação:</strong>{' '}
+              <span style={{ color: diagnostics?.automationActive ? 'var(--accent-success)' : '#94a3b8' }}>
+                {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
+              </span>
             </span>
           </div>
         </div>
