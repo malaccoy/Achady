@@ -44,12 +44,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f172a]">
-            <div className="w-full max-w-md card p-8 border border-slate-700/50 bg-slate-800/80 backdrop-blur-sm rounded-xl shadow-2xl">
-                <div className="text-center mb-8">
-                    <h1 className="text-2xl font-bold text-white mb-2">ACHADY Bot</h1>
-                    <p className="text-slate-400 text-sm">Automação de Ofertas Shopee</p>
-                </div>
+        <main className="login-page">
+            <div className="login-grid">
+                <section className="login-card">
+                    <div className="login-brand">
+                        <h1 className="login-title">ACHADY Bot</h1>
+                        <p className="login-subtitle">Automação de Ofertas Shopee</p>
+                    </div>
 
                 {error && (
                     <div className="bg-red-900/20 text-red-200 border border-red-900/30 p-3 rounded text-sm mb-6 text-center flex items-center justify-center gap-2">
@@ -126,22 +127,36 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     </button>
                 </form>
 
-                <div className="mt-6 text-center border-t border-slate-700/50 pt-6 flex flex-col gap-2">
-                    {view === 'login' && (
-                        <>
-                            <button onClick={() => setView('register')} className="text-slate-400 hover:text-white text-sm transition-colors">
-                                Não tem uma conta? <span className="text-orange-400">Criar agora</span>
+                    <div className="mt-6 text-center border-t border-slate-700/50 pt-6 flex flex-col gap-2">
+                        {view === 'login' && (
+                            <>
+                                <button onClick={() => setView('register')} className="text-slate-400 hover:text-white text-sm transition-colors">
+                                    Não tem uma conta? <span className="text-orange-400">Criar agora</span>
+                                </button>
+                            </>
+                        )}
+                        
+                        {view === 'register' && (
+                            <button onClick={() => setView('login')} className="text-slate-400 hover:text-white text-sm transition-colors">
+                                Já tem conta? <span className="text-orange-400">Fazer login</span>
                             </button>
-                        </>
-                    )}
-                    
-                    {view === 'register' && (
-                         <button onClick={() => setView('login')} className="text-slate-400 hover:text-white text-sm transition-colors">
-                            Já tem conta? <span className="text-orange-400">Fazer login</span>
-                        </button>
-                    )}
-                </div>
+                        )}
+                    </div>
+                </section>
+
+                <section className="login-hero">
+                    <h2>Conecte Shopee. Envie ofertas. Escale no WhatsApp.</h2>
+                    <p>
+                        O ACHADY conecta sua conta de afiliado Shopee e envia automaticamente as
+                        melhores ofertas para seus grupos de WhatsApp.
+                    </p>
+                    <ul>
+                        <li>Filtre produtos por palavras-chave.</li>
+                        <li>Controle a frequência de envios.</li>
+                        <li>Acompanhe status do bot em tempo real.</li>
+                    </ul>
+                </section>
             </div>
-        </div>
+        </main>
     );
 };
