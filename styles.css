@@ -566,7 +566,6 @@ button.btn-success:hover:not(:disabled),
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  margin: 4px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.12);        /* subtle dark background */
   border: 1px solid rgba(148, 163, 184, 0.35);  /* soft border */
@@ -599,4 +598,9 @@ button.btn-success:hover:not(:disabled),
 .tag-chip__remove:hover {
   color: #f97373;
   transform: scale(1.05);
+}
+
+.tag-chip__label {
+  /* Label inherits color and font from parent .tag-chip */
+  /* This class is here for semantic clarity and potential future customization */
 }

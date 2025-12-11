@@ -534,7 +534,7 @@ export const GroupManager: React.FC = () => {
                 <p className="text-xs text-slate-500 mb-3">
                   Separe por vírgula. Ex: casa, sala, decoração, banheiro
                 </p>
-                <div className="flex flex-wrap gap-1 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   {editKeywords.map((keyword, index) => (
                     <TagChip
                       key={index}
@@ -579,7 +579,7 @@ export const GroupManager: React.FC = () => {
                   <AlertCircle className="w-3 h-3" />
                   Se o título tiver QUALQUER uma dessas palavras, o produto é ignorado.
                 </p>
-                <div className="flex flex-wrap gap-1 items-center mb-3">
+                <div className="flex flex-wrap gap-2 items-center mb-3">
                   {editNegative.map((negative, index) => (
                     <TagChip
                       key={index}
