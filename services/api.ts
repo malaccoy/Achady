@@ -36,32 +36,67 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return response.json();
 }
 
+// Helper for auth requests (auth routes are not under /api prefix)
+async function authRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = endpoint; // Auth endpoints are absolute paths like /auth/login
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  const config: RequestInit = {
+    ...options,
+    headers,
+    credentials: 'include', // IMPORTANTE: Envia cookies HttpOnly
+  };
+
+  const response = await fetch(url, config);
+
+  if (response.status === 401) {
+    // Redirecionar para login via window.location causava loop infinito.
+    // O App.tsx já captura este erro e muda o estado para exibir <Auth />
+    throw new Error('Não autorizado');
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.error || `Erro na requisição: ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return response.json();
+}
+
 // --- Auth ---
 
 export const login = async (email: string, password: string) => {
-    return request<any>('/auth/login', {
+    return authRequest<any>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password })
     });
 };
 
 export const register = async (email: string, password: string, confirmPassword: string) => {
-    return request<any>('/auth/register', {
+    return authRequest<any>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password, confirmPassword })
     });
 };
 
 export const logout = async () => {
-    return request('/auth/logout', { method: 'POST' });
+    return authRequest('/auth/logout', { method: 'POST' });
 };
 
 export const getMe = async () => {
-    return request<any>('/auth/me');
+    return authRequest<any>('/auth/me');
 };
 
 export const deleteAccount = async (password: string, confirmation: string) => {
-    return request('/auth/account', {
+    return authRequest('/auth/account', {
         method: 'DELETE',
         body: JSON.stringify({ password, confirmation })
     });
