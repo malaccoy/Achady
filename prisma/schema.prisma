@@ -43,6 +43,10 @@ model UserSettings {
   template         String?
   automationActive Boolean  @default(false)
   intervalMinutes  Int      @default(5)
+  sendHourStart    String   @default("08:00")
+  sendHourEnd      String   @default("22:00")
+  maxOffersPerDay  Int      @default(10)
+  smartMode        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

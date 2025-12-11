@@ -463,6 +463,69 @@ function renderMessage(template, offer) {
 }
 
 // =======================
+// AUTOMATION HELPERS
+// =======================
+function isWithinTimeWindow(startHour, endHour) {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTime = currentHour + currentMinute / 60;
+    
+    const [startH, startM] = startHour.split(':').map(Number);
+    const [endH, endM] = endHour.split(':').map(Number);
+    const start = startH + startM / 60;
+    const end = endH + endM / 60;
+    
+    return currentTime >= start && currentTime <= end;
+}
+
+async function hasReachedDailyLimit(userId, groupId, maxOffersPerDay) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const sentTodayCount = await prisma.sentOffer.count({
+        where: {
+            userId,
+            groupId,
+            sentAt: { gte: startOfToday }
+        }
+    });
+    
+    return sentTodayCount >= maxOffersPerDay;
+}
+
+function areSimilarOffers(offer1, offer2) {
+    if (!offer1 || !offer2) return false;
+    
+    // Check if titles are very similar (using simple word overlap)
+    const title1 = offer1.productName.toLowerCase();
+    const title2 = offer2.productName.toLowerCase();
+    
+    // If titles are exactly the same
+    if (title1 === title2) return true;
+    
+    // Check price similarity (within 10%)
+    const price1 = offer1.priceMin || offer1.price || 0;
+    const price2 = offer2.priceMin || offer2.price || 0;
+    
+    if (price1 > 0 && price2 > 0) {
+        const priceDiff = Math.abs(price1 - price2) / Math.max(price1, price2);
+        
+        // If prices are very similar and titles share many words
+        if (priceDiff < 0.1) {
+            const words1 = new Set(title1.split(/\s+/).filter(w => w.length > 3));
+            const words2 = new Set(title2.split(/\s+/).filter(w => w.length > 3));
+            const commonWords = [...words1].filter(w => words2.has(w));
+            const similarity = commonWords.length / Math.min(words1.size, words2.size);
+            
+            if (similarity > 0.5) return true;
+        }
+    }
+    
+    return false;
+}
+
+// =======================
 // SCHEDULER (MULTI-USER)
 // =======================
 let isJobRunning = false;
@@ -483,6 +546,14 @@ async function runAutomation() {
         });
 
         for (const user of users) {
+            // Check time window
+            const sendHourStart = user.settings.sendHourStart || "08:00";
+            const sendHourEnd = user.settings.sendHourEnd || "22:00";
+            if (!isWithinTimeWindow(sendHourStart, sendHourEnd)) {
+                console.log(`[JOB] User ${user.id} fora da janela de horário (${sendHourStart}-${sendHourEnd})`);
+                continue;
+            }
+
             // Check credentials
             if (!user.settings.shopeeAppId || !user.settings.shopeeSecret) continue;
             const plainSecret = decrypt(user.settings.shopeeSecret);
@@ -496,17 +567,39 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+            const maxOffersPerDay = user.settings.maxOffersPerDay || 10;
+            const smartMode = user.settings.smartMode || false;
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
+                
+                // Check daily limit per group
+                if (await hasReachedDailyLimit(user.id, group.id, maxOffersPerDay)) {
+                    console.log(`[JOB] Grupo ${group.name} atingiu limite diário (${maxOffersPerDay})`);
+                    continue;
+                }
                 
                 // Dedupe: Check history for THIS group
                 const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
                 const recentOffers = await prisma.sentOffer.findMany({
                     where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
-                    select: { itemId: true }
+                    select: { itemId: true, keyword: true }
                 });
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
+                
+                // Get last sent offer for smart mode
+                let lastSentOffer = null;
+                if (smartMode) {
+                    const lastOffer = await prisma.sentOffer.findFirst({
+                        where: { groupId: group.id },
+                        orderBy: { sentAt: 'desc' },
+                        select: { itemId: true }
+                    });
+                    if (lastOffer) {
+                        // We'll need to get the offer details from recent search
+                        // For now, we'll track it during the send process
+                    }
+                }
 
                 // Keyword Strategy
                 let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
@@ -519,10 +612,58 @@ async function runAutomation() {
 
                     // Blacklist
                     const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
-                    const safeOffer = validOffers.find(o => {
-                        const title = o.productName.toLowerCase();
-                        return !blacklist.some(bad => title.includes(bad));
-                    });
+                    
+                    // Get last sent offer for smart mode comparison
+                    let lastSentOfferData = null;
+                    if (smartMode) {
+                        const lastSent = await prisma.sentOffer.findFirst({
+                            where: { groupId: group.id },
+                            orderBy: { sentAt: 'desc' },
+                            take: 1
+                        });
+                        // Store the last sent itemId to compare with current offers
+                        if (lastSent) {
+                            // Try to find it in recent offers to get full data
+                            const recentSearches = await shopee.searchOffers(lastSent.keyword || keyword);
+                            lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                        }
+                    }
+                    
+                    let blacklistCount = 0;
+                    let safeOffer = null;
+                    
+                    for (const offer of validOffers) {
+                        const title = offer.productName.toLowerCase();
+                        
+                        // Check blacklist
+                        if (blacklist.some(bad => title.includes(bad))) {
+                            blacklistCount++;
+                            continue;
+                        }
+                        
+                        // Check smart mode - avoid similar offers
+                        if (smartMode && lastSentOfferData && areSimilarOffers(offer, lastSentOfferData)) {
+                            continue;
+                        }
+                        
+                        // Found a good offer
+                        safeOffer = offer;
+                        break;
+                    }
+                    
+                    // Log blacklisted offers
+                    if (blacklistCount > 0) {
+                        await prisma.log.create({
+                            data: { 
+                                userId: user.id, 
+                                groupName: group.name, 
+                                productTitle: `${blacklistCount} ofertas filtradas`,
+                                price: '-', 
+                                status: 'ERROR',
+                                errorMessage: 'blacklist'
+                            }
+                        });
+                    }
                     
                     if (safeOffer) {
                         const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
@@ -736,7 +877,14 @@ ApiRouter.post('/shopee/test', async (req, res) => {
 
 ApiRouter.get('/automation', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
-    res.json({ active: settings?.automationActive || false, intervalMinutes: settings?.intervalMinutes || 60 });
+    res.json({ 
+        active: settings?.automationActive || false, 
+        intervalMinutes: settings?.intervalMinutes || 60,
+        sendHourStart: settings?.sendHourStart || "08:00",
+        sendHourEnd: settings?.sendHourEnd || "22:00",
+        maxOffersPerDay: settings?.maxOffersPerDay || 10,
+        smartMode: settings?.smartMode || false
+    });
 });
 
 ApiRouter.patch('/automation/status', async (req, res) => {
@@ -757,6 +905,78 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
         create: { userId: req.userId, intervalMinutes }
     });
     res.json({ ok: true });
+});
+
+ApiRouter.patch('/automation/time-window', async (req, res) => {
+    const { sendHourStart, sendHourEnd } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { sendHourStart, sendHourEnd },
+        create: { userId: req.userId, sendHourStart, sendHourEnd }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.patch('/automation/max-offers', async (req, res) => {
+    const { maxOffersPerDay } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { maxOffersPerDay },
+        create: { userId: req.userId, maxOffersPerDay }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.patch('/automation/smart-mode', async (req, res) => {
+    const { smartMode } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { smartMode },
+        create: { userId: req.userId, smartMode }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.get('/automation/stats', async (req, res) => {
+    try {
+        // Get offers sent today
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        
+        const offersSentToday = await prisma.sentOffer.count({
+            where: {
+                userId: req.userId,
+                sentAt: { gte: startOfToday }
+            }
+        });
+
+        // Get active groups count
+        const activeGroups = await prisma.group.count({
+            where: {
+                userId: req.userId,
+                active: true
+            }
+        });
+
+        // Get offers ignored by blacklist today (from error logs)
+        const offersIgnoredByBlacklist = await prisma.log.count({
+            where: {
+                userId: req.userId,
+                status: 'ERROR',
+                errorMessage: { contains: 'blacklist' },
+                timestamp: { gte: startOfToday }
+            }
+        });
+
+        res.json({
+            offersSentToday,
+            activeGroups,
+            offersIgnoredByBlacklist
+        });
+    } catch (e) {
+        console.error('[AUTOMATION STATS ERROR]', e);
+        res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+    }
 });
 
 ApiRouter.post('/automation/run-once', async (req, res) => {
@@ -793,17 +1013,25 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
         }
 
         const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+        const maxOffersPerDay = user.settings.maxOffersPerDay || 10;
+        const smartMode = user.settings.smartMode || false;
         let sentCount = 0;
         let errorCount = 0;
 
         for (const group of user.groups) {
             if (!group.chatId) continue;
             
+            // Check daily limit per group
+            if (await hasReachedDailyLimit(user.id, group.id, maxOffersPerDay)) {
+                console.log(`[RUN-ONCE] Grupo ${group.name} atingiu limite diário (${maxOffersPerDay})`);
+                continue;
+            }
+            
             // Dedupe: Check history for THIS group
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
             const recentOffers = await prisma.sentOffer.findMany({
                 where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
-                select: { itemId: true }
+                select: { itemId: true, keyword: true }
             });
             const sentIds = new Set(recentOffers.map(o => o.itemId));
 
@@ -818,10 +1046,40 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
 
                 // Blacklist
                 const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
-                const safeOffer = validOffers.find(o => {
-                    const title = o.productName.toLowerCase();
-                    return !blacklist.some(bad => title.includes(bad));
-                });
+                
+                // Get last sent offer for smart mode comparison
+                let lastSentOfferData = null;
+                if (smartMode) {
+                    const lastSent = await prisma.sentOffer.findFirst({
+                        where: { groupId: group.id },
+                        orderBy: { sentAt: 'desc' },
+                        take: 1
+                    });
+                    if (lastSent) {
+                        const recentSearches = await shopee.searchOffers(lastSent.keyword || keyword);
+                        lastSentOfferData = recentSearches.find(o => String(o.itemId) === lastSent.itemId);
+                    }
+                }
+                
+                let safeOffer = null;
+                
+                for (const offer of validOffers) {
+                    const title = offer.productName.toLowerCase();
+                    
+                    // Check blacklist
+                    if (blacklist.some(bad => title.includes(bad))) {
+                        continue;
+                    }
+                    
+                    // Check smart mode - avoid similar offers
+                    if (smartMode && lastSentOfferData && areSimilarOffers(offer, lastSentOfferData)) {
+                        continue;
+                    }
+                    
+                    // Found a good offer
+                    safeOffer = offer;
+                    break;
+                }
                 
                 if (safeOffer) {
                     const shortLink = await shopee.generateShortLink(safeOffer.offerLink);

@@ -1,19 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { getAutomationConfig, setAutomationStatus, setAutomationInterval, runAutomationOnce } from '../services/api';
-import { Zap, Play, Clock, Save, Loader2 } from 'lucide-react';
+import { 
+  getAutomationConfig, 
+  setAutomationStatus, 
+  setAutomationInterval, 
+  setAutomationTimeWindow,
+  setAutomationMaxOffers,
+  setAutomationSmartMode,
+  getAutomationStats,
+  runAutomationOnce 
+} from '../services/api';
+import { Zap, Play, Clock, Save, Loader2, Calendar, TrendingUp, Users, Filter } from 'lucide-react';
+import { AutomationStats } from '../types';
 
 export const AutomationControl: React.FC = () => {
   const [active, setActive] = useState(false);
   const [interval, setIntervalVal] = useState(60);
+  const [sendHourStart, setSendHourStart] = useState("08:00");
+  const [sendHourEnd, setSendHourEnd] = useState("22:00");
+  const [maxOffersPerDay, setMaxOffersPerDay] = useState(10);
+  const [smartMode, setSmartMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [runningOnce, setRunningOnce] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [stats, setStats] = useState<AutomationStats>({ offersSentToday: 0, activeGroups: 0, offersIgnoredByBlacklist: 0 });
 
   useEffect(() => {
     const init = async () => {
         const config = await getAutomationConfig();
         setActive(config.active);
         setIntervalVal(config.intervalMinutes);
+        setSendHourStart(config.sendHourStart);
+        setSendHourEnd(config.sendHourEnd);
+        setMaxOffersPerDay(config.maxOffersPerDay);
+        setSmartMode(config.smartMode);
+        
+        // Load stats
+        try {
+          const statsData = await getAutomationStats();
+          setStats(statsData);
+        } catch (e) {
+          console.error('Error loading stats:', e);
+        }
     };
     init();
   }, []);
@@ -24,6 +51,9 @@ export const AutomationControl: React.FC = () => {
     try {
         await setAutomationStatus(active);
         await setAutomationInterval(interval);
+        await setAutomationTimeWindow(sendHourStart, sendHourEnd);
+        await setAutomationMaxOffers(maxOffersPerDay);
+        await setAutomationSmartMode(smartMode);
         setMessage({ type: 'success', text: 'Configurações salvas com sucesso!' });
     } catch (e) {
         setMessage({ type: 'error', text: 'Erro ao salvar configurações.' });
@@ -37,6 +67,13 @@ export const AutomationControl: React.FC = () => {
     try {
         await runAutomationOnce();
         alert("Automação disparada! Verifique os logs.");
+        // Reload stats after run
+        try {
+          const statsData = await getAutomationStats();
+          setStats(statsData);
+        } catch (e) {
+          console.error('Error reloading stats:', e);
+        }
     } catch (e) {
         alert("Erro ao disparar automação.");
     } finally {
@@ -46,6 +83,43 @@ export const AutomationControl: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Automation Summary Panel */}
+      <div className="card p-6">
+        <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-6 h-6 text-orange-500" />
+          Resumo da Automação
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900/30 rounded-lg p-4 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Ofertas Enviadas Hoje</p>
+                <p className="text-2xl font-bold text-orange-400 mt-1">{stats.offersSentToday}</p>
+              </div>
+              <Zap className="w-8 h-8 text-orange-500/50" />
+            </div>
+          </div>
+          <div className="bg-slate-900/30 rounded-lg p-4 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Grupos Ativos</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{stats.activeGroups}</p>
+              </div>
+              <Users className="w-8 h-8 text-blue-500/50" />
+            </div>
+          </div>
+          <div className="bg-slate-900/30 rounded-lg p-4 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-400">Filtradas por Blacklist</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{stats.offersIgnoredByBlacklist}</p>
+              </div>
+              <Filter className="w-8 h-8 text-red-500/50" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="card p-6">
         <h2 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <Zap className="w-6 h-6 text-orange-500" />
@@ -88,6 +162,68 @@ export const AutomationControl: React.FC = () => {
                         <option value={30}>A cada 30 minutos</option>
                         <option value={60}>A cada 60 minutos</option>
                     </select>
+                </div>
+
+                {/* Time Window */}
+                <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        Janela de Horário
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Início</label>
+                            <input 
+                                type="time" 
+                                value={sendHourStart}
+                                onChange={(e) => setSendHourStart(e.target.value)}
+                                className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Fim</label>
+                            <input 
+                                type="time" 
+                                value={sendHourEnd}
+                                onChange={(e) => setSendHourEnd(e.target.value)}
+                                className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                            />
+                        </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">Mensagens serão enviadas apenas neste intervalo</p>
+                </div>
+
+                {/* Max Offers Per Day */}
+                <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">
+                        Máximo de Ofertas por Dia (por Grupo)
+                    </label>
+                    <input 
+                        type="number" 
+                        min="1" 
+                        max="100"
+                        value={maxOffersPerDay}
+                        onChange={(e) => setMaxOffersPerDay(Number(e.target.value))}
+                        className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Limite diário de mensagens por grupo</p>
+                </div>
+
+                {/* Smart Mode Toggle */}
+                <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
+                    <div>
+                        <h3 className="font-medium text-slate-200">Modo Inteligente</h3>
+                        <p className="text-sm text-slate-500">Evita ofertas muito parecidas em sequência</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={smartMode}
+                            onChange={(e) => setSmartMode(e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                    </label>
                 </div>
 
                 {message && (

@@ -133,7 +133,14 @@ export const getAutomationConfig = async (): Promise<AutomationConfig> => {
   try {
     return await request<AutomationConfig>('/automation');
   } catch (e) {
-    return { active: false, intervalMinutes: 60 };
+    return { 
+      active: false, 
+      intervalMinutes: 60,
+      sendHourStart: "08:00",
+      sendHourEnd: "22:00",
+      maxOffersPerDay: 10,
+      smartMode: false
+    };
   }
 };
 
@@ -149,6 +156,31 @@ export const setAutomationInterval = async (minutes: number): Promise<void> => {
     method: 'PATCH',
     body: JSON.stringify({ intervalMinutes: minutes }),
   });
+};
+
+export const setAutomationTimeWindow = async (sendHourStart: string, sendHourEnd: string): Promise<void> => {
+  await request('/automation/time-window', {
+    method: 'PATCH',
+    body: JSON.stringify({ sendHourStart, sendHourEnd }),
+  });
+};
+
+export const setAutomationMaxOffers = async (maxOffersPerDay: number): Promise<void> => {
+  await request('/automation/max-offers', {
+    method: 'PATCH',
+    body: JSON.stringify({ maxOffersPerDay }),
+  });
+};
+
+export const setAutomationSmartMode = async (smartMode: boolean): Promise<void> => {
+  await request('/automation/smart-mode', {
+    method: 'PATCH',
+    body: JSON.stringify({ smartMode }),
+  });
+};
+
+export const getAutomationStats = async (): Promise<import('../types').AutomationStats> => {
+  return await request<import('../types').AutomationStats>('/automation/stats');
 };
 
 export const runAutomationOnce = async (): Promise<void> => {

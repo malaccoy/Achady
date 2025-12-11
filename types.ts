@@ -16,6 +16,16 @@ export interface Group {
 export interface AutomationConfig {
   active: boolean;
   intervalMinutes: number;
+  sendHourStart: string;
+  sendHourEnd: string;
+  maxOffersPerDay: number;
+  smartMode: boolean;
+}
+
+export interface AutomationStats {
+  offersSentToday: number;
+  activeGroups: number;
+  offersIgnoredByBlacklist: number;
 }
 
 export interface MessageTemplate {
