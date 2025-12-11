@@ -11,6 +11,8 @@ export interface Group {
   chatId?: string;
   keywords?: string[];
   negativeKeywords?: string[];
+  category?: string;
+  lastMessageSent?: string;
 }
 
 export interface AutomationConfig {

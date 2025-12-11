@@ -58,6 +58,8 @@ model Group {
   active           Boolean  @default(true)
   keywords         String   @default("") // CSV ou texto livre
   negativeKeywords String   @default("")
+  category         String?  // Categoria do grupo (ex: "Casa & Decoração", "Beleza", etc)
+  lastMessageSent  DateTime? // Data/hora da última mensagem enviada
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
