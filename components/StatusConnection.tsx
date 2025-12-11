@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { getWhatsappStatus, getWhatsappQR } from '../services/api';
-import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { getWhatsappStatus, getWhatsappQR, getSystemDiagnostics } from '../services/api';
+import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone, CheckCircle2, XCircle, Clock, MessageSquare, ShoppingBag, Zap, Info } from 'lucide-react';
+import { SystemDiagnostics } from '../types';
 
 export const StatusConnection: React.FC = () => {
   const [status, setStatus] = useState<string>("desconhecido");
@@ -8,6 +9,25 @@ export const StatusConnection: React.FC = () => {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
+
+  useEffect(() => {
+    // Load diagnostics on mount
+    loadDiagnostics();
+  }, []);
+
+  async function loadDiagnostics() {
+    try {
+      const diag = await getSystemDiagnostics();
+      setDiagnostics(diag);
+      // Also update status from diagnostics
+      if (diag.whatsappConnected) {
+        setStatus('ready');
+      }
+    } catch (e) {
+      console.error("Failed to load diagnostics:", e);
+    }
+  }
 
   async function handleCheckStatus() {
     try {
@@ -18,6 +38,8 @@ export const StatusConnection: React.FC = () => {
       if (res.status !== "qr") {
         setQrDataUrl(null);
       }
+      // Reload diagnostics after checking status
+      await loadDiagnostics();
     } catch (e: any) {
       setError(e.message || "Não foi possível obter o status do WhatsApp.");
     } finally {
@@ -36,6 +58,7 @@ export const StatusConnection: React.FC = () => {
       } else {
         setQrDataUrl(null);
       }
+      await loadDiagnostics();
     } catch (e: any) {
       setError(e.message || "Erro ao gerar QR Code.");
     } finally {
@@ -63,6 +86,17 @@ export const StatusConnection: React.FC = () => {
       }
   };
 
+  const formatDateTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="card p-6">
@@ -75,12 +109,135 @@ export const StatusConnection: React.FC = () => {
             Conecte o bot do ACHADY ao seu WhatsApp escaneando o QR Code. O processo é manual para garantir controle.
         </p>
 
-        {/* Status Indicator */}
+        {/* System Status Checklist */}
+        <div className="mb-6 bg-slate-900/30 border border-slate-700/50 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-orange-500" />
+            Status do Sistema
+          </h3>
+          <div className="grid gap-3">
+            {/* WhatsApp Status */}
+            <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md border border-slate-700/30">
+              <div className="flex items-center gap-3">
+                <Smartphone className="w-5 h-5 text-slate-400" />
+                <span className="text-sm font-medium text-slate-200">WhatsApp</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {diagnostics?.whatsappConnected ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <span className="text-sm font-semibold text-green-400">Conectado</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-5 h-5 text-red-500" />
+                    <span className="text-sm font-semibold text-red-400">Desconectado</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Shopee API Status */}
+            <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md border border-slate-700/30">
+              <div className="flex items-center gap-3">
+                <ShoppingBag className="w-5 h-5 text-slate-400" />
+                <span className="text-sm font-medium text-slate-200">Shopee API</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {diagnostics?.shopeeConfigured ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <span className="text-sm font-semibold text-green-400">Configurada</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                    <span className="text-sm font-semibold text-yellow-400">Pendente</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Automation Status */}
+            <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-md border border-slate-700/30">
+              <div className="flex items-center gap-3">
+                <Zap className="w-5 h-5 text-slate-400" />
+                <span className="text-sm font-medium text-slate-200">Automação</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {diagnostics?.automationActive ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <span className="text-sm font-semibold text-green-400">Ativa</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-5 h-5 text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-400">Inativa</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Diagnostic Information */}
+        {diagnostics && (
+          <div className="mb-6 p-4 bg-slate-900/20 border border-slate-700/30 rounded-lg">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5" />
+              Informações de Diagnóstico
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-start gap-2 text-slate-400">
+                <span className="text-slate-500">•</span>
+                <span>
+                  <strong className="text-slate-300">Última verificação de status:</strong>{' '}
+                  {formatDateTime(diagnostics.lastStatusCheck)}
+                </span>
+              </div>
+              {diagnostics.lastMessageSent ? (
+                <div className="flex items-start gap-2 text-slate-400">
+                  <span className="text-slate-500">•</span>
+                  <span>
+                    <strong className="text-slate-300">Última mensagem enviada:</strong>{' '}
+                    {formatDateTime(diagnostics.lastMessageSent.timestamp)} para{' '}
+                    <span className="text-orange-400">{diagnostics.lastMessageSent.groupName}</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 text-slate-400">
+                  <span className="text-slate-500">•</span>
+                  <span>
+                    <strong className="text-slate-300">Última mensagem enviada:</strong> Nenhuma mensagem enviada ainda
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Quick Setup Instructions */}
+        <div className="mb-6 p-4 bg-blue-900/10 border border-blue-700/30 rounded-lg">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+            <div>
+              <h4 className="text-sm font-semibold text-blue-300 mb-2">Primeira conexão? Siga estes passos:</h4>
+              <ol className="text-sm text-slate-400 space-y-1.5 list-decimal list-inside">
+                <li>Clique em <strong className="text-slate-300">"Gerar QR Code"</strong> abaixo</li>
+                <li>Abra o WhatsApp {'>'} <strong className="text-slate-300">Aparelhos conectados</strong> {'>'} <strong className="text-slate-300">Conectar com QR Code</strong></li>
+                <li>Escaneie o código QR exibido e aguarde o status ficar em <strong className="text-green-400">verde</strong> como "Conectado"</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        {/* Old Status Indicator - kept for compatibility */}
         <div className={`p-4 rounded-md border flex items-center justify-between mb-6 transition-colors ${getStatusColor(status)}`}>
           <div className="flex items-center gap-3">
              {status === 'ready' ? <ShieldCheck className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
              <span className="font-semibold text-lg capitalize">
-                Status atual: {getStatusLabel(status)}
+                Status WhatsApp: {getStatusLabel(status)}
              </span>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse } from '../types';
+import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics } from '../types';
 
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -84,6 +84,10 @@ export const getWhatsappStatus = async (): Promise<{ status: string }> => {
 
 export const getWhatsappQR = async (): Promise<{ status: string; qr: string | null }> => {
   return request<{ status: string; qr: string | null }>('/whatsapp/qr');
+};
+
+export const getSystemDiagnostics = async (): Promise<SystemDiagnostics> => {
+  return request<SystemDiagnostics>('/system/diagnostics');
 };
 
 // --- Groups ---

@@ -37,6 +37,17 @@ export interface ShopeeConfigResponse {
   appIdMasked: string | null;
 }
 
+export interface SystemDiagnostics {
+  whatsappConnected: boolean;
+  shopeeConfigured: boolean;
+  automationActive: boolean;
+  lastMessageSent: {
+    timestamp: string;
+    groupName: string;
+  } | null;
+  lastStatusCheck: string;
+}
+
 export enum Tab {
   STATUS = 'STATUS',
   GROUPS = 'GROUPS',
