@@ -1009,3 +1009,12 @@ textarea.template-editor:focus {
   font-size: 0.875rem;
   text-align: center;
 }
+
+/* ---------- CREDENTIALS ACTIVE SECTION ---------- */
+.credentials-active {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  margin-bottom: 16px;
+}

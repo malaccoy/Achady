@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getShopeeConfig, saveShopeeConfig, testShopeeConnection } from "../services/api";
-import { ShoppingBag, Save, Key, Lock, Loader2, CheckCircle2, Zap, AlertTriangle } from "lucide-react";
+import { ShoppingBag, Save, Key, Lock, Loader2, CheckCircle2, Zap, AlertTriangle, Eye, EyeOff } from "lucide-react";
 
 export const ShopeeApiConfig: React.FC = () => {
   const [appId, setAppId] = useState("");
@@ -9,6 +9,9 @@ export const ShopeeApiConfig: React.FC = () => {
   const [testing, setTesting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'info' | 'error', text: string } | null>(null);
   const [masked, setMasked] = useState<string | null>(null);
+  const [showSecret, setShowSecret] = useState(false);
+  const [connectionTestState, setConnectionTestState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -45,15 +48,21 @@ export const ShopeeApiConfig: React.FC = () => {
 
   async function handleTest() {
     setTesting(true);
+    setConnectionTestState('testing');
     setStatusMessage(null);
+    setConnectionMessage(null);
     try {
       const res = await testShopeeConnection();
+      setConnectionTestState('success');
+      setConnectionMessage('Conexão OK com a API Shopee.');
       setStatusMessage({ 
         type: 'success', 
         text: `SUCESSO! Shopee API respondeu. Encontramos ${res.count} ofertas de teste.` 
       });
     } catch (e: any) {
       console.error(e);
+      setConnectionTestState('error');
+      setConnectionMessage('Falha ao conectar. Verifique App ID e Secret.');
       setStatusMessage({ 
         type: 'error', 
         text: `FALHA: ${e.message || 'Verifique AppID/Secret e IP Whitelist.'}` 
@@ -96,7 +105,7 @@ export const ShopeeApiConfig: React.FC = () => {
 
         {/* Active Credentials Section */}
         {masked && (
-          <div className="mb-6 p-4 bg-slate-900/50 border border-slate-700 rounded-lg">
+          <div className="credentials-active">
             <h3 className="text-sm font-semibold text-slate-300 mb-3">Credenciais Ativas</h3>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -116,9 +125,22 @@ export const ShopeeApiConfig: React.FC = () => {
                 className="text-sm btn-success"
               >
                 {testing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Zap className="w-4 h-4"/>}
-                Testar Conexão Agora
+                {testing ? 'Testando...' : 'Testar Conexão Agora'}
               </button>
             </div>
+            {/* Connection Test Feedback */}
+            {connectionMessage && connectionTestState !== 'idle' && (
+              <div className={`mt-3 text-sm flex items-center gap-2 ${
+                connectionTestState === 'success' ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {connectionTestState === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4" />
+                )}
+                <span>{connectionMessage}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -156,13 +178,27 @@ export const ShopeeApiConfig: React.FC = () => {
               <label className="block text-sm font-medium text-slate-400 mb-1 flex items-center gap-2">
                 <Lock className="w-4 h-4" /> Secret Key
               </label>
-              <input
-                type="password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                placeholder="Cole aqui a senha/secret da API"
-                className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white font-mono text-sm placeholder:text-slate-600"
-              />
+              <div className="relative">
+                <input
+                  type={showSecret ? "text" : "password"}
+                  value={secret}
+                  onChange={(e) => setSecret(e.target.value)}
+                  placeholder="Cole aqui a senha/secret da API"
+                  className="w-full p-3 pr-12 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white font-mono text-sm placeholder:text-slate-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  aria-label={showSecret ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showSecret ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="pt-2">
