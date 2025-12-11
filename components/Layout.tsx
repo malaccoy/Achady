@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Menu, X } from "lucide-react";
+import { MainContainer } from "./MainContainer";
 
 export type MenuItemId =
   | "status"
@@ -78,27 +79,29 @@ export const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       <main className="achady-main">
-        <header className="achady-main-header">
-          <div className="flex items-center gap-3">
-             <button className="mobile-menu-btn md:hidden" onClick={() => setIsMobileMenuOpen(true)}>
-                <Menu className="w-6 h-6 text-slate-300" />
-             </button>
-             <div>
-                <h1 className="achady-main-title">
-                    {MENU_ITEMS.find(i => i.id === activeSection)?.label || 'Dashboard'}
-                </h1>
-                <p className="achady-main-subtitle hidden md:block">
-                Controle a automação de ofertas da Shopee para seus grupos.
-                </p>
-             </div>
-          </div>
-          <div className="achady-main-header-actions">
-            <span className="achady-chip hidden md:inline-block">Auto Mode</span>
-            <span className="achady-chip achady-chip--accent">WhatsApp Bot</span>
-          </div>
-        </header>
+        <MainContainer>
+          <header className="achady-main-header">
+            <div className="flex items-center gap-3">
+               <button className="mobile-menu-btn md:hidden" onClick={() => setIsMobileMenuOpen(true)}>
+                  <Menu className="w-6 h-6 text-slate-300" />
+               </button>
+               <div>
+                  <h1 className="achady-main-title">
+                      {MENU_ITEMS.find(i => i.id === activeSection)?.label || 'Dashboard'}
+                  </h1>
+                  <p className="achady-main-subtitle hidden md:block">
+                  Controle a automação de ofertas da Shopee para seus grupos.
+                  </p>
+               </div>
+            </div>
+            <div className="achady-main-header-actions">
+              <span className="achady-chip hidden md:inline-block">Auto Mode</span>
+              <span className="achady-chip achady-chip--accent">WhatsApp Bot</span>
+            </div>
+          </header>
 
-        <section className="achady-main-content">{children}</section>
+          <section className="achady-main-content">{children}</section>
+        </MainContainer>
       </main>
       
       {isMobileMenuOpen && (

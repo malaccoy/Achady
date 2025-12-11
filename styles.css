@@ -198,12 +198,20 @@ body {
 /* ---------- MAIN AREA ---------- */
 .achady-main {
   flex: 1;
-  padding: 24px 28px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
   height: 100vh;
+}
+
+/* Main Container for Centered Content */
+.main-container {
+  max-width: 1120px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0;
 }
 
 .achady-main-header {
@@ -214,7 +222,7 @@ body {
 }
 
 .achady-main-title {
-  margin: 0;
+  margin: 0 0 8px 0;
   font-size: 1.75rem;
   letter-spacing: -0.03em;
   color: var(--text-primary);
@@ -225,6 +233,15 @@ body {
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* Heading Spacing */
+h1 {
+  margin-bottom: 16px;
+}
+
+h2 {
+  margin-bottom: 16px;
 }
 
 .achady-main-header-actions {
@@ -250,7 +267,7 @@ body {
 
 .achady-main-content {
   margin-top: 6px;
-  padding: var(--spacing-card);
+  padding: 28px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: var(--bg-card);
@@ -269,7 +286,8 @@ body {
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(10px);
-  padding: var(--spacing-card);
+  padding: 28px;
+  margin-bottom: 20px;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
