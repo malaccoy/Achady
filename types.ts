@@ -19,7 +19,17 @@ export interface AutomationConfig {
 }
 
 export interface MessageTemplate {
+  id?: string;
+  name: string;
   content: string;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserSettings {
+  activeTemplateId?: string;
+  signature?: string;
 }
 
 export interface LogEntry {

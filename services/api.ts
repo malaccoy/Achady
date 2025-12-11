@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics } from '../types';
+import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics, MessageTemplate } from '../types';
 
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -174,11 +174,75 @@ export const testShopeeConnection = async (): Promise<any> => {
 
 // --- Template ---
 
-export const getTemplate = async (): Promise<{ template: string }> => {
+export const getTemplates = async (): Promise<MessageTemplate[]> => {
+  try {
+    return await request<MessageTemplate[]>('/templates');
+  } catch (e) {
+    console.error("Error fetching templates:", e);
+    return [];
+  }
+};
+
+export const getTemplate = async (id?: string): Promise<MessageTemplate | null> => {
+  try {
+    if (id) {
+      return await request<MessageTemplate>(`/templates/${id}`);
+    }
+    // Get active template
+    const activeTemplate = await request<MessageTemplate>('/templates/active');
+    return activeTemplate;
+  } catch (e) {
+    console.error("Error fetching template:", e);
+    return null;
+  }
+};
+
+export const createTemplate = async (name: string, content: string): Promise<MessageTemplate> => {
+  return request<MessageTemplate>('/templates', {
+    method: "POST",
+    body: JSON.stringify({ name, content }),
+  });
+};
+
+export const updateTemplate = async (id: string, data: Partial<MessageTemplate>): Promise<MessageTemplate> => {
+  return request<MessageTemplate>(`/templates/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteTemplate = async (id: string): Promise<void> => {
+  await request(`/templates/${id}`, { method: "DELETE" });
+};
+
+export const setActiveTemplate = async (id: string): Promise<void> => {
+  await request('/templates/active', {
+    method: "POST",
+    body: JSON.stringify({ templateId: id }),
+  });
+};
+
+export const getSignature = async (): Promise<{ signature: string }> => {
+  try {
+    return await request<{ signature: string }>('/settings/signature');
+  } catch (e) {
+    return { signature: '' };
+  }
+};
+
+export const saveSignature = async (signature: string): Promise<void> => {
+  await request('/settings/signature', {
+    method: "POST",
+    body: JSON.stringify({ signature }),
+  });
+};
+
+// Legacy template support - will be deprecated
+export const getLegacyTemplate = async (): Promise<{ template: string }> => {
   return request<{ template: string }>('/template');
 };
 
-export const saveTemplate = async (template: string): Promise<void> => {
+export const saveLegacyTemplate = async (template: string): Promise<void> => {
   await request('/template', {
     method: "POST",
     body: JSON.stringify({ template }),

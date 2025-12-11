@@ -446,7 +446,7 @@ class ShopeeClient {
     }
 }
 
-function renderMessage(template, offer) {
+function renderMessage(template, offer, signature = '') {
     let text = template || '';
     // Safely get price values, defaulting to 0 if undefined/null
     const priceValue = offer.priceMin || offer.price || 0;
@@ -454,12 +454,68 @@ function renderMessage(template, offer) {
     const maxPrice = offer.priceMax || price;
     const original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
     
-    return text
+    const desconto = offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : '';
+    
+    // Handle conditional discount display
+    // If desconto is empty, remove patterns like "({{desconto}} OFF)"
+    if (!desconto) {
+        text = text.replace(/\s*\([^)]*{{\s*desconto\s*}}[^)]*\)/gi, '');
+        text = text.replace(/.*{{\s*desconto\s*}}.*/gi, '');
+    }
+    
+    // Replace variables
+    text = text
         .replace(/{{\s*titulo\s*}}/gi, offer.productName || 'Produto')
         .replace(/{{\s*preco\s*}}/gi, `R$ ${price.toFixed(2)}`)
         .replace(/{{\s*precoOriginal\s*}}/gi, `R$ ${original}`)
-        .replace(/{{\s*desconto\s*}}/gi, offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : 'Oferta')
+        .replace(/{{\s*desconto\s*}}/gi, desconto)
         .replace(/{{\s*link\s*}}/gi, offer.shortLink || offer.offerLink || '');
+    
+    // Clean up multiple consecutive newlines
+    text = text.replace(/\n{3,}/g, '\n\n');
+    
+    // Add signature if present
+    if (signature && signature.trim()) {
+        text = text + '\n\n' + signature.trim();
+    }
+    
+    return text;
+}
+
+// Helper to get active template content for a user
+async function getActiveTemplateContent(userId) {
+    try {
+        const settings = await prisma.userSettings.findUnique({
+            where: { userId }
+        });
+        
+        let templateContent = settings?.template || '';
+        const signature = settings?.signature || '';
+        
+        // Try to get from new template system
+        if (settings?.activeTemplateId) {
+            const template = await prisma.messageTemplate.findUnique({
+                where: { id: settings.activeTemplateId }
+            });
+            if (template) {
+                templateContent = template.content;
+            }
+        } else {
+            // Fallback to first template if exists
+            const firstTemplate = await prisma.messageTemplate.findFirst({
+                where: { userId },
+                orderBy: { createdAt: 'asc' }
+            });
+            if (firstTemplate) {
+                templateContent = firstTemplate.content;
+            }
+        }
+        
+        return { template: templateContent, signature };
+    } catch (e) {
+        console.error('[getActiveTemplateContent] Error:', e);
+        return { template: '', signature: '' };
+    }
 }
 
 // =======================
@@ -528,7 +584,8 @@ async function runAutomation() {
                         const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
                         safeOffer.shortLink = shortLink;
                         
-                        const msg = renderMessage(user.settings.template, safeOffer);
+                        const { template, signature } = await getActiveTemplateContent(user.id);
+                        const msg = renderMessage(template, safeOffer, signature);
                         
                         // Send
                         if(safeOffer.imageUrl) {
@@ -827,7 +884,8 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
                     safeOffer.shortLink = shortLink;
                     
-                    const msg = renderMessage(user.settings.template, safeOffer);
+                    const { template, signature } = await getActiveTemplateContent(user.id);
+                    const msg = renderMessage(template, safeOffer, signature);
                     
                     // Send
                     if(safeOffer.imageUrl) {
@@ -895,6 +953,283 @@ ApiRouter.post('/template', async (req, res) => {
     });
     res.json({ ok: true });
 });
+
+// --- New Template Management Endpoints ---
+
+// Get all templates for user
+ApiRouter.get('/templates', async (req, res) => {
+    try {
+        const templates = await prisma.messageTemplate.findMany({
+            where: { userId: req.userId },
+            orderBy: { createdAt: 'asc' }
+        });
+        
+        // If no templates exist, migrate from old template field
+        if (templates.length === 0) {
+            const settings = await prisma.userSettings.findUnique({ 
+                where: { userId: req.userId } 
+            });
+            
+            if (settings?.template) {
+                // Migrate old template to new system
+                const defaultTemplate = await prisma.messageTemplate.create({
+                    data: {
+                        userId: req.userId,
+                        name: 'Padrão',
+                        content: settings.template,
+                        isDefault: true
+                    }
+                });
+                
+                await prisma.userSettings.update({
+                    where: { userId: req.userId },
+                    data: { activeTemplateId: defaultTemplate.id }
+                });
+                
+                return res.json([defaultTemplate]);
+            }
+        }
+        
+        res.json(templates);
+    } catch (e) {
+        console.error('[GET /templates]', e);
+        res.status(500).json({ error: 'Erro ao buscar modelos.' });
+    }
+});
+
+// Get active template
+ApiRouter.get('/templates/active', async (req, res) => {
+    try {
+        const settings = await prisma.userSettings.findUnique({
+            where: { userId: req.userId }
+        });
+        
+        if (settings?.activeTemplateId) {
+            const template = await prisma.messageTemplate.findUnique({
+                where: { id: settings.activeTemplateId }
+            });
+            if (template) {
+                return res.json(template);
+            }
+        }
+        
+        // Fallback to first template or default template
+        const firstTemplate = await prisma.messageTemplate.findFirst({
+            where: { userId: req.userId },
+            orderBy: { createdAt: 'asc' }
+        });
+        
+        if (firstTemplate) {
+            return res.json(firstTemplate);
+        }
+        
+        res.status(404).json({ error: 'Nenhum modelo encontrado.' });
+    } catch (e) {
+        console.error('[GET /templates/active]', e);
+        res.status(500).json({ error: 'Erro ao buscar modelo ativo.' });
+    }
+});
+
+// Get specific template
+ApiRouter.get('/templates/:id', async (req, res) => {
+    try {
+        const template = await prisma.messageTemplate.findFirst({
+            where: { 
+                id: req.params.id,
+                userId: req.userId 
+            }
+        });
+        
+        if (!template) {
+            return res.status(404).json({ error: 'Modelo não encontrado.' });
+        }
+        
+        res.json(template);
+    } catch (e) {
+        console.error('[GET /templates/:id]', e);
+        res.status(500).json({ error: 'Erro ao buscar modelo.' });
+    }
+});
+
+// Create new template
+ApiRouter.post('/templates', async (req, res) => {
+    try {
+        const { name, content } = req.body;
+        
+        if (!name || !content) {
+            return res.status(400).json({ error: 'Nome e conteúdo são obrigatórios.' });
+        }
+        
+        const template = await prisma.messageTemplate.create({
+            data: {
+                userId: req.userId,
+                name: name.trim(),
+                content: content,
+                isDefault: false
+            }
+        });
+        
+        res.json(template);
+    } catch (e) {
+        console.error('[POST /templates]', e);
+        res.status(500).json({ error: 'Erro ao criar modelo.' });
+    }
+});
+
+// Update template
+ApiRouter.put('/templates/:id', async (req, res) => {
+    try {
+        const { name, content, isDefault } = req.body;
+        
+        // Verify ownership
+        const existing = await prisma.messageTemplate.findFirst({
+            where: { 
+                id: req.params.id,
+                userId: req.userId 
+            }
+        });
+        
+        if (!existing) {
+            return res.status(404).json({ error: 'Modelo não encontrado.' });
+        }
+        
+        const updateData = {};
+        if (name !== undefined) updateData.name = name.trim();
+        if (content !== undefined) updateData.content = content;
+        if (isDefault !== undefined) updateData.isDefault = isDefault;
+        
+        const template = await prisma.messageTemplate.update({
+            where: { id: req.params.id },
+            data: updateData
+        });
+        
+        res.json(template);
+    } catch (e) {
+        console.error('[PUT /templates/:id]', e);
+        res.status(500).json({ error: 'Erro ao atualizar modelo.' });
+    }
+});
+
+// Delete template
+ApiRouter.delete('/templates/:id', async (req, res) => {
+    try {
+        // Verify ownership
+        const existing = await prisma.messageTemplate.findFirst({
+            where: { 
+                id: req.params.id,
+                userId: req.userId 
+            }
+        });
+        
+        if (!existing) {
+            return res.status(404).json({ error: 'Modelo não encontrado.' });
+        }
+        
+        // Check if user has other templates
+        const count = await prisma.messageTemplate.count({
+            where: { userId: req.userId }
+        });
+        
+        if (count <= 1) {
+            return res.status(400).json({ error: 'Você precisa ter pelo menos um modelo.' });
+        }
+        
+        await prisma.messageTemplate.delete({
+            where: { id: req.params.id }
+        });
+        
+        // If this was the active template, set another as active
+        const settings = await prisma.userSettings.findUnique({
+            where: { userId: req.userId }
+        });
+        
+        if (settings?.activeTemplateId === req.params.id) {
+            const firstTemplate = await prisma.messageTemplate.findFirst({
+                where: { userId: req.userId },
+                orderBy: { createdAt: 'asc' }
+            });
+            
+            if (firstTemplate) {
+                await prisma.userSettings.update({
+                    where: { userId: req.userId },
+                    data: { activeTemplateId: firstTemplate.id }
+                });
+            }
+        }
+        
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[DELETE /templates/:id]', e);
+        res.status(500).json({ error: 'Erro ao excluir modelo.' });
+    }
+});
+
+// Set active template
+ApiRouter.post('/templates/active', async (req, res) => {
+    try {
+        const { templateId } = req.body;
+        
+        if (!templateId) {
+            return res.status(400).json({ error: 'templateId é obrigatório.' });
+        }
+        
+        // Verify template exists and belongs to user
+        const template = await prisma.messageTemplate.findFirst({
+            where: { 
+                id: templateId,
+                userId: req.userId 
+            }
+        });
+        
+        if (!template) {
+            return res.status(404).json({ error: 'Modelo não encontrado.' });
+        }
+        
+        await prisma.userSettings.upsert({
+            where: { userId: req.userId },
+            update: { activeTemplateId: templateId },
+            create: { userId: req.userId, activeTemplateId: templateId }
+        });
+        
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[POST /templates/active]', e);
+        res.status(500).json({ error: 'Erro ao definir modelo ativo.' });
+    }
+});
+
+// Get signature
+ApiRouter.get('/settings/signature', async (req, res) => {
+    try {
+        const settings = await prisma.userSettings.findUnique({
+            where: { userId: req.userId }
+        });
+        res.json({ signature: settings?.signature || '' });
+    } catch (e) {
+        console.error('[GET /settings/signature]', e);
+        res.status(500).json({ error: 'Erro ao buscar assinatura.' });
+    }
+});
+
+// Save signature
+ApiRouter.post('/settings/signature', async (req, res) => {
+    try {
+        const { signature } = req.body;
+        
+        await prisma.userSettings.upsert({
+            where: { userId: req.userId },
+            update: { signature: signature || '' },
+            create: { userId: req.userId, signature: signature || '' }
+        });
+        
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('[POST /settings/signature]', e);
+        res.status(500).json({ error: 'Erro ao salvar assinatura.' });
+    }
+});
+
+// --- End Template Management ---
 
 ApiRouter.get('/logs', async (req, res) => {
     const logs = await prisma.log.findMany({ 
