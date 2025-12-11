@@ -532,7 +532,7 @@ async function runAutomation() {
                         
                         // Send
                         if(safeOffer.imageUrl) {
-                            const media = await MessageMedia.fromUrl(safeOffer.imageUrl);
+                            const media = await MessageMedia.fromUrl(safeOffer.imageUrl, { unsafeMime: true });
                             await client.sendMessage(group.chatId, media, { caption: msg });
                         } else {
                             await client.sendMessage(group.chatId, msg);
@@ -796,7 +796,7 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     
                     // Send
                     if(safeOffer.imageUrl) {
-                        const media = await MessageMedia.fromUrl(safeOffer.imageUrl);
+                        const media = await MessageMedia.fromUrl(safeOffer.imageUrl, { unsafeMime: true });
                         await client.sendMessage(group.chatId, media, { caption: msg });
                     } else {
                         await client.sendMessage(group.chatId, msg);
