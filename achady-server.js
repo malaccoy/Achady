@@ -31,6 +31,11 @@ const APP_BASE_URL = process.env.APP_BASE_URL || 'https://app.achady.com.br';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 
+// Automation constants
+const DEFAULT_KEYWORDS = ['promoção', 'oferta', 'casa', 'cozinha'];
+const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled automation
+const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
+
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -491,7 +496,6 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
-            const globalKeywords = ['promoção', 'oferta', 'casa', 'cozinha'];
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
@@ -505,8 +509,8 @@ async function runAutomation() {
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
 
                 // Keyword Strategy
-                let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : globalKeywords;
-                if(keywords.length === 0) keywords = globalKeywords;
+                let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+                if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
                 const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
                 try {
@@ -547,7 +551,7 @@ async function runAutomation() {
                         });
                         
                         console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
-                        await new Promise(r => setTimeout(r, 5000)); // Delay per group
+                        await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
                 } catch (e) {
                     console.error(`[JOB Error User ${user.id} Group ${group.name}]`, e.message);
@@ -718,6 +722,128 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
         create: { userId: req.userId, intervalMinutes }
     });
     res.json({ ok: true });
+});
+
+ApiRouter.post('/automation/run-once', async (req, res) => {
+    try {
+        // Get user with settings and active groups
+        const user = await prisma.user.findUnique({
+            where: { id: req.userId },
+            select: {
+                id: true,
+                settings: true,
+                groups: { where: { active: true } }
+            }
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Usuário não encontrado' });
+        }
+
+        // Check credentials
+        if (!user.settings?.shopeeAppId || !user.settings?.shopeeSecret) {
+            return res.status(400).json({ error: 'Configure as credenciais da Shopee primeiro.' });
+        }
+        
+        const plainSecret = decrypt(user.settings.shopeeSecret);
+        if (!plainSecret) {
+            return res.status(400).json({ error: 'Erro ao descriptografar credenciais.' });
+        }
+
+        const client = botManager.getClient(user.id);
+        if (!client) {
+            // Try to initialize the bot
+            botManager.initializeClient(user.id).catch(e => console.error(`[RUN-ONCE] Init Fail User ${user.id}`));
+            return res.status(400).json({ error: 'Bot WhatsApp desconectado. Conecte via QR Code.' });
+        }
+
+        const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+        let sentCount = 0;
+        let errorCount = 0;
+
+        for (const group of user.groups) {
+            if (!group.chatId) continue;
+            
+            // Dedupe: Check history for THIS group
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const recentOffers = await prisma.sentOffer.findMany({
+                where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
+                select: { itemId: true }
+            });
+            const sentIds = new Set(recentOffers.map(o => o.itemId));
+
+            // Keyword Strategy
+            let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+            if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
+            const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+
+            try {
+                const offers = await shopee.searchOffers(keyword);
+                const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
+
+                // Blacklist
+                const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
+                const safeOffer = validOffers.find(o => {
+                    const title = o.productName.toLowerCase();
+                    return !blacklist.some(bad => title.includes(bad));
+                });
+                
+                if (safeOffer) {
+                    const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
+                    safeOffer.shortLink = shortLink;
+                    
+                    const msg = renderMessage(user.settings.template, safeOffer);
+                    
+                    // Send
+                    if(safeOffer.imageUrl) {
+                        const media = await MessageMedia.fromUrl(safeOffer.imageUrl);
+                        await client.sendMessage(group.chatId, media, { caption: msg });
+                    } else {
+                        await client.sendMessage(group.chatId, msg);
+                    }
+
+                    // Record
+                    await prisma.sentOffer.create({
+                        data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
+                    });
+                    
+                    await prisma.log.create({
+                        data: { 
+                            userId: user.id, groupName: group.name, productTitle: safeOffer.productName,
+                            price: String(safeOffer.price || 0), status: 'SENT'
+                        }
+                    });
+                    
+                    console.log(`[RUN-ONCE] Enviado User ${user.id} -> Grupo ${group.name}`);
+                    sentCount++;
+                    await new Promise(r => setTimeout(r, MANUAL_RUN_DELAY_MS));
+                }
+            } catch (e) {
+                console.error(`[RUN-ONCE Error User ${user.id} Group ${group.name}]`, e.message);
+                errorCount++;
+                // Log the error to the database for visibility in the UI
+                try {
+                    await prisma.log.create({
+                        data: { 
+                            userId: user.id, 
+                            groupName: group.name, 
+                            productTitle: 'Erro ao buscar/enviar oferta',
+                            price: '-', 
+                            status: 'ERROR',
+                            errorMessage: e.message
+                        }
+                    });
+                } catch (logErr) {
+                    console.error(`[RUN-ONCE] Failed to log error:`, logErr.message);
+                }
+            }
+        }
+
+        res.json({ ok: true, sent: sentCount, errors: errorCount });
+    } catch (e) {
+        console.error('[RUN-ONCE Fatal]', e);
+        res.status(500).json({ error: 'Erro interno ao executar automação: ' + e.message });
+    }
 });
 
 ApiRouter.get('/template', async (req, res) => {
