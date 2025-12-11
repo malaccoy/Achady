@@ -17,8 +17,8 @@ const warningBadgeStyle = {
 };
 
 // Helper function to check if all systems are healthy
-const isSystemHealthy = (diagnostics: SystemDiagnostics | null) => {
-  return diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive;
+const isSystemHealthy = (diagnostics: SystemDiagnostics | null): boolean => {
+  return !!diagnostics && diagnostics.whatsappConnected && diagnostics.shopeeConfigured && diagnostics.automationActive;
 };
 
 // Helper function to get status circle style
