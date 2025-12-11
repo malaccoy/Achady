@@ -189,7 +189,7 @@ export const ShopeeApiConfig: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowSecret(!showSecret)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 rounded"
                   aria-label={showSecret ? "Ocultar senha" : "Mostrar senha"}
                 >
                   {showSecret ? (
