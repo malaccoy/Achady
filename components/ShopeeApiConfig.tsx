@@ -91,7 +91,7 @@ export const ShopeeApiConfig: React.FC = () => {
         <div className="mb-6 space-y-2 text-sm text-slate-300">
           <p className="flex gap-3">
             <span className="font-bold text-orange-400">1.</span>
-            <span>Acesse o <a href="https://console.affiliate.shopee.com.br" target="_blank" className="text-orange-400 underline hover:text-orange-300">Shopee Affiliate Console</a></span>
+            <span>Acesse o <a href="https://affiliate.shopee.com.br/" target="_blank" className="text-orange-400 underline hover:text-orange-300">Shopee Affiliate Console</a></span>
           </p>
           <p className="flex gap-3">
             <span className="font-bold text-orange-400">2.</span>
