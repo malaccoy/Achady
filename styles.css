@@ -23,6 +23,7 @@
   --spacing-card: 28px;
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
   --transition-fast: 150ms ease-out;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
 }
 
 /* ---------- RESET BÁSICO ---------- */
@@ -603,4 +604,94 @@ button.btn-success:hover:not(:disabled),
 .tag-chip__label {
   /* Label inherits color and font from parent .tag-chip */
   /* This class is here for semantic clarity and potential future customization */
+}
+
+/* ---------- TEMPLATE LAYOUT ---------- */
+.template-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+@media (max-width: 960px) {
+  .template-layout {
+    flex-direction: column;
+  }
+}
+
+.template-layout__editor,
+.template-layout__preview {
+  flex: 1;
+}
+
+/* ---------- VARIABLE CHIPS ---------- */
+.variable-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.variable-chip {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out;
+}
+
+.variable-chip:hover {
+  background: rgba(148, 163, 184, 0.2);
+  border-color: rgba(248, 250, 252, 0.7);
+  transform: translateY(-1px);
+}
+
+/* ---------- TEMPLATE EDITOR TEXTAREA ---------- */
+textarea.template-editor {
+  width: 100%;
+  min-height: 220px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #020617;
+  color: #e5e7eb;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+textarea.template-editor:focus {
+  outline: none;
+  border-color: #f97316;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.6);
+}
+
+/* ---------- WHATSAPP PREVIEW ---------- */
+.whatsapp-preview {
+  display: flex;
+  justify-content: flex-start;
+  padding: 16px;
+}
+
+.whatsapp-preview__bubble {
+  max-width: 80%;
+  background: #111827;
+  border-radius: 16px;
+  padding: 10px 12px;
+  color: #e5e7eb;
+  position: relative;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.whatsapp-preview__time {
+  display: block;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  text-align: right;
+  margin-top: 4px;
 }
