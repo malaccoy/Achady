@@ -102,7 +102,7 @@ export const AutomationControl: React.FC = () => {
           <button 
             onClick={handleSave}
             disabled={loading}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2 border border-slate-700"
+            className="w-full btn-secondary"
           >
             {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
             Salvar Configurações
@@ -119,7 +119,7 @@ export const AutomationControl: React.FC = () => {
         <button 
           onClick={handleRunNow}
           disabled={runningOnce}
-          className="w-full border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 py-3 rounded-md font-bold transition-colors flex items-center justify-center gap-2"
+          className="w-full btn-primary"
         >
           {runningOnce ? <Loader2 className="animate-spin w-5 h-5" /> : <Play className="w-5 h-5" />}
           Rodar Agora (Buscar e Enviar)

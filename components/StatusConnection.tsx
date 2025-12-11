@@ -223,7 +223,7 @@ export const StatusConnection: React.FC = () => {
           <button 
             onClick={handleCheckStatus} 
             disabled={loadingStatus}
-            className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 btn-secondary"
           >
             {loadingStatus ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
             Verificar Status
@@ -232,7 +232,7 @@ export const StatusConnection: React.FC = () => {
           <button 
             onClick={handleGenerateQR} 
             disabled={loadingQR}
-            className="flex-1 bg-orange-600 hover:bg-orange-500 text-white px-4 py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 btn-primary"
           >
             {loadingQR ? <Loader2 className="animate-spin w-4 h-4" /> : <QrCode className="w-4 h-4" />}
             Gerar QR Code

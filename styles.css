@@ -1,3 +1,25 @@
+/* ---------- CSS VARIABLES / TEMA ---------- */
+:root {
+  --bg-body: #050816;
+  --bg-gradient-from: #020617;
+  --bg-gradient-to: #02001a;
+  --bg-card: #0b1020;
+  --bg-card-soft: #111827;
+  --border-subtle: rgba(148, 163, 184, 0.25);
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --accent-primary: #ff6b00;   /* Shopee orange */
+  --accent-primary-hover: #ff7f1a;
+  --accent-success: #22c55e;   /* WhatsApp green */
+  --accent-success-soft: rgba(34, 197, 94, 0.12);
+  --danger: #f97373;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --spacing-card: 24px;
+  --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
+  --transition-fast: 150ms ease-out;
+}
+
 /* ---------- RESET BÁSICO ---------- */
 *,
 *::before,
@@ -10,11 +32,9 @@ body {
   min-height: 100vh;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Inter", sans-serif;
-  color: #e5e7eb;
-  background:
-    radial-gradient(circle at top left, #1e293b 0, transparent 50%),
-    radial-gradient(circle at bottom right, #0f172a 0, #020617 55%);
-  background-color: #0f172a;
+  color: var(--text-primary);
+  background: radial-gradient(circle at top left, var(--bg-gradient-from), var(--bg-gradient-to));
+  background-color: var(--bg-body);
 }
 
 /* ---------- LAYOUT GERAL ---------- */
@@ -31,8 +51,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  border-right: 1px solid rgba(148, 163, 184, 0.15);
-  background: linear-gradient(180deg, #020617 0%, #020617 35%, #020617 100%);
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-gradient-from);
   backdrop-filter: blur(22px);
 }
 
@@ -62,10 +82,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 30% 0, #fed7aa 0, #f97316 45%, #a855f7 100%);
+  background: radial-gradient(circle at 30% 0, #fed7aa 0, var(--accent-primary) 45%, #a855f7 100%);
   font-weight: 700;
   font-size: 18px;
-  color: #020617;
+  color: var(--bg-gradient-from);
 }
 
 .achady-logo-title {
@@ -73,23 +93,23 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 13px;
-  color: #f8fafc;
+  color: var(--text-primary);
 }
 
 .achady-logo-sub {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-secondary);
 }
 
 .achady-sidebar-badge {
   font-size: 11px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(248, 250, 252, 0.06);
+  border: 1px solid var(--border-subtle);
   background: radial-gradient(circle at 0 0, rgba(248, 250, 252, 0.12), transparent 55%);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #9ca3af;
+  color: var(--text-secondary);
 }
 
 .achady-nav {
@@ -103,30 +123,31 @@ body {
   border: none;
   outline: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 13px;
   transition:
-    background 0.16s ease,
-    color 0.16s ease,
-    transform 0.08s ease;
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
   text-decoration: none;
 }
 
 .achady-nav-item:hover {
-  background: rgba(15, 23, 42, 0.8);
-  color: #e5e7eb;
+  background: var(--bg-card-soft);
+  color: var(--text-primary);
   transform: translateX(1px);
 }
 
 .achady-nav-item--active {
-  background: linear-gradient(90deg, rgba(248, 113, 22, 0.18), transparent);
-  color: #f9fafb;
+  background: linear-gradient(90deg, rgba(255, 107, 0, 0.18), transparent);
+  color: var(--text-primary);
+  border-left: 2px solid var(--accent-primary);
 }
 
 .achady-nav-dot {
@@ -137,8 +158,8 @@ body {
 }
 
 .achady-nav-item--active .achady-nav-dot {
-  background: #fb923c;
-  box-shadow: 0 0 0 5px rgba(248, 113, 22, 0.25);
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 5px rgba(255, 107, 0, 0.25);
 }
 
 .achady-sidebar-footer {
@@ -156,16 +177,17 @@ body {
   gap: 6px;
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(34, 197, 94, 0.28);
-  color: #e2e8f0;
+  background: var(--accent-success-soft);
+  border: 1px solid var(--accent-success);
+  color: var(--accent-success);
+  font-weight: 600;
 }
 
 .achady-status-indicator {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #22c55e;
+  background: var(--accent-success);
   box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.28);
 }
 
@@ -193,16 +215,16 @@ body {
 
 .achady-main-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 1.75rem;
   letter-spacing: -0.03em;
-  color: #f8fafc;
+  color: var(--text-primary);
   font-weight: 700;
 }
 
 .achady-main-subtitle {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--text-secondary);
 }
 
 .achady-main-header-actions {
@@ -215,43 +237,51 @@ body {
   font-size: 11px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.8);
-  color: #e5e7eb;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card-soft);
+  color: var(--text-primary);
 }
 
 .achady-chip--accent {
-  border-color: rgba(248, 113, 22, 0.55);
-  background: radial-gradient(circle at 0 0, rgba(248, 113, 22, 0.18), rgba(15, 23, 42, 0.9));
+  border-color: rgba(255, 107, 0, 0.55);
+  background: radial-gradient(circle at 0 0, rgba(255, 107, 0, 0.18), var(--bg-card-soft));
   color: #fed7aa;
 }
 
 .achady-main-content {
   margin-top: 6px;
-  padding: 24px;
-  border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: radial-gradient(circle at top left, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.4));
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.5);
+  padding: var(--spacing-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
   position: relative;
   overflow-y: auto;
   overflow-x: hidden;
+  transition: box-shadow var(--transition-fast);
 }
 
 /* ---------- COMPONENTS ---------- */
 
 .card {
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.8);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
   backdrop-filter: blur(10px);
+  padding: var(--spacing-card);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
 }
 
 .table-wrapper {
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
   overflow: hidden;
 }
 
@@ -265,15 +295,15 @@ thead tr {
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: #94a3b8;
-  background: rgba(2, 6, 23, 0.5);
+  color: var(--text-secondary);
+  background: var(--bg-gradient-from);
 }
 
 th,
 td {
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-  color: #cbd5e1;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
 }
 
 tbody tr:hover {
@@ -281,17 +311,21 @@ tbody tr:hover {
 }
 
 /* Form Elements Overrides */
+/* Note: !important is used here to override inline styles from component libraries and React state */
 input, select, textarea {
-  background-color: rgba(2, 6, 23, 0.5) !important;
-  border: 1px solid rgba(148, 163, 184, 0.2) !important;
-  color: #f1f5f9 !important;
-  border-radius: 8px !important;
+  background-color: var(--bg-gradient-from) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 0.75rem !important;
+  font-size: 0.875rem !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #f97316 !important;
-  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.2);
 }
 
 /* Mobile Menu Toggle */
@@ -305,4 +339,134 @@ input:focus, select:focus, textarea:focus {
     border: none;
     color: white;
   }
+}
+
+/* ---------- BUTTON STYLES ---------- */
+
+/* Botão Primário (Shopee Orange) */
+button.btn-primary,
+.btn-primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+button.btn-primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+button.btn-primary:active:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button.btn-primary:disabled,
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Botão Secundário (Transparent com border) */
+button.btn-secondary,
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+button.btn-secondary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: var(--accent-primary);
+}
+
+button.btn-secondary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Botão Success (Verde WhatsApp) */
+button.btn-success,
+.btn-success {
+  background: var(--accent-success);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+button.btn-success:hover:not(:disabled),
+.btn-success:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+}
+
+/* Badges / Status com cores específicas */
+.badge-success {
+  background: var(--accent-success-soft);
+  color: var(--accent-success);
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.badge-warning {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.badge-error {
+  background: rgba(249, 115, 115, 0.12);
+  color: var(--danger);
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
 }

@@ -119,7 +119,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     <button 
                         type="submit" 
                         disabled={loading}
-                        className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-orange-900/20 transition-all flex items-center justify-center gap-2 mt-6"
+                        className="w-full btn-primary mt-6"
                     >
                         {loading ? <Loader2 className="animate-spin w-5 h-5" /> : (
                             view === 'login' ? <><LogIn className="w-5 h-5" /> Entrar</> : 

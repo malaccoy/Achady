@@ -117,7 +117,7 @@ export const TemplateEditor: React.FC = () => {
             <button 
               onClick={handleSave}
               disabled={loading}
-              className="flex-1 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2 border border-slate-600"
+              className="flex-1 btn-secondary"
             >
               {loading ? <Loader2 className="animate-spin w-4 h-4"/> : <Save className="w-4 h-4" />}
               Salvar Modelo
@@ -125,7 +125,7 @@ export const TemplateEditor: React.FC = () => {
             <button 
               onClick={handleSendTest}
               disabled={sendingTest}
-              className="flex-1 bg-orange-600 hover:bg-orange-500 text-white py-3 rounded-md font-medium transition-colors flex items-center justify-center gap-2"
+              className="flex-1 btn-primary"
             >
               {sendingTest ? <Loader2 className="animate-spin w-4 h-4"/> : <Send className="w-4 h-4" />}
               Enviar Teste Agora
