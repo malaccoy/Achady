@@ -1165,6 +1165,14 @@ ApiRouter.get('/logs', async (req, res) => {
 
 app.use('/api', ApiRouter);
 
+// Serve static files from dist folder
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// SPA fallback - serve index.html for all other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 app.listen(PORT, async () => {
   console.log(`ACHADY Server running on port ${PORT}`);
 });
