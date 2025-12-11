@@ -7,12 +7,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://72.60.228.212:3001',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
       },
       '/auth': {
-        target: 'http://72.60.228.212:3001',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
       },

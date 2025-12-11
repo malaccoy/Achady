@@ -550,6 +550,12 @@ async function runAutomation() {
                             }
                         });
                         
+                        // Update last message sent timestamp
+                        await prisma.group.update({
+                            where: { id: group.id },
+                            data: { lastMessageSent: new Date() }
+                        });
+                        
                         console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
                         await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
@@ -637,28 +643,41 @@ ApiRouter.get('/system/diagnostics', async (req, res) => {
 
 ApiRouter.get('/groups', async (req, res) => {
     const groups = await prisma.group.findMany({ where: { userId: req.userId } });
-    res.json(groups.map(g => ({...g, keywords: g.keywords ? g.keywords.split(',') : [], negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : []})));
+    res.json(groups.map(g => ({
+        ...g, 
+        keywords: g.keywords ? g.keywords.split(',') : [], 
+        negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : [],
+        lastMessageSent: g.lastMessageSent ? g.lastMessageSent.toISOString() : null
+    })));
 });
 
 ApiRouter.post('/groups', async (req, res) => {
-    const { link, name } = req.body;
+    const { link, name, category } = req.body;
     const group = await prisma.group.create({
-        data: { userId: req.userId, link, name: name || 'Novo Grupo' }
+        data: { userId: req.userId, link, name: name || 'Novo Grupo', category: category || null }
     });
     res.json(group);
 });
 
 ApiRouter.put('/groups/:id', async (req, res) => {
-    const { keywords, negativeKeywords } = req.body;
+    const { keywords, negativeKeywords, category } = req.body;
     const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
+    const updateData = {};
+    if (keywords !== undefined) {
+        updateData.keywords = Array.isArray(keywords) ? keywords.join(',') : keywords;
+    }
+    if (negativeKeywords !== undefined) {
+        updateData.negativeKeywords = Array.isArray(negativeKeywords) ? negativeKeywords.join(',') : negativeKeywords;
+    }
+    if (category !== undefined) {
+        updateData.category = category;
+    }
+
     await prisma.group.update({
         where: { id: req.params.id },
-        data: {
-            keywords: Array.isArray(keywords) ? keywords.join(',') : keywords,
-            negativeKeywords: Array.isArray(negativeKeywords) ? negativeKeywords.join(',') : negativeKeywords
-        }
+        data: updateData
     });
     res.json({ ok: true });
 });
@@ -702,6 +721,87 @@ ApiRouter.post('/groups/:id/join', async (req, res) => {
         }
     } catch (e) {
         res.status(500).json({ error: 'Erro ao entrar: ' + e.message });
+    }
+});
+
+// Send test message to a specific group
+ApiRouter.post('/groups/:id/test', async (req, res) => {
+    const client = botManager.getClient(req.userId);
+    if (!client) return res.status(400).json({ error: 'Bot desconectado. Conecte o QR Code.' });
+    
+    const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
+    if (!group.chatId) return res.status(400).json({ error: 'Bot não está no grupo. Clique em "Entrar" primeiro.' });
+
+    try {
+        const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
+        if (!settings?.shopeeAppId || !settings?.shopeeSecret) {
+            return res.status(400).json({ error: 'Configure as credenciais da Shopee primeiro.' });
+        }
+
+        const plainSecret = decrypt(settings.shopeeSecret);
+        if (!plainSecret) return res.status(400).json({ error: 'Erro ao descriptografar credenciais.' });
+
+        const shopee = new ShopeeClient(settings.shopeeAppId, plainSecret);
+        
+        // Get keywords for this group or use defaults
+        let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+        if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
+        const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+
+        // Search for offers
+        const offers = await shopee.searchOffers(keyword);
+        if (!offers || offers.length === 0) {
+            return res.status(404).json({ error: 'Nenhuma oferta encontrada com as keywords do grupo.' });
+        }
+
+        // Apply blacklist filter
+        const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
+        const safeOffer = offers.find(o => {
+            const title = o.productName.toLowerCase();
+            return !blacklist.some(bad => title.includes(bad));
+        });
+
+        if (!safeOffer) {
+            return res.status(404).json({ error: 'Todas as ofertas foram filtradas pela blacklist.' });
+        }
+
+        // Generate short link
+        const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
+        safeOffer.shortLink = shortLink;
+        
+        // Render message
+        const msg = renderMessage(settings.template, safeOffer);
+        
+        // Send message
+        if(safeOffer.imageUrl) {
+            const media = await MessageMedia.fromUrl(safeOffer.imageUrl, { unsafeMime: true });
+            await client.sendMessage(group.chatId, media, { caption: msg });
+        } else {
+            await client.sendMessage(group.chatId, msg);
+        }
+
+        // Update last message sent timestamp
+        await prisma.group.update({
+            where: { id: group.id },
+            data: { lastMessageSent: new Date() }
+        });
+
+        // Log the test message
+        await prisma.log.create({
+            data: { 
+                userId: req.userId, 
+                groupName: group.name, 
+                productTitle: `[TESTE] ${safeOffer.productName}`,
+                price: String(safeOffer.price || 0), 
+                status: 'SENT'
+            }
+        });
+
+        res.json({ ok: true, productTitle: safeOffer.productName });
+    } catch (e) {
+        console.error(`[TEST Error Group ${group.name}]`, e.message);
+        res.status(500).json({ error: 'Erro ao enviar teste: ' + e.message });
     }
 });
 
@@ -847,6 +947,12 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                             userId: user.id, groupName: group.name, productTitle: safeOffer.productName,
                             price: String(safeOffer.price || 0), status: 'SENT'
                         }
+                    });
+                    
+                    // Update last message sent timestamp
+                    await prisma.group.update({
+                        where: { id: group.id },
+                        data: { lastMessageSent: new Date() }
                     });
                     
                     console.log(`[RUN-ONCE] Enviado User ${user.id} -> Grupo ${group.name}`);

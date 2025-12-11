@@ -101,10 +101,10 @@ export const getGroups = async (): Promise<Group[]> => {
   }
 };
 
-export const addGroup = async (link: string): Promise<Group> => {
+export const addGroup = async (link: string, category?: string): Promise<Group> => {
   return request<Group>('/groups', {
     method: 'POST',
-    body: JSON.stringify({ link }),
+    body: JSON.stringify({ link, category }),
   });
 };
 
@@ -125,6 +125,10 @@ export const toggleGroup = async (id: string): Promise<void> => {
 
 export const deleteGroup = async (id: string): Promise<void> => {
   await request(`/groups/${id}`, { method: 'DELETE' });
+};
+
+export const sendTestMessage = async (id: string): Promise<{ ok: boolean; productTitle: string }> => {
+  return request<{ ok: boolean; productTitle: string }>(`/groups/${id}/test`, { method: 'POST' });
 };
 
 // --- Automation ---
