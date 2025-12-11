@@ -485,3 +485,72 @@ button.btn-success:hover:not(:disabled),
   align-items: center;
   gap: 0.375rem;
 }
+
+/* ---------- ACCOUNT BADGE ---------- */
+.account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem 0.375rem 0.5rem;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+  text-decoration: none;
+  outline: none;
+}
+
+.account-badge:hover {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.25);
+  transform: translateY(-1px);
+}
+
+.account-badge:active {
+  transform: translateY(0);
+}
+
+.account-badge__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+}
+
+.account-badge__icon svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.account-badge__email {
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-badge__arrow {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.account-badge:hover .account-badge__arrow {
+  transform: translateY(1px);
+}
+
+@media (max-width: 640px) {
+  .account-badge__email {
+    max-width: 120px;
+  }
+}

@@ -7,8 +7,9 @@ import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
 import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 import { Auth } from './components/Auth';
+import { AccountBadge } from './components/AccountBadge';
 import { getMe, logout } from './services/api';
-import { LogOut, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 function App() {
   const [activeSection, setActiveSection] = useState<MenuItemId>("status");
@@ -62,12 +63,7 @@ function App() {
   return (
     <Layout activeSection={activeSection} onChangeSection={setActiveSection}>
         <div className="mb-4 flex justify-end">
-            <button 
-                onClick={handleLogout}
-                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 px-3 py-1 rounded bg-slate-900/50 border border-slate-800"
-            >
-                {user?.email} <LogOut className="w-3 h-3 ml-1" />
-            </button>
+            <AccountBadge email={user?.email || ''} onClick={handleLogout} />
         </div>
       {renderContent()}
     </Layout>
