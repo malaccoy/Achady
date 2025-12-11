@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Group } from '../types';
 import { getGroups, addGroup, toggleGroup, deleteGroup, joinGroup, updateGroup, sendTestMessage } from '../services/api';
 import { Plus, Trash2, Link as LinkIcon, Users, Loader2, LogIn, AlertCircle, Settings, Save, X, Send, Lightbulb, Tag, Filter } from 'lucide-react';
+import { TagChip } from './TagChip';
 
 // Suggested categories
 const SUGGESTED_CATEGORIES = [
@@ -533,22 +534,13 @@ export const GroupManager: React.FC = () => {
                 <p className="text-xs text-slate-500 mb-3">
                   Separe por vírgula. Ex: casa, sala, decoração, banheiro
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
                   {editKeywords.map((keyword, index) => (
-                    <span
+                    <TagChip
                       key={index}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 text-slate-200 border border-slate-700/60 rounded-full text-sm hover:bg-slate-700/80 hover:border-slate-600 transition-all"
-                    >
-                      {keyword}
-                      <button
-                        type="button"
-                        onClick={() => removeKeyword(index)}
-                        className="hover:text-red-400 transition-colors"
-                        title="Remover"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
+                      label={keyword}
+                      onRemove={() => removeKeyword(index)}
+                    />
                   ))}
                   {editKeywords.length === 0 && (
                     <span className="text-xs text-slate-500">Nenhuma keyword adicionada. Usa as palavras-chave gerais.</span>
@@ -587,22 +579,13 @@ export const GroupManager: React.FC = () => {
                   <AlertCircle className="w-3 h-3" />
                   Se o título tiver QUALQUER uma dessas palavras, o produto é ignorado.
                 </p>
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="flex flex-wrap gap-2 items-center mb-3">
                   {editNegative.map((negative, index) => (
-                    <span
+                    <TagChip
                       key={index}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 text-slate-200 border border-slate-700/60 rounded-full text-sm hover:bg-slate-700/80 hover:border-slate-600 transition-all"
-                    >
-                      {negative}
-                      <button
-                        type="button"
-                        onClick={() => removeNegative(index)}
-                        className="hover:text-red-400 transition-colors"
-                        title="Remover"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
+                      label={negative}
+                      onRemove={() => removeNegative(index)}
+                    />
                   ))}
                   {editNegative.length === 0 && (
                     <span className="text-xs text-slate-500">Nenhuma palavra na blacklist.</span>

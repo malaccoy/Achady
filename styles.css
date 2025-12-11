@@ -559,3 +559,48 @@ button.btn-success:hover:not(:disabled),
     max-width: 120px;
   }
 }
+
+/* ---------- TAG CHIP (Dark Mode Keywords/Blacklist) ---------- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);        /* subtle dark background */
+  border: 1px solid rgba(148, 163, 184, 0.35);  /* soft border */
+  color: #e5e7eb;
+  font-size: 0.85rem;
+  cursor: default;
+  transition: background 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out;
+}
+
+.tag-chip:hover {
+  background: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.5);
+  transform: translateY(-1px);
+}
+
+.tag-chip__remove {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 150ms ease-out, transform 150ms ease-out;
+}
+
+.tag-chip__remove:hover {
+  color: #f97373;
+  transform: scale(1.05);
+}
+
+.tag-chip__label {
+  /* Label inherits color and font from parent .tag-chip */
+  /* This class is here for semantic clarity and potential future customization */
+}
