@@ -7,7 +7,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "setup": "node -e \"const fs = require('fs'); if (!fs.existsSync('.env') && fs.existsSync('.env.example')) { fs.copyFileSync('.env.example', '.env'); console.log('.env created from .env.example'); }\"",
-    "prestart": "npm run setup",
+    "prestart": "npm run setup && prisma db push",
     "start": "node achady-server.js",
     "postinstall": "prisma generate"
   },

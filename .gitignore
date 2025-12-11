@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 .env
 dev.db
+*.db
 data/
+prisma/*.db
