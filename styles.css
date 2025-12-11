@@ -15,7 +15,7 @@
   --danger: #f97373;
   --radius-lg: 16px;
   --radius-md: 10px;
-  --spacing-card: 24px;
+  --spacing-card: 28px;
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
   --transition-fast: 150ms ease-out;
 }
@@ -198,12 +198,20 @@ body {
 /* ---------- MAIN AREA ---------- */
 .achady-main {
   flex: 1;
-  padding: 24px 28px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
   height: 100vh;
+}
+
+/* Main Container for Centered Content */
+.main-container {
+  max-width: 1120px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0;
 }
 
 .achady-main-header {
@@ -214,7 +222,7 @@ body {
 }
 
 .achady-main-title {
-  margin: 0;
+  margin: 0 0 8px 0;
   font-size: 1.75rem;
   letter-spacing: -0.03em;
   color: var(--text-primary);
@@ -225,6 +233,12 @@ body {
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* Heading Spacing */
+h1,
+h2 {
+  margin-bottom: 16px;
 }
 
 .achady-main-header-actions {
@@ -270,6 +284,7 @@ body {
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(10px);
   padding: var(--spacing-card);
+  margin-bottom: 20px;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
