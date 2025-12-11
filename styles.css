@@ -946,3 +946,61 @@ textarea.template-editor:focus {
   margin-bottom: 12px;
   color: #9ca3af;
 }
+
+/* ---------- TOGGLE SWITCH ---------- */
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: #020617;
+  padding: 2px;
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
+}
+
+.toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  transition: transform 120ms ease-out;
+}
+
+.toggle--on {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.7);
+}
+
+.toggle--on .toggle__thumb {
+  transform: translateX(18px);
+}
+
+.toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.5);
+}
+
+/* ---------- FIELD HELPER TEXT ---------- */
+.field-helper {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+/* ---------- RUN FEEDBACK ---------- */
+.run-feedback {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #bbf7d0;
+  font-size: 0.875rem;
+  text-align: center;
+}

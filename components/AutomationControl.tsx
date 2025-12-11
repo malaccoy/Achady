@@ -8,6 +8,7 @@ export const AutomationControl: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [runningOnce, setRunningOnce] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [runResult, setRunResult] = useState<{sent: number, time: string} | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -34,11 +35,14 @@ export const AutomationControl: React.FC = () => {
 
   const handleRunNow = async () => {
     setRunningOnce(true);
+    setRunResult(null);
     try {
-        await runAutomationOnce();
-        alert("Automação disparada! Verifique os logs.");
-    } catch (e) {
-        alert("Erro ao disparar automação.");
+        const result = await runAutomationOnce();
+        const now = new Date();
+        const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        setRunResult({ sent: result.sent || 0, time });
+    } catch (e: any) {
+        alert("Erro ao disparar automação: " + (e.message || "Erro desconhecido"));
     } finally {
         setRunningOnce(false);
     }
@@ -80,32 +84,37 @@ export const AutomationControl: React.FC = () => {
               <h3 className="font-medium text-slate-200 mb-1">Controle de Envio</h3>
               <p className="text-sm text-slate-500">Ativa ou desativa o envio automático</p>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="sr-only peer" 
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-              />
-              <div className="w-14 h-7 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 peer-focus:ring-offset-2 peer-focus:ring-offset-slate-900 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-orange-600"></div>
-            </label>
+            <button
+              type="button"
+              className={`toggle ${active ? "toggle--on" : "toggle--off"}`}
+              onClick={() => setActive(!active)}
+              aria-pressed={active}
+              aria-label="Ativar ou desativar envio automático"
+            >
+              <span className="toggle__thumb" />
+            </button>
           </div>
 
           {/* Interval Select */}
-          <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
-            <label className="text-sm font-medium text-slate-300 whitespace-nowrap">
-              Intervalo de Busca:
-            </label>
-            <select 
-              value={interval}
-              onChange={(e) => setIntervalVal(Number(e.target.value))}
-              className="flex-1 max-w-xs p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
-            >
-              <option value={5}>A cada 5 minutos</option>
-              <option value={15}>A cada 15 minutos</option>
-              <option value={30}>A cada 30 minutos</option>
-              <option value={60}>A cada 60 minutos</option>
-            </select>
+          <div className="p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
+            <div className="flex items-center justify-between gap-4">
+              <label className="text-sm font-medium text-slate-300 whitespace-nowrap">
+                Intervalo de Busca:
+              </label>
+              <select 
+                value={interval}
+                onChange={(e) => setIntervalVal(Number(e.target.value))}
+                className="flex-1 max-w-xs p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+              >
+                <option value={5}>A cada 5 minutos</option>
+                <option value={15}>A cada 15 minutos</option>
+                <option value={30}>A cada 30 minutos</option>
+                <option value={60}>A cada 60 minutos</option>
+              </select>
+            </div>
+            <p className="field-helper">
+              O bot buscará novas ofertas na Shopee e enviará aos grupos nesse intervalo.
+            </p>
           </div>
 
           {message && (
@@ -136,9 +145,23 @@ export const AutomationControl: React.FC = () => {
           disabled={runningOnce}
           className="w-full btn-primary text-base py-4"
         >
-          {runningOnce ? <Loader2 className="animate-spin w-6 h-6" /> : <Play className="w-6 h-6" />}
-          Rodar Agora (Buscar e Enviar)
+          {runningOnce ? (
+            <>
+              <Loader2 className="animate-spin w-6 h-6" />
+              Rodando...
+            </>
+          ) : (
+            <>
+              <Play className="w-6 h-6" />
+              Rodar Agora (Buscar e Enviar)
+            </>
+          )}
         </button>
+        {runResult && (
+          <p className="run-feedback">
+            Ofertas enviadas para {runResult.sent} grupo(s) às {runResult.time}.
+          </p>
+        )}
       </div>
     </div>
     </main>
