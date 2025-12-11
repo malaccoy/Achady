@@ -245,13 +245,16 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
 
   try {
     const { email, password } = schema.parse(req.body);
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({ 
+        where: { email },
+        select: { id: true }
+    });
     if (existing) return res.status(400).json({ error: 'Email já cadastrado' });
 
     const passwordHash = await bcrypt.hash(password, 12);
-    // Removido verificationToken pois não existe no DB atual
     
     // Create User + Default Settings
+    // Using select to avoid errors with columns that might not exist in current DB
     await prisma.user.create({
       data: {
         email,
@@ -261,7 +264,8 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
                 template: `🔥 Oferta Shopee! (por tempo limitado)\n\n🛍️ {{titulo}}\n\n💸 De: ~{{precoOriginal}}~ \n🔥 Agora: {{preco}}  ({{desconto}} OFF)\n\n🛒 Link: {{link}}\n\n*O preço e a disponibilidade do produto podem variar.`
             }
         }
-      }
+      },
+      select: { id: true, email: true }
     });
 
     res.json({ message: 'Conta criada! Faça login.' });
@@ -286,7 +290,8 @@ AuthRouter.post('/login', authLimiter, async (req, res) => {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date() }
+    data: { lastLoginAt: new Date() },
+    select: { id: true }
   });
 
   const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
@@ -326,7 +331,8 @@ AuthRouter.post('/request-reset', authLimiter, async (req, res) => {
         const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
         await prisma.user.update({
             where: { id: user.id },
-            data: { resetToken, resetTokenExpiry }
+            data: { resetToken, resetTokenExpiry },
+            select: { id: true }
         });
         // Send Email
         console.log(`[RESET] Token para ${email}: ${resetToken}`); // Log for dev
@@ -345,7 +351,8 @@ AuthRouter.post('/reset-password', authLimiter, async (req, res) => {
             email, 
             resetToken: token,
             resetTokenExpiry: { gt: new Date() }
-        }
+        },
+        select: { id: true }
     });
 
     if(!user) return res.status(400).json({ error: 'Token inválido ou expirado' });
@@ -353,7 +360,8 @@ AuthRouter.post('/reset-password', authLimiter, async (req, res) => {
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash, resetToken: null, resetTokenExpiry: null }
+        data: { passwordHash, resetToken: null, resetTokenExpiry: null },
+        select: { id: true }
     });
 
     res.json({ message: 'Senha alterada com sucesso.' });
@@ -363,7 +371,11 @@ AuthRouter.delete('/account', requireAuth, async (req, res) => {
     const { password, confirmation } = req.body;
     if (confirmation !== 'EXCLUIR') return res.status(400).json({ error: 'Confirmação incorreta' });
     
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    const user = await prisma.user.findUnique({ 
+        where: { id: req.userId },
+        select: { id: true, passwordHash: true }
+    });
+    
     if (!await bcrypt.compare(password, user.passwordHash)) return res.status(401).json({ error: 'Senha incorreta' });
     
     // Cleanup Bot
@@ -437,7 +449,7 @@ async function runAutomation() {
     
     try {
         // Find users who have automation enabled
-        // FIX: Usar select para evitar colunas inexistentes no DB (como verificationToken)
+        // Usar select para evitar erro com colunas inexistentes no DB
         const users = await prisma.user.findMany({
             where: { settings: { automationActive: true } },
             select: {
