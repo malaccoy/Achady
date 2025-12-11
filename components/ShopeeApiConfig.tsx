@@ -64,18 +64,19 @@ export const ShopeeApiConfig: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page Title and Description */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Config API Shopee</h1>
-        <p className="text-sm text-slate-400">
-          Configure suas credenciais da API de afiliados da Shopee para buscar ofertas automaticamente.
-        </p>
-      </div>
+    <main className="app-main">
+      <div className="space-y-6">
+        {/* Page Title and Description */}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Config API Shopee</h1>
+          <p className="text-sm text-slate-400">
+            Configure suas credenciais da API de afiliados da Shopee para buscar ofertas automaticamente.
+          </p>
+        </div>
 
-      {/* Card: Configuration */}
-      <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-6">Configuração API Shopee</h2>
+        {/* Card: Configuration */}
+        <div className="app-card">
+          <h2 className="app-card__title">Configuração API Shopee</h2>
         
         {/* Instructions */}
         <div className="mb-6 space-y-2 text-sm text-slate-300">
@@ -178,5 +179,6 @@ export const ShopeeApiConfig: React.FC = () => {
         </div>
       </div>
     </div>
+    </main>
   );
 };

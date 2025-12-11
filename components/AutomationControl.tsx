@@ -45,20 +45,21 @@ export const AutomationControl: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Title and Description */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Automação</h1>
-        <p className="text-sm text-slate-400">
-          Configure o comportamento automático de busca e envio de ofertas da Shopee.
-        </p>
-      </div>
+    <main className="app-main">
+      <div className="space-y-6">
+        {/* Page Title and Description */}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Automação</h1>
+          <p className="text-sm text-slate-400">
+            Configure o comportamento automático de busca e envio de ofertas da Shopee.
+          </p>
+        </div>
 
-      {/* Card: Automation Control */}
-      <div className="card p-6">
-        {/* Title with Status Badge */}
-        <div className="flex items-center gap-3 mb-6">
-          <h2 className="text-lg font-bold text-slate-100">Controle de Automação</h2>
+        {/* Card: Automation Control */}
+        <div className="app-card">
+          {/* Title with Status Badge */}
+          <div className="flex items-center gap-3 mb-6">
+            <h2 className="app-card__title">Controle de Automação</h2>
           {active ? (
             <span className="badge-success">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
@@ -125,8 +126,8 @@ export const AutomationControl: React.FC = () => {
       </div>
 
       {/* Card: Manual Test */}
-      <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-4">Teste Manual</h2>
+      <div className="app-card">
+        <h2 className="app-card__title">Teste Manual</h2>
         <p className="text-sm text-slate-400 mb-6">
           Força uma busca e envio imediato via API Shopee, independente do intervalo configurado.
         </p>
@@ -140,5 +141,6 @@ export const AutomationControl: React.FC = () => {
         </button>
       </div>
     </div>
+    </main>
   );
 };

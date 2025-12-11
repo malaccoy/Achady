@@ -116,21 +116,22 @@ export const TemplateEditor: React.FC = () => {
   const previewText = getPreviewText();
 
   return (
-    <div className="space-y-6">
-      {/* Page Title and Description */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Modelo de Mensagem</h1>
-        <p className="text-sm text-slate-400">
-          Personalize a mensagem que será enviada aos grupos com as ofertas da Shopee.
-        </p>
-      </div>
+    <main className="app-main">
+      <div className="space-y-6">
+        {/* Page Title and Description */}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Modelo de Mensagem</h1>
+          <p className="text-sm text-slate-400">
+            Personalize a mensagem que será enviada aos grupos com as ofertas da Shopee.
+          </p>
+        </div>
 
-      {/* Template Layout: Side-by-side Editor and Preview */}
-      <div className="template-layout">
-        {/* Editor Section */}
-        <section className="template-layout__editor">
-          <div className="card p-6 flex flex-col">
-            <h2 className="text-lg font-bold text-slate-100 mb-4">Editor de Modelo</h2>
+        {/* Template Layout: Side-by-side Editor and Preview */}
+        <div className="template-layout">
+          {/* Editor Section */}
+          <section className="template-layout__editor">
+            <div className="app-card flex flex-col">
+              <h2 className="app-card__title">Editor de Modelo</h2>
             
             {/* Variable Chips */}
             <div className="mb-4">
@@ -180,8 +181,8 @@ export const TemplateEditor: React.FC = () => {
 
         {/* Preview Section */}
         <section className="template-layout__preview">
-          <div className="card p-6 flex flex-col">
-            <h2 className="text-lg font-bold text-slate-100 mb-4">Prévia (WhatsApp)</h2>
+          <div className="app-card flex flex-col">
+            <h2 className="app-card__title">Prévia (WhatsApp)</h2>
             <div className="bg-[#0b141a] p-0 rounded-lg flex-1 flex flex-col relative overflow-hidden border border-slate-700/50" style={{ minHeight: '350px' }}>
               {/* WhatsApp Dark Background */}
               <div className="absolute inset-0 opacity-40 pointer-events-none" 
@@ -213,5 +214,6 @@ export const TemplateEditor: React.FC = () => {
         </section>
       </div>
     </div>
+    </main>
   );
 };

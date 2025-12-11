@@ -229,19 +229,20 @@ export const GroupManager: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Title and Description */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 mb-2">Grupos WhatsApp</h1>
-        <p className="text-sm text-slate-400">
-          Gerencie os grupos WhatsApp onde o bot enviará ofertas da Shopee automaticamente.
-        </p>
-      </div>
+    <main className="app-main">
+      <div className="space-y-6">
+        {/* Page Title and Description */}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Grupos WhatsApp</h1>
+          <p className="text-sm text-slate-400">
+            Gerencie os grupos WhatsApp onde o bot enviará ofertas da Shopee automaticamente.
+          </p>
+        </div>
 
-      {/* Card: Add Group Form */}
-      <div className="card p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-slate-100">Adicionar Grupo</h2>
+        {/* Card: Add Group Form */}
+        <div className="app-card">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="app-card__title">Adicionar Grupo</h2>
           <button 
             onClick={() => setShowAddForm(!showAddForm)}
             className="btn-primary"
@@ -301,12 +302,12 @@ export const GroupManager: React.FC = () => {
             </p>
           </form>
         )}
-      </div>
+        </div>
 
-      {/* Card: Groups Table */}
-      <div className="card overflow-hidden">
-        <div className="p-6 border-b border-slate-700/50">
-          <h2 className="text-lg font-bold text-slate-100 mb-4">Lista de Grupos</h2>
+        {/* Card: Groups Table */}
+        <div className="app-card overflow-hidden" style={{ padding: 0 }}>
+          <div className="p-6 border-b border-slate-700/50">
+            <h2 className="app-card__title">Lista de Grupos</h2>
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex gap-3">
               <button
@@ -622,5 +623,6 @@ export const GroupManager: React.FC = () => {
         </div>
       )}
     </div>
+    </main>
   );
 };
