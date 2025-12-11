@@ -165,3 +165,29 @@ model Membership {
   @@index([orgId])
   @@index([userId])
 }
+
+model Log {
+  id           String   @id @default(cuid())
+  userId       String
+  groupName    String
+  productTitle String
+  price        String
+  status       String   // "SENT", "PENDING", "ERROR"
+  errorMessage String?
+  timestamp    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SentOffer {
+  id       String   @id @default(cuid())
+  userId   String
+  groupId  String
+  itemId   String   // Shopee item ID
+  keyword  String?
+  sentAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([itemId])
+}
