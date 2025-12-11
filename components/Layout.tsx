@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { MainContainer } from "./MainContainer";
+import { AccountSection } from "./AccountSection";
 
 export type MenuItemId =
   | "status"
@@ -14,6 +15,8 @@ interface LayoutProps {
   activeSection: MenuItemId;
   onChangeSection: (id: MenuItemId) => void;
   children: React.ReactNode;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
@@ -29,6 +32,8 @@ export const Layout: React.FC<LayoutProps> = ({
   activeSection,
   onChangeSection,
   children,
+  userEmail,
+  onLogout,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -95,8 +100,9 @@ export const Layout: React.FC<LayoutProps> = ({
                </div>
             </div>
             <div className="achady-main-header-actions">
-              <span className="achady-chip hidden md:inline-block">Auto Mode</span>
-              <span className="achady-chip achady-chip--accent">WhatsApp Bot</span>
+              {userEmail && onLogout && (
+                <AccountSection userEmail={userEmail} onLogout={onLogout} />
+              )}
             </div>
           </header>
 
