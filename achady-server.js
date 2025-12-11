@@ -31,6 +31,11 @@ const APP_BASE_URL = process.env.APP_BASE_URL || 'https://app.achady.com.br';
 const DATA_DIR = path.join(__dirname, 'data');
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 
+// Automation constants
+const DEFAULT_KEYWORDS = ['promoção', 'oferta', 'casa', 'cozinha'];
+const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled automation
+const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
+
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -491,7 +496,6 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
-            const globalKeywords = ['promoção', 'oferta', 'casa', 'cozinha'];
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
@@ -505,8 +509,8 @@ async function runAutomation() {
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
 
                 // Keyword Strategy
-                let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : globalKeywords;
-                if(keywords.length === 0) keywords = globalKeywords;
+                let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+                if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
                 const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
                 try {
@@ -547,7 +551,7 @@ async function runAutomation() {
                         });
                         
                         console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
-                        await new Promise(r => setTimeout(r, 5000)); // Delay per group
+                        await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
                 } catch (e) {
                     console.error(`[JOB Error User ${user.id} Group ${group.name}]`, e.message);
@@ -754,7 +758,6 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
         }
 
         const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
-        const globalKeywords = ['promoção', 'oferta', 'casa', 'cozinha'];
         let sentCount = 0;
         let errorCount = 0;
 
@@ -770,8 +773,8 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
             const sentIds = new Set(recentOffers.map(o => o.itemId));
 
             // Keyword Strategy
-            let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : globalKeywords;
-            if(keywords.length === 0) keywords = globalKeywords;
+            let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+            if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
             const keyword = keywords[Math.floor(Math.random() * keywords.length)];
 
             try {
@@ -813,7 +816,7 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     
                     console.log(`[RUN-ONCE] Enviado User ${user.id} -> Grupo ${group.name}`);
                     sentCount++;
-                    await new Promise(r => setTimeout(r, 2000)); // Shorter delay for manual run
+                    await new Promise(r => setTimeout(r, MANUAL_RUN_DELAY_MS));
                 }
             } catch (e) {
                 console.error(`[RUN-ONCE Error User ${user.id} Group ${group.name}]`, e.message);
