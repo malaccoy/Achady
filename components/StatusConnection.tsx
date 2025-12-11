@@ -135,6 +135,15 @@ export const StatusConnection: React.FC = () => {
   const getStatusTextColor = (isActive: boolean) => 
     isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
 
+  // Helper function to render status icon
+  const renderStatusIcon = (isActive: boolean) => {
+    return isActive ? (
+      <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+    ) : (
+      <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Page Title and Description */}
@@ -171,11 +180,7 @@ export const StatusConnection: React.FC = () => {
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.whatsappConnected)}>
-              {diagnostics?.whatsappConnected ? (
-                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
-              ) : (
-                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
-              )}
+              {renderStatusIcon(!!diagnostics?.whatsappConnected)}
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">WhatsApp:</strong>{' '}
@@ -188,11 +193,7 @@ export const StatusConnection: React.FC = () => {
           {/* Shopee API Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.shopeeConfigured)}>
-              {diagnostics?.shopeeConfigured ? (
-                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
-              ) : (
-                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
-              )}
+              {renderStatusIcon(!!diagnostics?.shopeeConfigured)}
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">Shopee API:</strong>{' '}
@@ -205,11 +206,7 @@ export const StatusConnection: React.FC = () => {
           {/* Automation Status */}
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.automationActive)}>
-              {diagnostics?.automationActive ? (
-                <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
-              ) : (
-                <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
-              )}
+              {renderStatusIcon(!!diagnostics?.automationActive)}
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">Automação:</strong>{' '}
