@@ -46,22 +46,18 @@ View your app in AI Studio: https://ai.studio/apps/drive/1LDnOOoLxV57_jRqS5Re0Ks
    - `MASTER_KEY`: Chave para criptografia de dados sensíveis
    - Outras configurações opcionais (SMTP, etc)
 
-4. **Inicialize o banco de dados:**
-   ```bash
-   npx prisma db push
-   ```
-
-5. **Execute o servidor backend:**
+4. **Execute o servidor backend:**
    ```bash
    npm start
    ```
+   > **Nota:** O banco de dados SQLite será inicializado automaticamente na primeira execução.
 
-6. **Em outro terminal, execute o frontend:**
+5. **Em outro terminal, execute o frontend:**
    ```bash
    npm run dev
    ```
 
-7. **Acesse a aplicação:**
+6. **Acesse a aplicação:**
    
    Abra seu navegador em `http://localhost:5173`
 
