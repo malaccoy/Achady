@@ -20,12 +20,22 @@ export const StatusConnection: React.FC = () => {
     try {
       const diag = await getSystemDiagnostics();
       setDiagnostics(diag);
-      // Also update status from diagnostics
+      // Update status based on diagnostics
       if (diag.whatsappConnected) {
         setStatus('ready');
+      } else {
+        setStatus('disconnected');
       }
     } catch (e) {
       console.error("Failed to load diagnostics:", e);
+      // Set a default diagnostics state to provide visual feedback
+      setDiagnostics({
+        whatsappConnected: false,
+        shopeeConfigured: false,
+        automationActive: false,
+        lastMessageSent: null,
+        lastStatusCheck: new Date().toISOString()
+      });
     }
   }
 
