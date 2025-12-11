@@ -1,13 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getTemplate, saveTemplate, sendTestOffer } from '../services/api';
 import { MOCK_PREVIEW_DATA, DEFAULT_TEMPLATE } from '../constants';
 import { MessageSquare, Save, Send, Loader2, Info, CheckCircle2, AlertTriangle } from 'lucide-react';
+
+const variables = ["{{titulo}}", "{{preco}}", "{{precoOriginal}}", "{{desconto}}", "{{link}}"];
+
+interface VariableChipsProps {
+  onInsert: (variable: string) => void;
+}
+
+const VariableChips: React.FC<VariableChipsProps> = ({ onInsert }) => {
+  return (
+    <div className="variable-chips">
+      {variables.map((variable) => (
+        <button
+          key={variable}
+          type="button"
+          className="variable-chip"
+          onClick={() => onInsert(variable)}
+        >
+          {variable}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 export const TemplateEditor: React.FC = () => {
   const [template, setTemplate] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -57,6 +81,26 @@ export const TemplateEditor: React.FC = () => {
     }
   };
 
+  const handleInsertVariable = (variable: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = template;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+    const newText = before + variable + after;
+
+    setTemplate(newText);
+
+    // Set cursor position after the inserted variable
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + variable.length, start + variable.length);
+    }, 0);
+  };
+
   // Real-time preview generator
   const getPreviewText = () => {
     let text = template;
@@ -81,92 +125,92 @@ export const TemplateEditor: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Card: Editor */}
-        <div className="card p-6 flex flex-col">
-          <h2 className="text-lg font-bold text-slate-100 mb-4">Editor de Modelo</h2>
-          
-          <div className="mb-4 text-xs text-slate-400 bg-slate-900/30 p-3 rounded border border-slate-700/50">
-            <p className="mb-2"><strong>Variáveis disponíveis:</strong></p>
-            <div className="flex flex-wrap gap-2 font-mono">
-              <span className="text-orange-400 bg-orange-900/10 px-2 py-0.5 rounded">{`{{titulo}}`}</span>
-              <span className="text-orange-400 bg-orange-900/10 px-2 py-0.5 rounded">{`{{preco}}`}</span>
-              <span className="text-orange-400 bg-orange-900/10 px-2 py-0.5 rounded">{`{{precoOriginal}}`}</span>
-              <span className="text-orange-400 bg-orange-900/10 px-2 py-0.5 rounded">{`{{desconto}}`}</span>
-              <span className="text-orange-400 bg-orange-900/10 px-2 py-0.5 rounded">{`{{link}}`}</span>
-            </div>
-          </div>
-
-          <textarea
-            className="flex-1 w-full p-4 bg-slate-900/50 border border-slate-700 rounded-md font-mono text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none resize-none text-slate-200 leading-relaxed mb-4"
-            value={template}
-            onChange={(e) => setTemplate(e.target.value)}
-            placeholder="Digite sua mensagem aqui..."
-            style={{ minHeight: '280px' }}
-          />
-
-          {statusMsg && (
-            <div className={`mb-4 p-3 rounded text-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-1
-              ${statusMsg.type === 'success' ? 'bg-green-900/20 text-green-300 border border-green-900/30' : 'bg-red-900/20 text-red-300 border border-red-900/30'}`}>
-              {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4"/> : <AlertTriangle className="w-4 h-4"/>}
-              {statusMsg.text}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3 mt-auto">
-            <button 
-              onClick={handleSave}
-              disabled={loading}
-              className="flex-1 btn-secondary"
-            >
-              {loading ? <Loader2 className="animate-spin w-4 h-4"/> : <Save className="w-4 h-4" />}
-              Salvar Modelo
-            </button>
-            <button 
-              onClick={handleSendTest}
-              disabled={sendingTest}
-              className="flex-1 btn-primary"
-            >
-              {sendingTest ? <Loader2 className="animate-spin w-4 h-4"/> : <Send className="w-4 h-4" />}
-              Enviar Teste Agora
-            </button>
-          </div>
-        </div>
-
-        {/* Card: Preview */}
-        <div className="card p-6 flex flex-col">
-          <h2 className="text-lg font-bold text-slate-100 mb-4">Prévia (WhatsApp)</h2>
-          <div className="bg-[#0b141a] p-0 rounded-lg flex-1 flex flex-col relative overflow-hidden border border-slate-700/50" style={{ minHeight: '350px' }}>
-            {/* WhatsApp Dark Background */}
-            <div className="absolute inset-0 opacity-40 pointer-events-none" 
-              style={{ 
-                backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")',
-                backgroundSize: '400px',
-                backgroundRepeat: 'repeat'
-              }}>
-            </div>
+      {/* Template Layout: Side-by-side Editor and Preview */}
+      <div className="template-layout">
+        {/* Editor Section */}
+        <section className="template-layout__editor">
+          <div className="card p-6 flex flex-col">
+            <h2 className="text-lg font-bold text-slate-100 mb-4">Editor de Modelo</h2>
             
-            <div className="relative z-10 flex-1 p-4 overflow-y-auto">
-              <div className="bg-[#202c33] p-2.5 rounded-tr-lg rounded-tl-none rounded-br-lg rounded-bl-lg shadow-sm max-w-[90%] self-start text-left inline-block">
-                <p className="whitespace-pre-wrap text-[14.2px] text-[#e9edef] break-words leading-snug font-sans">
-                  {previewText}
-                </p>
-                <div className="flex justify-end items-center gap-1 mt-1">
-                  <span className="text-[11px] text-[#8696a0]">
-                    12:42
-                  </span>
+            {/* Variable Chips */}
+            <div className="mb-4">
+              <p className="text-xs text-slate-400 mb-2 font-semibold">Variáveis disponíveis:</p>
+              <VariableChips onInsert={handleInsertVariable} />
+            </div>
+
+            {/* Template Editor Textarea */}
+            <textarea
+              ref={textareaRef}
+              className="template-editor"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              placeholder="Digite sua mensagem aqui..."
+            />
+
+            {/* Status Message */}
+            {statusMsg && (
+              <div className={`mt-4 p-3 rounded text-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-1
+                ${statusMsg.type === 'success' ? 'bg-green-900/20 text-green-300 border border-green-900/30' : 'bg-red-900/20 text-red-300 border border-red-900/30'}`}>
+                {statusMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4"/> : <AlertTriangle className="w-4 h-4"/>}
+                {statusMsg.text}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <button 
+                onClick={handleSave}
+                disabled={loading}
+                className="flex-1 btn-secondary"
+              >
+                {loading ? <Loader2 className="animate-spin w-4 h-4"/> : <Save className="w-4 h-4" />}
+                Salvar Modelo
+              </button>
+              <button 
+                onClick={handleSendTest}
+                disabled={sendingTest}
+                className="flex-1 btn-primary"
+              >
+                {sendingTest ? <Loader2 className="animate-spin w-4 h-4"/> : <Send className="w-4 h-4" />}
+                Enviar Teste Agora
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Preview Section */}
+        <section className="template-layout__preview">
+          <div className="card p-6 flex flex-col">
+            <h2 className="text-lg font-bold text-slate-100 mb-4">Prévia (WhatsApp)</h2>
+            <div className="bg-[#0b141a] p-0 rounded-lg flex-1 flex flex-col relative overflow-hidden border border-slate-700/50" style={{ minHeight: '350px' }}>
+              {/* WhatsApp Dark Background */}
+              <div className="absolute inset-0 opacity-40 pointer-events-none" 
+                style={{ 
+                  backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")',
+                  backgroundSize: '400px',
+                  backgroundRepeat: 'repeat'
+                }}>
+              </div>
+              
+              {/* WhatsApp Preview Bubble */}
+              <div className="relative z-10 flex-1 p-4 overflow-y-auto">
+                <div className="whatsapp-preview">
+                  <div className="whatsapp-preview__bubble">
+                    <p className="whitespace-pre-wrap">{previewText}</p>
+                    <span className="whatsapp-preview__time">12:42</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            {/* Fake input bar */}
-            <div className="bg-[#202c33] p-3 flex items-center gap-4 relative z-20">
-              <div className="w-6 h-6 rounded-full border-2 border-[#8696a0] opacity-50"></div>
-              <div className="flex-1 h-9 bg-[#2a3942] rounded-lg"></div>
-              <div className="w-6 h-6 rounded-full bg-[#00a884]"></div>
+              
+              {/* Fake input bar */}
+              <div className="bg-[#202c33] p-3 flex items-center gap-4 relative z-20">
+                <div className="w-6 h-6 rounded-full border-2 border-[#8696a0] opacity-50"></div>
+                <div className="flex-1 h-9 bg-[#2a3942] rounded-lg"></div>
+                <div className="w-6 h-6 rounded-full bg-[#00a884]"></div>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
