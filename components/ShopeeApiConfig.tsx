@@ -112,7 +112,7 @@ export const ShopeeApiConfig: React.FC = () => {
               <button 
                 onClick={handleTest}
                 disabled={testing}
-                className="text-sm bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 px-4 py-2 rounded-md font-medium flex items-center justify-center gap-2 transition-all"
+                className="text-sm btn-success"
               >
                 {testing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Zap className="w-4 h-4"/>}
                 Testar Conexão Agora
@@ -168,7 +168,7 @@ export const ShopeeApiConfig: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white px-8 py-3 rounded-md font-bold transition-colors flex items-center justify-center gap-2"
+                className="w-full btn-primary"
               >
                 {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Save className="w-4 h-4" />}
                 Salvar Configuração

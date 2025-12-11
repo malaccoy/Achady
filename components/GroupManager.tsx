@@ -243,7 +243,7 @@ export const GroupManager: React.FC = () => {
           <h2 className="text-lg font-bold text-slate-100">Adicionar Grupo</h2>
           <button 
             onClick={() => setShowAddForm(!showAddForm)}
-            className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2"
+            className="btn-primary"
           >
             <Plus className="w-5 h-5" />
             {showAddForm ? 'Cancelar' : 'Novo Grupo'}
@@ -289,7 +289,7 @@ export const GroupManager: React.FC = () => {
               <button 
                 type="submit" 
                 disabled={adding}
-                className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2"
+                className="btn-primary"
               >
                 {adding ? <Loader2 className="animate-spin w-4 h-4"/> : <Plus className="w-4 h-4" />}
                 Salvar Grupo
@@ -526,7 +526,7 @@ export const GroupManager: React.FC = () => {
                   <button
                     type="button"
                     onClick={addKeyword}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+                    className="px-4 py-2 btn-secondary"
                   >
                     Adicionar
                   </button>
@@ -625,7 +625,7 @@ export const GroupManager: React.FC = () => {
               <button 
                 onClick={handleSaveSettings}
                 disabled={savingSettings}
-                className="bg-slate-100 hover:bg-white text-slate-900 px-6 py-2 rounded-md font-medium flex items-center gap-2"
+                className="btn-primary"
               >
                 {savingSettings ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
                 Salvar Configurações
