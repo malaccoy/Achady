@@ -187,6 +187,7 @@ model SentOffer {
   keyword  String?
   sentAt   DateTime @default(now())
 
+  @@unique([userId, groupId, itemId])
   @@index([userId])
   @@index([groupId])
   @@index([itemId])
