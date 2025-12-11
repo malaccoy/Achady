@@ -457,10 +457,12 @@ function renderMessage(template, offer, signature = '') {
     const desconto = offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : '';
     
     // Handle conditional discount display
-    // If desconto is empty, remove patterns like "({{desconto}} OFF)"
+    // If desconto is empty, remove patterns like "({{desconto}} OFF)" or "({{desconto}})"
     if (!desconto) {
+        // Remove parenthetical discount patterns: (25% OFF), ({{desconto}} OFF), etc.
         text = text.replace(/\s*\([^)]*{{\s*desconto\s*}}[^)]*\)/gi, '');
-        text = text.replace(/.*{{\s*desconto\s*}}.*/gi, '');
+        // Remove standalone discount variable on its own line
+        text = text.replace(/^\s*{{\s*desconto\s*}}\s*$/gim, '');
     }
     
     // Replace variables

@@ -238,13 +238,13 @@ export const TemplateEditor: React.FC = () => {
     const data = showDiscountPreview ? MOCK_PREVIEW_DATA : MOCK_PREVIEW_DATA_NO_DISCOUNT;
     let text = currentTemplate;
 
-    // Handle conditional discount display
-    // If desconto is empty, remove lines containing discount patterns
+    // Handle conditional discount display (matches backend logic)
+    // If desconto is empty, remove discount-related patterns
     if (!data.desconto || data.desconto.trim() === '') {
-      // Remove patterns like "({{desconto}} OFF)" or similar
+      // Remove parenthetical discount patterns: (25% OFF), ({{desconto}} OFF), etc.
       text = text.replace(/\s*\([^)]*{{\s*desconto\s*}}[^)]*\)/gi, '');
-      // Remove lines that only contain {{desconto}}
-      text = text.replace(/.*{{\s*desconto\s*}}.*/gi, '');
+      // Remove standalone discount variable on its own line
+      text = text.replace(/^\s*{{\s*desconto\s*}}\s*$/gim, '');
     }
 
     // Replace all variables case-insensitive
@@ -481,7 +481,15 @@ export const TemplateEditor: React.FC = () => {
             {TEMPLATE_PRESETS.map((preset, idx) => (
               <button
                 key={idx}
-                onClick={() => setCurrentTemplate(preset.content)}
+                onClick={() => {
+                  if (currentTemplate && currentTemplate !== preset.content) {
+                    if (confirm(`Substituir o conteúdo atual pelo modelo "${preset.name}"?\n\nDica: Salve suas alterações antes de aplicar um preset.`)) {
+                      setCurrentTemplate(preset.content);
+                    }
+                  } else {
+                    setCurrentTemplate(preset.content);
+                  }
+                }}
                 className="w-full p-2 bg-slate-800 hover:bg-slate-700 rounded text-left text-xs text-slate-200 transition-colors"
               >
                 {preset.name}
