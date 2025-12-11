@@ -1,43 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { getWhatsappStatus, getWhatsappQR, getSystemDiagnostics } from '../services/api';
-import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone, CheckCircle2, XCircle, Clock, MessageSquare, ShoppingBag, Zap, Info } from 'lucide-react';
+import { RefreshCw, QrCode, ShieldCheck, Loader2, Smartphone, CheckCircle2, Clock, Info, Check, X, AlertTriangle } from 'lucide-react';
 import { SystemDiagnostics } from '../types';
-
-// Style constants for badges
-const successBadgeStyle = { 
-  background: 'var(--accent-success-soft)', 
-  border: '1px solid var(--accent-success)',
-  color: 'var(--accent-success)'
-};
-
-const warningBadgeStyle = { 
-  background: 'var(--warning-soft)', 
-  border: '1px solid var(--warning-border)',
-  color: 'var(--warning)'
-};
 
 // Helper function to check if all systems are healthy
 const isSystemHealthy = (diagnostics: SystemDiagnostics | null): boolean => {
   return !!diagnostics && diagnostics.whatsappConnected && diagnostics.shopeeConfigured && diagnostics.automationActive;
-};
-
-// Helper function to get status circle style
-const getStatusCircleStyle = (isActive: boolean) => ({
-  background: isActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
-  border: isActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
-});
-
-// Helper function to get status text color
-const getStatusTextColor = (isActive: boolean) => 
-  isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
-
-// Helper function to render status icon
-const renderStatusIcon = (isActive: boolean) => {
-  return isActive ? (
-    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
-  ) : (
-    <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
-  );
 };
 
 export const StatusConnection: React.FC = () => {
@@ -47,6 +15,7 @@ export const StatusConnection: React.FC = () => {
   const [loadingQR, setLoadingQR] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
+  const [lastStatusUpdate, setLastStatusUpdate] = useState<string | null>(null);
 
   useEffect(() => {
     // Load diagnostics on mount
@@ -87,6 +56,9 @@ export const StatusConnection: React.FC = () => {
       }
       // Reload diagnostics after checking status
       await loadDiagnostics();
+      // Update feedback timestamp
+      const now = new Date();
+      setLastStatusUpdate(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e: any) {
       setError(e.message || "Não foi possível obter o status do WhatsApp.");
     } finally {
@@ -163,60 +135,51 @@ export const StatusConnection: React.FC = () => {
         </h2>
 
         {/* Summary Badge */}
-        <div className="mb-6">
-          {isSystemHealthy(diagnostics) ? (
-            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={successBadgeStyle}>
-              <CheckCircle2 className="w-5 h-5" />
-              <span className="font-semibold text-sm">Tudo certo — sistema conectado</span>
-            </div>
-          ) : (
-            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={warningBadgeStyle}>
-              <AlertTriangle className="w-5 h-5" />
-              <span className="font-semibold text-sm">Atenção — verifique os itens abaixo</span>
-            </div>
-          )}
+        <div className={`status-summary status-summary--${isSystemHealthy(diagnostics) ? 'ok' : 'warning'}`}>
+          <span className="status-summary__icon">
+            {isSystemHealthy(diagnostics) ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+          </span>
+          <span className="status-summary__text">
+            {isSystemHealthy(diagnostics) 
+              ? "Tudo certo — sistema conectado"
+              : "Atenção — verifique os itens abaixo"}
+          </span>
         </div>
 
-        <div className="space-y-4">
+        <ul className="status-list">
           {/* WhatsApp Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.whatsappConnected)}>
-              {renderStatusIcon(!!diagnostics?.whatsappConnected)}
-            </div>
-            <span className="text-sm">
-              <strong className="text-slate-100">WhatsApp:</strong>{' '}
-              <span style={{ color: getStatusTextColor(!!diagnostics?.whatsappConnected) }}>
-                {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
-              </span>
+          <li className={`status-row status-row--${diagnostics?.whatsappConnected ? 'ok' : 'error'}`}>
+            <span className="status-row__icon">
+              {diagnostics?.whatsappConnected ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
-          </div>
+            <span className="status-row__label">WhatsApp:</span>
+            <span className="status-row__value">
+              {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
+            </span>
+          </li>
 
           {/* Shopee API Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.shopeeConfigured)}>
-              {renderStatusIcon(!!diagnostics?.shopeeConfigured)}
-            </div>
-            <span className="text-sm">
-              <strong className="text-slate-100">Shopee API:</strong>{' '}
-              <span style={{ color: getStatusTextColor(!!diagnostics?.shopeeConfigured) }}>
-                {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
-              </span>
+          <li className={`status-row status-row--${diagnostics?.shopeeConfigured ? 'ok' : 'error'}`}>
+            <span className="status-row__icon">
+              {diagnostics?.shopeeConfigured ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
-          </div>
+            <span className="status-row__label">Shopee API:</span>
+            <span className="status-row__value">
+              {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
+            </span>
+          </li>
 
           {/* Automation Status */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.automationActive)}>
-              {renderStatusIcon(!!diagnostics?.automationActive)}
-            </div>
-            <span className="text-sm">
-              <strong className="text-slate-100">Automação:</strong>{' '}
-              <span style={{ color: getStatusTextColor(!!diagnostics?.automationActive) }}>
-                {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
-              </span>
+          <li className={`status-row status-row--${diagnostics?.automationActive ? 'ok' : 'error'}`}>
+            <span className="status-row__icon">
+              {diagnostics?.automationActive ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
             </span>
-          </div>
-        </div>
+            <span className="status-row__label">Automação:</span>
+            <span className="status-row__value">
+              {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
+            </span>
+          </li>
+        </ul>
       </div>
 
         {/* Card 2: Diagnostic Information */}
@@ -277,14 +240,22 @@ export const StatusConnection: React.FC = () => {
         
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <button 
-            onClick={handleCheckStatus} 
-            disabled={loadingStatus}
-            className="flex-1 btn-secondary"
-          >
-            {loadingStatus ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
-            Verificar Status
-          </button>
+          <div className="flex-1">
+            <button 
+              onClick={handleCheckStatus} 
+              disabled={loadingStatus}
+              className="w-full btn-secondary"
+            >
+              {loadingStatus ? <Loader2 className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+              {loadingStatus ? 'Verificando...' : 'Verificar Status'}
+            </button>
+            {lastStatusUpdate && (
+              <div className="status-feedback">
+                <Clock className="w-3 h-3" />
+                <span>Status atualizado às {lastStatusUpdate}</span>
+              </div>
+            )}
+          </div>
           
           <button 
             onClick={handleGenerateQR} 
