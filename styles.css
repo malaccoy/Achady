@@ -1224,16 +1224,16 @@ textarea.template-editor:focus {
 }
 
 .login-input {
-  background: #020617;
+  background: var(--bg-gradient-from);
   border-radius: 10px;
   border: 1px solid rgba(51, 65, 85, 0.9);
   padding: 10px 12px;
-  color: #e5e7eb;
+  color: var(--text-primary);
   font-size: 0.95rem;
 }
 
 .login-input::placeholder {
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .login-links {

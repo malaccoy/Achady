@@ -75,8 +75,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     {view === 'login' && (
                         <>
                             <div className="login-field">
-                                <label>Email</label>
+                                <label htmlFor="login-email">Email</label>
                                 <input
+                                    id="login-email"
                                     type="email"
                                     placeholder="seu@email.com"
                                     className="login-input"
@@ -88,8 +89,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             </div>
 
                             <div className="login-field">
-                                <label>Senha</label>
+                                <label htmlFor="login-password">Senha</label>
                                 <input
+                                    id="login-password"
                                     type="password"
                                     placeholder="Sua senha"
                                     className="login-input"
