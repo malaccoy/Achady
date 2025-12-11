@@ -127,6 +127,10 @@ export const deleteGroup = async (id: string): Promise<void> => {
   await request(`/groups/${id}`, { method: 'DELETE' });
 };
 
+export const sendTestMessage = async (id: string): Promise<{ ok: boolean; productTitle: string }> => {
+  return request<{ ok: boolean; productTitle: string }>(`/groups/${id}/test`, { method: 'POST' });
+};
+
 // --- Automation ---
 
 export const getAutomationConfig = async (): Promise<AutomationConfig> => {
