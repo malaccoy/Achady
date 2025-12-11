@@ -8,13 +8,14 @@
   --border-subtle: rgba(148, 163, 184, 0.25);
   --text-primary: #f9fafb;
   --text-secondary: #9ca3af;
-  --accent-primary: #ff6b00;   /* Shopee laranja */
+  --accent-primary: #ff6b00;   /* Shopee orange */
   --accent-primary-hover: #ff7f1a;
-  --accent-success: #22c55e;   /* Verde WhatsApp */
+  --accent-success: #22c55e;   /* WhatsApp green */
   --accent-success-soft: rgba(34, 197, 94, 0.12);
   --danger: #f97373;
   --radius-lg: 16px;
   --radius-md: 10px;
+  --spacing-card: 24px;
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
   --transition-fast: 150ms ease-out;
 }
@@ -249,7 +250,7 @@ body {
 
 .achady-main-content {
   margin-top: 6px;
-  padding: 24px;
+  padding: var(--spacing-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: var(--bg-card);
@@ -268,7 +269,7 @@ body {
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(10px);
-  padding: 24px;
+  padding: var(--spacing-card);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -310,6 +311,7 @@ tbody tr:hover {
 }
 
 /* Form Elements Overrides */
+/* Note: !important is used here to override inline styles from component libraries and React state */
 input, select, textarea {
   background-color: var(--bg-gradient-from) !important;
   border: 1px solid var(--border-subtle) !important;
