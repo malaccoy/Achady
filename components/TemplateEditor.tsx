@@ -113,7 +113,7 @@ export const TemplateEditor: React.FC = () => {
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row gap-3 mt-auto">
+          <div className="flex flex-col gap-3 mt-auto">
             <button 
               onClick={handleSave}
               disabled={loading}
