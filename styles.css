@@ -15,7 +15,7 @@
   --danger: #f97373;
   --radius-lg: 16px;
   --radius-md: 10px;
-  --spacing-card: 24px;
+  --spacing-card: 28px;
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.6);
   --transition-fast: 150ms ease-out;
 }
@@ -267,7 +267,7 @@ h2 {
 
 .achady-main-content {
   margin-top: 6px;
-  padding: 28px;
+  padding: var(--spacing-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   background: var(--bg-card);
@@ -286,7 +286,7 @@ h2 {
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(10px);
-  padding: 28px;
+  padding: var(--spacing-card);
   margin-bottom: 20px;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
