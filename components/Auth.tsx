@@ -47,9 +47,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f172a]">
             <div className="w-full max-w-md card p-8 border border-slate-700/50 bg-slate-800/80 backdrop-blur-sm rounded-xl shadow-2xl">
                 <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold text-slate-900 shadow-lg">
-                        A
-                    </div>
                     <h1 className="text-2xl font-bold text-white mb-2">ACHADY Bot</h1>
                     <p className="text-slate-400 text-sm">Automação de Ofertas Shopee</p>
                 </div>
