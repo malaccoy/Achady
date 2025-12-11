@@ -41,7 +41,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1LDnOOoLxV57_jRqS5Re0Ks
    ```
    
    Edite o arquivo `.env` e configure:
-   - `DB_URL`: Caminho do banco de dados SQLite
+   - `DATABASE_URL`: Caminho do banco de dados SQLite
    - `JWT_SECRET`: Chave secreta para JWT (use uma senha forte!)
    - `MASTER_KEY`: Chave para criptografia de dados sensíveis
    - Outras configurações opcionais (SMTP, etc)
