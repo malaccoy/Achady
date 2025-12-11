@@ -220,12 +220,12 @@ export const GroupManager: React.FC = () => {
 
   const getStatusBadge = (group: Group) => {
     if (!group.chatId) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-red-900/30 text-red-300 border border-red-900/50">Bot Fora</span>;
+      return <span className="status-badge status-badge--paused">Bot Fora</span>;
     }
     if (!group.active) {
-      return <span className="px-2 py-1 text-xs rounded-full bg-slate-700 text-slate-300 border border-slate-600">Pausado</span>;
+      return <span className="status-badge status-badge--paused">Pausado</span>;
     }
-    return <span className="px-2 py-1 text-xs rounded-full bg-green-900/30 text-green-300 border border-green-900/50">Conectado</span>;
+    return <span className="status-badge status-badge--connected">Conectado</span>;
   };
 
   return (
@@ -307,51 +307,45 @@ export const GroupManager: React.FC = () => {
         {/* Card: Groups Table */}
         <div className="app-card overflow-hidden" style={{ padding: 0 }}>
           <div className="p-6 border-b border-slate-700/50">
-            <h2 className="app-card__title">Lista de Grupos</h2>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex gap-3">
+            <h2 className="app-card__title mb-4">Lista de Grupos</h2>
+            <div className="group-filters">
               <button
                 onClick={() => setFilter('all')}
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                  filter === 'all' 
-                    ? 'text-white shadow-lg shadow-orange-600/30' 
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
-                }`}
-                style={filter === 'all' ? { background: 'var(--accent-primary)' } : {}}
+                className={`group-filter ${filter === 'all' ? 'group-filter--active' : ''}`}
               >
                 Todos ({groups.length})
               </button>
               <button
                 onClick={() => setFilter('active')}
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                  filter === 'active' 
-                    ? 'text-white shadow-lg shadow-green-600/30' 
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
-                }`}
-                style={filter === 'active' ? { background: 'var(--accent-success)' } : {}}
+                className={`group-filter ${filter === 'active' ? 'group-filter--active' : ''}`}
               >
-                Ativos ({groups.filter(g => g.active).length})
+                Ativos ({groups.filter(g => g.active && g.chatId).length})
               </button>
               <button
                 onClick={() => setFilter('paused')}
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                  filter === 'paused' 
-                    ? 'bg-slate-600 text-white shadow-lg shadow-slate-600/30' 
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
-                }`}
+                className={`group-filter ${filter === 'paused' ? 'group-filter--active' : ''}`}
               >
                 Pausados ({groups.filter(g => !g.active).length})
               </button>
             </div>
-            <div className="flex items-center gap-2 text-sm text-slate-400">
-              <Filter className="w-4 h-4" />
-              {filteredGroups.length} grupo(s)
-            </div>
           </div>
-        </div>
 
         {loading ? (
           <div className="p-8 text-center text-slate-500">Carregando grupos...</div>
+        ) : groups.length === 0 ? (
+          <div className="empty-state">
+            <p className="empty-state__title">Nenhum grupo cadastrado ainda.</p>
+            <p className="empty-state__text">
+              Clique em "Novo Grupo" para conectar seu primeiro grupo de ofertas.
+            </p>
+            <button 
+              onClick={() => setShowAddForm(true)}
+              className="btn-primary"
+            >
+              <Plus className="w-5 h-5" />
+              Novo Grupo
+            </button>
+          </div>
         ) : filteredGroups.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             {filter === 'all' ? 'Nenhum grupo cadastrado.' : `Nenhum grupo ${filter === 'active' ? 'ativo' : 'pausado'}.`}
@@ -390,7 +384,7 @@ export const GroupManager: React.FC = () => {
                       )}
                     </td>
                     <td className="px-8 py-4 text-center">
-                      <span className="inline-flex items-center justify-center px-2 py-1 text-xs rounded-full bg-blue-900/20 text-blue-300 border border-blue-900/30">
+                      <span className="badge-count">
                         {(group.keywords?.length || 0)}
                       </span>
                       {(group.negativeKeywords?.length || 0) > 0 && (
@@ -420,7 +414,7 @@ export const GroupManager: React.FC = () => {
                             onClick={() => handleSendTest(group)}
                             disabled={testingId === group.id}
                             className="w-9 h-9 rounded-full flex items-center justify-center bg-purple-900/30 text-purple-300 border border-purple-900/50 hover:bg-purple-900/50 hover:border-purple-700 transition-all"
-                            title="Enviar mensagem de teste"
+                            title="Enviar teste"
                           >
                             {testingId === group.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
                           </button>
