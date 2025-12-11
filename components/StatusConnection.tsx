@@ -3,6 +3,43 @@ import { getWhatsappStatus, getWhatsappQR, getSystemDiagnostics } from '../servi
 import { RefreshCw, QrCode, ShieldCheck, WifiOff, Loader2, AlertTriangle, Smartphone, CheckCircle2, XCircle, Clock, MessageSquare, ShoppingBag, Zap, Info } from 'lucide-react';
 import { SystemDiagnostics } from '../types';
 
+// Style constants for badges
+const successBadgeStyle = { 
+  background: 'var(--accent-success-soft)', 
+  border: '1px solid var(--accent-success)',
+  color: 'var(--accent-success)'
+};
+
+const warningBadgeStyle = { 
+  background: 'var(--warning-soft)', 
+  border: '1px solid var(--warning-border)',
+  color: 'var(--warning)'
+};
+
+// Helper function to check if all systems are healthy
+const isSystemHealthy = (diagnostics: SystemDiagnostics | null): boolean => {
+  return !!diagnostics && diagnostics.whatsappConnected && diagnostics.shopeeConfigured && diagnostics.automationActive;
+};
+
+// Helper function to get status circle style
+const getStatusCircleStyle = (isActive: boolean) => ({
+  background: isActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
+  border: isActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+});
+
+// Helper function to get status text color
+const getStatusTextColor = (isActive: boolean) => 
+  isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
+
+// Helper function to render status icon
+const renderStatusIcon = (isActive: boolean) => {
+  return isActive ? (
+    <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
+  ) : (
+    <XCircle className="w-3.5 h-3.5" style={{ color: 'var(--danger)' }} />
+  );
+};
+
 export const StatusConnection: React.FC = () => {
   const [status, setStatus] = useState<string>("desconhecido");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -119,44 +156,63 @@ export const StatusConnection: React.FC = () => {
 
       {/* Card 1: System Status */}
       <div className="card p-6">
-        <h2 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
+        <h2 className="text-lg font-bold text-slate-100 mb-6 flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-orange-500" />
           Status do Sistema
         </h2>
-        <div className="space-y-3">
+
+        {/* Summary Badge */}
+        <div className="mb-6">
+          {isSystemHealthy(diagnostics) ? (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={successBadgeStyle}>
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-semibold text-sm">Tudo certo — sistema conectado</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={warningBadgeStyle}>
+              <AlertTriangle className="w-5 h-5" />
+              <span className="font-semibold text-sm">Atenção — verifique os itens abaixo</span>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.whatsappConnected ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <XCircle className="w-4 h-4 text-red-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>WhatsApp:</strong> {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.whatsappConnected)}>
+              {renderStatusIcon(!!diagnostics?.whatsappConnected)}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">WhatsApp:</strong>{' '}
+              <span style={{ color: getStatusTextColor(!!diagnostics?.whatsappConnected) }}>
+                {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
+              </span>
             </span>
           </div>
 
           {/* Shopee API Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.shopeeConfigured ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-yellow-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>Shopee API:</strong> {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.shopeeConfigured)}>
+              {renderStatusIcon(!!diagnostics?.shopeeConfigured)}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">Shopee API:</strong>{' '}
+              <span style={{ color: getStatusTextColor(!!diagnostics?.shopeeConfigured) }}>
+                {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
+              </span>
             </span>
           </div>
 
           {/* Automation Status */}
           <div className="flex items-center gap-3">
-            {diagnostics?.automationActive ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <XCircle className="w-4 h-4 text-slate-500" />
-            )}
-            <span className="text-sm text-slate-300">
-              <strong>Automação:</strong> {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.automationActive)}>
+              {renderStatusIcon(!!diagnostics?.automationActive)}
+            </div>
+            <span className="text-sm">
+              <strong className="text-slate-100">Automação:</strong>{' '}
+              <span style={{ color: getStatusTextColor(!!diagnostics?.automationActive) }}>
+                {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
+              </span>
             </span>
           </div>
         </div>
