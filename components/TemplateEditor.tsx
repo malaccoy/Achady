@@ -5,6 +5,14 @@ import { MessageSquare, Save, Send, Loader2, Info, CheckCircle2, AlertTriangle }
 
 const variables = ["{{titulo}}", "{{preco}}", "{{precoOriginal}}", "{{desconto}}", "{{link}}"];
 
+const variableHints: Record<string, string> = {
+  "{{titulo}}": "Ex.: Kit 10 Organizadores Acrílico...",
+  "{{preco}}": "Ex.: R$ 50,19",
+  "{{precoOriginal}}": "Ex.: R$ 66,64",
+  "{{desconto}}": "Ex.: 25% OFF",
+  "{{link}}": "Ex.: https://s.shopee.com.br/exemplo"
+};
+
 interface VariableChipsProps {
   onInsert: (variable: string) => void;
 }
@@ -18,6 +26,7 @@ const VariableChips: React.FC<VariableChipsProps> = ({ onInsert }) => {
           type="button"
           className="variable-chip"
           onClick={() => onInsert(variable)}
+          title={variableHints[variable]}
         >
           {variable}
         </button>
@@ -101,6 +110,12 @@ export const TemplateEditor: React.FC = () => {
     }, 0);
   };
 
+  const handleResetTemplate = () => {
+    setTemplate(DEFAULT_TEMPLATE);
+    setStatusMsg({ type: 'success', text: 'Modelo restaurado para o padrão!' });
+    setTimeout(() => setStatusMsg(null), 3000);
+  };
+
   // Real-time preview generator
   const getPreviewText = () => {
     let text = template;
@@ -148,6 +163,15 @@ export const TemplateEditor: React.FC = () => {
               placeholder="Digite sua mensagem aqui..."
             />
 
+            {/* Reset Button */}
+            <button
+              type="button"
+              className="link-button"
+              onClick={handleResetTemplate}
+            >
+              Restaurar modelo padrão
+            </button>
+
             {/* Status Message */}
             {statusMsg && (
               <div className={`mt-4 p-3 rounded text-sm flex items-center gap-2 animate-in fade-in slide-in-from-top-1
@@ -191,6 +215,15 @@ export const TemplateEditor: React.FC = () => {
                   backgroundSize: '400px',
                   backgroundRepeat: 'repeat'
                 }}>
+              </div>
+              
+              {/* WhatsApp Header */}
+              <div className="whatsapp-header">
+                <div className="whatsapp-header__avatar">🟢</div>
+                <div className="whatsapp-header__info">
+                  <div className="whatsapp-header__title">Grupo de Ofertas</div>
+                  <div className="whatsapp-header__subtitle">hoje, 12:42</div>
+                </div>
               </div>
               
               {/* WhatsApp Preview Bubble */}
