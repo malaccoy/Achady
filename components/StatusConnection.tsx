@@ -107,6 +107,34 @@ export const StatusConnection: React.FC = () => {
     });
   };
 
+  // Helper function to check if all systems are healthy
+  const isSystemHealthy = () => {
+    return diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive;
+  };
+
+  // Style constants for badges
+  const successBadgeStyle = { 
+    background: 'var(--accent-success-soft)', 
+    border: '1px solid var(--accent-success)',
+    color: 'var(--accent-success)'
+  };
+
+  const warningBadgeStyle = { 
+    background: 'var(--warning-soft)', 
+    border: '1px solid var(--warning-border)',
+    color: 'var(--warning)'
+  };
+
+  // Helper function to get status circle style
+  const getStatusCircleStyle = (isActive: boolean) => ({
+    background: isActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
+    border: isActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
+  });
+
+  // Helper function to get status text color
+  const getStatusTextColor = (isActive: boolean) => 
+    isActive ? 'var(--accent-success)' : 'var(--text-inactive)';
+
   return (
     <div className="space-y-6">
       {/* Page Title and Description */}
@@ -126,21 +154,13 @@ export const StatusConnection: React.FC = () => {
 
         {/* Summary Badge */}
         <div className="mb-6">
-          {diagnostics?.whatsappConnected && diagnostics?.shopeeConfigured && diagnostics?.automationActive ? (
-            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ 
-              background: 'var(--accent-success-soft)', 
-              border: '1px solid var(--accent-success)',
-              color: 'var(--accent-success)'
-            }}>
+          {isSystemHealthy() ? (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={successBadgeStyle}>
               <CheckCircle2 className="w-5 h-5" />
               <span className="font-semibold text-sm">Tudo certo — sistema conectado</span>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={{ 
-              background: 'var(--warning-soft)', 
-              border: '1px solid var(--warning-border)',
-              color: 'var(--warning)'
-            }}>
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg" style={warningBadgeStyle}>
               <AlertTriangle className="w-5 h-5" />
               <span className="font-semibold text-sm">Atenção — verifique os itens abaixo</span>
             </div>
@@ -150,10 +170,7 @@ export const StatusConnection: React.FC = () => {
         <div className="space-y-4">
           {/* WhatsApp Status */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.whatsappConnected ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
-              border: diagnostics?.whatsappConnected ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
-            }}>
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.whatsappConnected)}>
               {diagnostics?.whatsappConnected ? (
                 <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
               ) : (
@@ -162,7 +179,7 @@ export const StatusConnection: React.FC = () => {
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">WhatsApp:</strong>{' '}
-              <span style={{ color: diagnostics?.whatsappConnected ? 'var(--accent-success)' : '#94a3b8' }}>
+              <span style={{ color: getStatusTextColor(!!diagnostics?.whatsappConnected) }}>
                 {diagnostics?.whatsappConnected ? 'Conectado' : 'Desconectado'}
               </span>
             </span>
@@ -170,10 +187,7 @@ export const StatusConnection: React.FC = () => {
 
           {/* Shopee API Status */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.shopeeConfigured ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
-              border: diagnostics?.shopeeConfigured ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
-            }}>
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.shopeeConfigured)}>
               {diagnostics?.shopeeConfigured ? (
                 <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
               ) : (
@@ -182,7 +196,7 @@ export const StatusConnection: React.FC = () => {
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">Shopee API:</strong>{' '}
-              <span style={{ color: diagnostics?.shopeeConfigured ? 'var(--accent-success)' : '#94a3b8' }}>
+              <span style={{ color: getStatusTextColor(!!diagnostics?.shopeeConfigured) }}>
                 {diagnostics?.shopeeConfigured ? 'Configurada' : 'Não configurada'}
               </span>
             </span>
@@ -190,10 +204,7 @@ export const StatusConnection: React.FC = () => {
 
           {/* Automation Status */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={{
-              background: diagnostics?.automationActive ? 'var(--accent-success-soft)' : 'var(--danger-soft)',
-              border: diagnostics?.automationActive ? '2px solid var(--accent-success)' : '2px solid var(--danger)'
-            }}>
+            <div className="flex items-center justify-center w-6 h-6 rounded-full" style={getStatusCircleStyle(!!diagnostics?.automationActive)}>
               {diagnostics?.automationActive ? (
                 <CheckCircle2 className="w-3.5 h-3.5" style={{ color: 'var(--accent-success)' }} />
               ) : (
@@ -202,7 +213,7 @@ export const StatusConnection: React.FC = () => {
             </div>
             <span className="text-sm">
               <strong className="text-slate-100">Automação:</strong>{' '}
-              <span style={{ color: diagnostics?.automationActive ? 'var(--accent-success)' : '#94a3b8' }}>
+              <span style={{ color: getStatusTextColor(!!diagnostics?.automationActive) }}>
                 {diagnostics?.automationActive ? 'Ativa' : 'Desativada'}
               </span>
             </span>
