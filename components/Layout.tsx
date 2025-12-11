@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu } from "lucide-react";
 import { MainContainer } from "./MainContainer";
 import { AccountSection } from "./AccountSection";
 
@@ -40,17 +40,12 @@ export const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="achady-shell">
       <aside className={`achady-sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
-        <div className="flex justify-between items-center md:block">
-            <div className="achady-logo-block">
+        <div className="achady-logo-block">
             <div className="achady-logo-circle">A</div>
             <div>
                 <div className="achady-logo-title">ACHADY</div>
                 <div className="achady-logo-sub">Bot Automation</div>
             </div>
-            </div>
-            <button className="md:hidden text-slate-400" onClick={() => setIsMobileMenuOpen(false)}>
-                <X className="w-6 h-6" />
-            </button>
         </div>
 
         <div className="achady-sidebar-badge mt-4 md:mt-0">Shopee Deals • Beta</div>
