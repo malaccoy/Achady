@@ -307,33 +307,33 @@ export const GroupManager: React.FC = () => {
         <div className="p-6 border-b border-slate-700/50">
           <h2 className="text-lg font-bold text-slate-100 mb-4">Lista de Grupos</h2>
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <button
                 onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
                   filter === 'all' 
-                    ? 'bg-orange-600 text-white' 
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30' 
+                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
                 }`}
               >
                 Todos ({groups.length})
               </button>
               <button
                 onClick={() => setFilter('active')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
                   filter === 'active' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    ? 'bg-green-600 text-white shadow-lg shadow-green-600/30' 
+                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
                 }`}
               >
                 Ativos ({groups.filter(g => g.active).length})
               </button>
               <button
                 onClick={() => setFilter('paused')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
                   filter === 'paused' 
-                    ? 'bg-slate-600 text-white' 
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    ? 'bg-slate-600 text-white shadow-lg shadow-slate-600/30' 
+                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-slate-300'
                 }`}
               >
                 Pausados ({groups.filter(g => !g.active).length})
@@ -355,27 +355,27 @@ export const GroupManager: React.FC = () => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-900/50 border-b border-slate-800">
+              <thead className="bg-slate-900/80 border-b-2 border-slate-700">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Nome</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Categoria</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Keywords</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Última Mensagem</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Ações</th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Nome</th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Status</th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Categoria</th>
+                  <th className="text-center px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Keywords</th>
+                  <th className="text-left px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Última Mensagem</th>
+                  <th className="text-right px-6 py-4 text-xs font-bold text-slate-300 uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {filteredGroups.map(group => (
-                  <tr key={group.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-4 py-3">
+              <tbody className="divide-y divide-slate-800/30">
+                {filteredGroups.map((group, index) => (
+                  <tr key={group.id} className={`hover:bg-slate-800/30 transition-colors ${index % 2 === 0 ? 'bg-slate-900/20' : 'bg-slate-900/40'}`}>
+                    <td className="px-6 py-4">
                       <div className="text-sm font-medium text-slate-200">{group.name || "Grupo sem nome"}</div>
                       <div className="text-xs text-slate-500 truncate max-w-[200px]">{group.link}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       {getStatusBadge(group)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       {group.category ? (
                         <span className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-purple-900/20 text-purple-300 border border-purple-900/30">
                           <Tag className="w-3 h-3" />
@@ -385,7 +385,7 @@ export const GroupManager: React.FC = () => {
                         <span className="text-xs text-slate-500">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-6 py-4 text-center">
                       <span className="inline-flex items-center justify-center px-2 py-1 text-xs rounded-full bg-blue-900/20 text-blue-300 border border-blue-900/30">
                         {(group.keywords?.length || 0)}
                       </span>
@@ -395,19 +395,19 @@ export const GroupManager: React.FC = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       <div className="text-xs text-slate-400">{formatDate(group.lastMessageSent)}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         {!group.chatId && (
                           <button
                             onClick={() => handleJoin(group.id)}
                             disabled={joiningId === group.id}
-                            className="text-xs bg-blue-900/30 text-blue-300 border border-blue-900/50 hover:bg-blue-900/50 px-3 py-1.5 rounded-md font-medium flex items-center gap-1 transition-colors"
+                            className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-900/30 text-blue-300 border border-blue-900/50 hover:bg-blue-900/50 hover:border-blue-700 transition-all"
                             title="Entrar no grupo"
                           >
-                            {joiningId === group.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <LogIn className="w-3 h-3"/>}
+                            {joiningId === group.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <LogIn className="w-4 h-4"/>}
                           </button>
                         )}
                         
@@ -415,28 +415,28 @@ export const GroupManager: React.FC = () => {
                           <button
                             onClick={() => handleSendTest(group)}
                             disabled={testingId === group.id}
-                            className="text-xs bg-purple-900/30 text-purple-300 border border-purple-900/50 hover:bg-purple-900/50 px-3 py-1.5 rounded-md font-medium flex items-center gap-1 transition-colors"
+                            className="w-9 h-9 rounded-full flex items-center justify-center bg-purple-900/30 text-purple-300 border border-purple-900/50 hover:bg-purple-900/50 hover:border-purple-700 transition-all"
                             title="Enviar mensagem de teste"
                           >
-                            {testingId === group.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Send className="w-3 h-3"/>}
+                            {testingId === group.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>}
                           </button>
                         )}
                         
                         <button 
                           onClick={() => handleToggle(group.id)}
-                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${
                             group.active 
-                              ? 'bg-green-900/30 text-green-300 border border-green-900/50 hover:bg-green-900/50' 
-                              : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600'
+                              ? 'bg-green-900/30 text-green-300 border border-green-900/50 hover:bg-green-900/50 hover:border-green-700' 
+                              : 'bg-slate-700 text-slate-300 border border-slate-600 hover:bg-slate-600 hover:border-slate-500'
                           }`}
-                          title={group.active ? 'Pausar' : 'Ativar'}
+                          title={group.active ? 'Pausar grupo' : 'Ativar grupo'}
                         >
                           {group.active ? '✓' : '⏸'}
                         </button>
                         
                         <button
                           onClick={() => openEditModal(group)}
-                          className="p-1.5 rounded-md text-slate-400 hover:text-orange-400 hover:bg-orange-500/20 transition-colors"
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 border border-slate-700 hover:text-orange-400 hover:bg-orange-500/20 hover:border-orange-500/50 transition-all"
                           title="Configurar grupo"
                         >
                           <Settings className="w-4 h-4" />
@@ -444,7 +444,7 @@ export const GroupManager: React.FC = () => {
 
                         <button 
                           onClick={() => handleDelete(group.id)}
-                          className="p-1.5 rounded-md text-red-400 hover:text-red-300 hover:bg-red-900/30 transition-colors"
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-red-400 border border-slate-700 hover:text-red-300 hover:bg-red-900/30 hover:border-red-700 transition-all"
                           title="Excluir grupo"
                         >
                           <Trash2 className="w-4 h-4" />
