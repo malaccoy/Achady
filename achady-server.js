@@ -272,7 +272,7 @@ AuthRouter.post('/register', authLimiter, async (req, res) => {
         passwordHash,
         settings: {
             create: {
-                template: `🔥 Oferta Shopee! (por tempo limitado)\n\n🛍️ {{titulo}}\n\n💸 De: ~{{precoOriginal}}~ \n🔥 Agora: {{preco}}  ({{desconto}} OFF)\n\n🛒 Link: {{link}}\n\n*O preço e a disponibilidade do produto podem variar.`
+                template: `🔥 Oferta Shopee! (por tempo limitado)\n\n🛍️ {{titulo}}\n\n💸 De: ~{{precoOriginal}}~ \n🔥 Agora: {{preco}}\n\n🛒 Link: {{link}}\n\n*O preço e a disponibilidade do produto podem variar.`
             }
         }
       },

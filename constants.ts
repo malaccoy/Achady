@@ -14,7 +14,7 @@ export const DEFAULT_TEMPLATE = `🔥 Oferta Shopee! (por tempo limitado)
 🛍️ {{titulo}}
 
 💸 De: ~{{precoOriginal}}~
-🔥 Agora: {{preco}}  ({{desconto}} OFF)
+🔥 Agora: {{preco}}
 
 🛒 Link: {{link}}
 
