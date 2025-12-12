@@ -1061,6 +1061,27 @@ textarea.template-editor:focus {
   color: #9ca3af;
 }
 
+/* ---------- GROUPS TABLE WRAPPER (Mobile Responsive) ---------- */
+.groups-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch; /* smooth scrolling on iOS */
+}
+
+.groups-table-wrapper table {
+  min-width: 900px; /* ensure all columns including AÇÕES fit */
+}
+
+/* Reduce padding on mobile for better table display */
+@media (max-width: 768px) {
+  .groups-table-wrapper table th,
+  .groups-table-wrapper table td {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
 /* ---------- TOGGLE SWITCH ---------- */
 .toggle {
   position: relative;
