@@ -23,7 +23,7 @@ export interface Group {
   category?: string;
   lastMessageSent?: string; // ISO date string
   // Shopee productOfferV2 API parameters
-  productCatIds?: number[]; // Shopee product category IDs
+  productCatIds?: (number | string)[]; // Shopee product category IDs or names
   sortType?: number; // Sort type: use ShopeeSortType enum (default: ITEM_SOLD_DESC = 2)
   minDiscountPercent?: number | null; // Filter: minimum discount percentage (0-100)
   minRating?: number | null; // Filter: minimum rating (0.0-5.0)

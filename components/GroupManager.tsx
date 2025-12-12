@@ -45,7 +45,7 @@ export const GroupManager: React.FC = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   
   // New Shopee productOfferV2 fields
-  const [editProductCatIds, setEditProductCatIds] = useState<number[]>([]);
+  const [editProductCatIds, setEditProductCatIds] = useState<(number | string)[]>([]);
   const [editSortType, setEditSortType] = useState<number>(ShopeeSortType.ITEM_SOLD_DESC);
   const [editMinDiscountPercent, setEditMinDiscountPercent] = useState<number | null>(null);
   const [editMinRating, setEditMinRating] = useState<number | null>(null);
@@ -191,18 +191,24 @@ export const GroupManager: React.FC = () => {
   };
   
   const addCategoryId = () => {
-    if (categoryIdInput.trim()) {
-      const catId = parseInt(categoryIdInput.trim(), 10);
-      // Validate: must be a positive integer and not already in the list
-      if (!isNaN(catId) && catId > 0 && !editProductCatIds.includes(catId)) {
-        setEditProductCatIds([...editProductCatIds, catId]);
-        setCategoryIdInput('');
-      } else if (catId <= 0) {
-        alert('ID de categoria deve ser um número positivo.');
-      } else if (editProductCatIds.includes(catId)) {
-        alert('Este ID de categoria já foi adicionado.');
-      }
+    const input = categoryIdInput.trim();
+    if (!input) return;
+    
+    // Check if input is purely numeric
+    const isNumeric = /^\d+$/.test(input);
+    const value = isNumeric ? parseInt(input, 10) : input;
+    
+    // Check for duplicates (compare as strings for consistency)
+    const isDuplicate = editProductCatIds.some(item => String(item) === String(value));
+    
+    if (isDuplicate) {
+      alert('Esta categoria já foi adicionada.');
+      return;
     }
+    
+    // Add the value (number if numeric, string otherwise)
+    setEditProductCatIds([...editProductCatIds, value]);
+    setCategoryIdInput('');
   };
   
   const removeCategoryId = (index: number) => {
@@ -620,8 +626,8 @@ export const GroupManager: React.FC = () => {
                     </label>
                     <div className="flex gap-2 mb-2">
                       <input
-                        type="number"
-                        placeholder="ID da categoria (ex: 12345)"
+                        type="text"
+                        placeholder="Nome ou ID da categoria (ex: Roupas Femininas, 100012)"
                         className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
                         value={categoryIdInput}
                         onChange={(e) => setCategoryIdInput(e.target.value)}
