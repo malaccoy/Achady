@@ -603,6 +603,128 @@ export const GroupManager: React.FC = () => {
                 </div>
               </div>
 
+              {/* Filtros de ofertas (opcional) */}
+              <div>
+                <label className="block text-sm font-medium text-orange-300 mb-2">
+                  Filtros de ofertas (opcional)
+                </label>
+                <p className="text-xs text-slate-400 mb-4">
+                  Se você não preencher nada aqui, o bot usa apenas as palavras-chave, como hoje.
+                </p>
+                
+                <div className="space-y-4">
+                  {/* Categorias Shopee */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-2">
+                      Categorias Shopee
+                    </label>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="number"
+                        placeholder="ID da categoria (ex: 12345)"
+                        className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={categoryIdInput}
+                        onChange={(e) => setCategoryIdInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addCategoryId();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCategoryId}
+                        className="px-4 py-2 btn-secondary"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {editProductCatIds.map((catId, index) => (
+                        <TagChip
+                          key={index}
+                          label={`${catId}`}
+                          onRemove={() => removeCategoryId(index)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Grid for filters */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Ordenação */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Ordenação
+                      </label>
+                      <select
+                        value={editSortType}
+                        onChange={(e) => setEditSortType(parseInt(e.target.value, 10))}
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                      >
+                        <option value={ShopeeSortType.ITEM_SOLD_DESC}>Mais vendidos (recomendado)</option>
+                        <option value={ShopeeSortType.COMMISSION_DESC}>Maior comissão</option>
+                        <option value={3}>Maior desconto</option>
+                      </select>
+                    </div>
+
+                    {/* Desconto mínimo */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Desconto mínimo (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        placeholder="Ex: 25"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinDiscountPercent ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                          if (val === null || (val >= 0 && val <= 100)) {
+                            setEditMinDiscountPercent(val);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* Avaliação mínima */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Avaliação mínima
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5"
+                        step="0.1"
+                        placeholder="Ex: 4.5"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinRating ?? ''}
+                        onChange={(e) => setEditMinRating(e.target.value ? parseFloat(e.target.value) : null)}
+                      />
+                    </div>
+
+                    {/* Vendas mínimas */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Vendas mínimas
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="Ex: 100"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinSales ?? ''}
+                        onChange={(e) => setEditMinSales(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Blacklist */}
               <div>
                 <label className="block text-sm font-medium text-red-300 mb-2">
@@ -654,141 +776,6 @@ export const GroupManager: React.FC = () => {
                   <Lightbulb className="w-3.5 h-3.5" />
                   Sugestões rápidas: {QUICK_BLACKLIST_TERMS.join(', ')}
                 </button>
-              </div>
-              
-              {/* Divider */}
-              <div className="border-t border-slate-700 pt-6">
-                <h4 className="text-md font-bold text-slate-100 mb-4">🔥 Configurações Avançadas (Shopee API)</h4>
-                <p className="text-xs text-slate-400 mb-4">
-                  Configure filtros de qualidade e busca por categoria da Shopee. Se configurado, usa o productOfferV2 API ao invés de busca por palavras-chave.
-                </p>
-              </div>
-              
-              {/* Product Category IDs */}
-              <div>
-                <label className="block text-sm font-medium text-orange-300 mb-2">
-                  IDs de Categoria Shopee
-                </label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="number"
-                    placeholder="Ex: 12345"
-                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
-                    value={categoryIdInput}
-                    onChange={(e) => setCategoryIdInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addCategoryId();
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={addCategoryId}
-                    className="px-4 py-2 btn-secondary"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-                <p className="text-xs text-slate-500 mb-3">
-                  IDs de categoria da API Shopee. Se preenchido, usa busca por categoria ao invés de keyword. <strong>Nota:</strong> Apenas o primeiro ID será usado na busca.
-                </p>
-                <div className="flex flex-wrap gap-2 items-center">
-                  {editProductCatIds.map((catId, index) => (
-                    <TagChip
-                      key={index}
-                      label={`Cat: ${catId}`}
-                      onRemove={() => removeCategoryId(index)}
-                    />
-                  ))}
-                  {editProductCatIds.length === 0 && (
-                    <span className="text-xs text-slate-500">Nenhuma categoria configurada. Usa busca por palavras-chave.</span>
-                  )}
-                </div>
-              </div>
-              
-              {/* Sort Type */}
-              <div>
-                <label className="block text-sm font-medium text-orange-300 mb-2">
-                  Ordenação (Sort Type)
-                </label>
-                <select
-                  value={editSortType}
-                  onChange={(e) => setEditSortType(parseInt(e.target.value, 10))}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
-                >
-                  <option value={ShopeeSortType.RELEVANCE_DESC}>Relevância</option>
-                  <option value={ShopeeSortType.ITEM_SOLD_DESC}>Mais Vendidos (Padrão)</option>
-                  <option value={ShopeeSortType.PRICE_DESC}>Maior Preço</option>
-                  <option value={ShopeeSortType.PRICE_ASC}>Menor Preço</option>
-                  <option value={ShopeeSortType.COMMISSION_DESC}>Maior Comissão</option>
-                </select>
-                <p className="text-xs text-slate-500 mt-1">
-                  Como os produtos serão ordenados na busca.
-                </p>
-              </div>
-              
-              {/* Quality Filters */}
-              <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-green-300 mb-2">
-                    Desconto Mínimo (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="Ex: 25"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
-                    value={editMinDiscountPercent ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value ? parseInt(e.target.value, 10) : null;
-                      if (val === null || (val >= 0 && val <= 100)) {
-                        setEditMinDiscountPercent(val);
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Filtrar produtos com desconto mínimo
-                  </p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-yellow-300 mb-2">
-                    Avaliação Mínima
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="5"
-                    step="0.1"
-                    placeholder="Ex: 4.5"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition text-white"
-                    value={editMinRating ?? ''}
-                    onChange={(e) => setEditMinRating(e.target.value ? parseFloat(e.target.value) : null)}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Filtrar por nota (0.0 a 5.0)
-                  </p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-blue-300 mb-2">
-                    Vendas Mínimas
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Ex: 100"
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-white"
-                    value={editMinSales ?? ''}
-                    onChange={(e) => setEditMinSales(e.target.value ? parseInt(e.target.value, 10) : null)}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Filtrar por quantidade vendida
-                  </p>
-                </div>
               </div>
             </div>
 
