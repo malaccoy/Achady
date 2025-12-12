@@ -50,7 +50,7 @@ const CATEGORY_PRESETS_BR = {
  * 
  * @example
  * normalizeCategoryKey('Roupas Femininas') // returns 'roupas_femininas'
- * normalizeCategoryKey('Casa & Decoração') // returns 'casa_e_decoracao'
+ * normalizeCategoryKey('Casa & Decoração') // returns 'casa_decoracao'
  */
 function normalizeCategoryKey(value) {
   if (!value) return '';

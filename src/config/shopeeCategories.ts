@@ -50,7 +50,7 @@ export const CATEGORY_PRESETS_BR: Record<string, number> = {
  * 
  * @example
  * normalizeCategoryKey('Roupas Femininas') // returns 'roupas_femininas'
- * normalizeCategoryKey('Casa & Decoração') // returns 'casa_e_decoracao'
+ * normalizeCategoryKey('Casa & Decoração') // returns 'casa_decoracao'
  */
 export function normalizeCategoryKey(value: string): string {
   if (!value) return '';
