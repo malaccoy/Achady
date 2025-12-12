@@ -434,11 +434,93 @@ class ShopeeClient {
             throw new Error(e.message || 'Unknown Shopee API error');
         }
     }
+    
+    /**
+     * Search offers using productOfferV2 API with advanced filtering
+     * @param {Object} options - Search options
+     * @param {string} [options.keyword] - Optional keyword to search
+     * @param {number} [options.productCatId] - Optional category ID
+     * @param {number} [options.sortType=2] - Sort type (1=RELEVANCE, 2=ITEM_SOLD, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION)
+     * @param {number} [options.page=1] - Page number
+     * @param {number} [options.limit=20] - Results per page
+     * @param {number} [options.minDiscountPercent] - Filter: minimum discount percentage
+     * @param {number} [options.minRating] - Filter: minimum rating
+     * @param {number} [options.minSales] - Filter: minimum sales count
+     * @returns {Promise<Array>} Array of product offers
+     */
+    async searchOffersV2(options = {}) {
+        const {
+            keyword,
+            productCatId,
+            sortType = 2,
+            page = 1,
+            limit = 20,
+            minDiscountPercent,
+            minRating,
+            minSales
+        } = options;
+        
+        // Build GraphQL query with all relevant fields
+        const q = `query($keyword: String, $productCatId: Int, $limit: Int, $sortType: Int, $page: Int) { 
+            productOfferV2(keyword: $keyword, productCatId: $productCatId, limit: $limit, sortType: $sortType, page: $page) { 
+                nodes { 
+                    itemId 
+                    productName 
+                    imageUrl 
+                    price 
+                    priceMin 
+                    priceMax 
+                    offerLink 
+                    commissionRate
+                    priceDiscountRate
+                    ratingStar
+                    sales
+                } 
+            } 
+        }`;
+        
+        const variables = { sortType, limit, page };
+        if (keyword) variables.keyword = keyword;
+        if (productCatId) variables.productCatId = productCatId;
+        
+        const res = await this.request(q, variables);
+        let offers = res?.productOfferV2?.nodes || [];
+        
+        // Apply server-side filters
+        if (minDiscountPercent !== undefined && minDiscountPercent !== null) {
+            offers = offers.filter(offer => {
+                const discount = offer.priceDiscountRate || 0;
+                return discount >= minDiscountPercent;
+            });
+        }
+        
+        if (minRating !== undefined && minRating !== null) {
+            offers = offers.filter(offer => {
+                const rating = parseFloat(offer.ratingStar || '0');
+                return rating >= minRating;
+            });
+        }
+        
+        if (minSales !== undefined && minSales !== null) {
+            offers = offers.filter(offer => {
+                const sales = offer.sales || 0;
+                return sales >= minSales;
+            });
+        }
+        
+        return offers;
+    }
+    
+    /**
+     * Legacy method for backward compatibility
+     * Uses keyword-only search with commission-based sorting
+     */
     async searchOffers(keyword) {
-        const q = `query($keyword: String, $limit: Int, $sortType: Int) { productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) { nodes { itemId productName imageUrl price priceMin priceMax offerLink commissionRate } } }`;
+        const q = `query($keyword: String, $limit: Int, $sortType: Int) { productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) { nodes { itemId productName imageUrl price priceMin priceMax offerLink commissionRate priceDiscountRate ratingStar sales } } }`;
         const res = await this.request(q, { keyword, limit: 20, sortType: 5 });
         return res?.productOfferV2?.nodes || [];
     }
+    
     async generateShortLink(originUrl) {
         const q = `mutation($originUrl: String!) { generateShortLink(input: { originUrl: $originUrl }) { shortLink } }`;
         const res = await this.request(q, { originUrl });
@@ -452,24 +534,41 @@ function renderMessage(template, offer) {
     const priceValue = offer.priceMin || offer.price || 0;
     const price = typeof priceValue === 'number' ? priceValue : parseFloat(priceValue) || 0;
     const maxPrice = offer.priceMax || price;
-    const original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
     
-    // Parse numeric values for discount calculation
-    const precoOriginalNumber = parseFloat(original);
-    const precoNumber = price;
-    
-    // Compute the discount percentage safely
+    // Use priceDiscountRate from Shopee API if available
+    // priceDiscountRate is an Int representing the discount percentage (e.g., 25 = 25% off)
     let discountPercent = null;
     
-    if (
-        Number.isFinite(precoOriginalNumber) &&
-        Number.isFinite(precoNumber) &&
-        precoOriginalNumber > 0 &&
-        precoNumber > 0 &&
-        precoNumber < precoOriginalNumber
-    ) {
-        const diff = precoOriginalNumber - precoNumber;
-        discountPercent = Math.round((diff / precoOriginalNumber) * 100);
+    if (offer.priceDiscountRate !== undefined && offer.priceDiscountRate !== null && offer.priceDiscountRate > 0) {
+        // Use the real discount rate from Shopee API
+        discountPercent = offer.priceDiscountRate;
+    } else {
+        // Fallback: estimate from price difference (for backward compatibility)
+        const original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
+        const precoOriginalNumber = parseFloat(original);
+        const precoNumber = price;
+        
+        if (
+            Number.isFinite(precoOriginalNumber) &&
+            Number.isFinite(precoNumber) &&
+            precoOriginalNumber > 0 &&
+            precoNumber > 0 &&
+            precoNumber < precoOriginalNumber
+        ) {
+            const diff = precoOriginalNumber - precoNumber;
+            discountPercent = Math.round((diff / precoOriginalNumber) * 100);
+        }
+    }
+    
+    // Calculate original price based on discount
+    let original;
+    if (discountPercent && discountPercent > 0) {
+        // Calculate original price: price = original * (1 - discount/100)
+        // So: original = price / (1 - discount/100)
+        original = (price / (1 - discountPercent / 100)).toFixed(2);
+    } else {
+        // Fallback to maxPrice or estimate
+        original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
     }
     
     // Build the desconto variable as a string (only the number, no "%")
@@ -521,6 +620,68 @@ function isWithinTimeWindow(startTime, endTime) {
     } catch (e) {
         console.error('[TIME WINDOW] Error checking time window:', e.message);
         return true; // Allow automation on error to prevent blocking
+    }
+}
+
+/**
+ * Helper function to search for offers based on group configuration
+ * Uses productOfferV2 API with category, filters, and sorting if configured
+ * Falls back to keyword-only search for backward compatibility
+ * @param {Object} shopee - ShopeeClient instance
+ * @param {Object} group - Group configuration from database
+ * @returns {Promise<Array>} Array of offers
+ */
+async function searchOffersForGroup(shopee, group) {
+    // Parse productCatIds from JSON string if present
+    let productCatIds = [];
+    if (group.productCatIds) {
+        try {
+            productCatIds = JSON.parse(group.productCatIds);
+        } catch (e) {
+            console.error(`[SEARCH] Failed to parse productCatIds for group ${group.name}:`, e.message);
+        }
+    }
+    
+    // Determine if we should use the new productOfferV2 with filters
+    const useAdvancedSearch = productCatIds && productCatIds.length > 0;
+    
+    if (useAdvancedSearch) {
+        // Use productOfferV2 with category ID and filters
+        const productCatId = productCatIds[0]; // Use first category ID
+        
+        // Get keyword if available (optional for category search)
+        let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : [];
+        const keyword = keywords.length > 0 ? keywords[Math.floor(Math.random() * keywords.length)] : undefined;
+        
+        const options = {
+            productCatId,
+            keyword,
+            sortType: group.sortType || 2, // Default to ITEM_SOLD_DESC
+            limit: 20,
+            page: 1
+        };
+        
+        // Add filters if configured
+        if (group.minDiscountPercent !== null && group.minDiscountPercent !== undefined) {
+            options.minDiscountPercent = group.minDiscountPercent;
+        }
+        if (group.minRating !== null && group.minRating !== undefined) {
+            options.minRating = group.minRating;
+        }
+        if (group.minSales !== null && group.minSales !== undefined) {
+            options.minSales = group.minSales;
+        }
+        
+        console.log(`[SEARCH] Using productOfferV2 with category ${productCatId} for group ${group.name}`);
+        return await shopee.searchOffersV2(options);
+    } else {
+        // Fallback to keyword-only search (backward compatibility)
+        let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
+        if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
+        const keyword = keywords[Math.floor(Math.random() * keywords.length)];
+        
+        console.log(`[SEARCH] Using keyword-only search for group ${group.name}`);
+        return await shopee.searchOffers(keyword);
     }
 }
 
@@ -598,13 +759,9 @@ async function runAutomation() {
                 });
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
 
-                // Keyword Strategy
-                let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
-                if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
-                const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-
                 try {
-                    const offers = await shopee.searchOffers(keyword);
+                    // Use new searchOffersForGroup helper that handles both advanced and legacy search
+                    const offers = await searchOffersForGroup(shopee, group);
                     const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
 
                     // Blacklist
@@ -628,7 +785,8 @@ async function runAutomation() {
                             await client.sendMessage(group.chatId, msg);
                         }
 
-                        // Record
+                        // Record - use empty string for keyword if using category search
+                        const keyword = group.productCatIds ? '' : (group.keywords || '');
                         await prisma.sentOffer.create({
                             data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                         });
@@ -745,12 +903,29 @@ ApiRouter.get('/system/diagnostics', async (req, res) => {
 
 ApiRouter.get('/groups', async (req, res) => {
     const groups = await prisma.group.findMany({ where: { userId: req.userId } });
-    res.json(groups.map(g => ({
-        ...g, 
-        keywords: g.keywords ? g.keywords.split(',') : [], 
-        negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : [],
-        lastMessageSent: g.lastMessageSent ? g.lastMessageSent.toISOString() : null
-    })));
+    res.json(groups.map(g => {
+        // Parse productCatIds from JSON string
+        let productCatIds = [];
+        if (g.productCatIds) {
+            try {
+                productCatIds = JSON.parse(g.productCatIds);
+            } catch (e) {
+                console.error(`Failed to parse productCatIds for group ${g.id}:`, e.message);
+            }
+        }
+        
+        return {
+            ...g, 
+            keywords: g.keywords ? g.keywords.split(',') : [], 
+            negativeKeywords: g.negativeKeywords ? g.negativeKeywords.split(',') : [],
+            lastMessageSent: g.lastMessageSent ? g.lastMessageSent.toISOString() : null,
+            productCatIds, // Return as array
+            sortType: g.sortType || 2, // Default to ITEM_SOLD_DESC
+            minDiscountPercent: g.minDiscountPercent,
+            minRating: g.minRating,
+            minSales: g.minSales
+        };
+    }));
 });
 
 ApiRouter.post('/groups', async (req, res) => {
@@ -762,11 +937,23 @@ ApiRouter.post('/groups', async (req, res) => {
 });
 
 ApiRouter.put('/groups/:id', async (req, res) => {
-    const { keywords, negativeKeywords, category } = req.body;
+    const { 
+        keywords, 
+        negativeKeywords, 
+        category, 
+        productCatIds, 
+        sortType, 
+        minDiscountPercent, 
+        minRating, 
+        minSales 
+    } = req.body;
+    
     const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado' });
 
     const updateData = {};
+    
+    // Handle existing fields
     if (keywords !== undefined) {
         updateData.keywords = Array.isArray(keywords) ? keywords.join(',') : keywords;
     }
@@ -775,6 +962,26 @@ ApiRouter.put('/groups/:id', async (req, res) => {
     }
     if (category !== undefined) {
         updateData.category = category;
+    }
+    
+    // Handle new productOfferV2 fields
+    if (productCatIds !== undefined) {
+        // Convert array to JSON string for storage
+        updateData.productCatIds = Array.isArray(productCatIds) && productCatIds.length > 0 
+            ? JSON.stringify(productCatIds) 
+            : null;
+    }
+    if (sortType !== undefined) {
+        updateData.sortType = sortType;
+    }
+    if (minDiscountPercent !== undefined) {
+        updateData.minDiscountPercent = minDiscountPercent;
+    }
+    if (minRating !== undefined) {
+        updateData.minRating = minRating;
+    }
+    if (minSales !== undefined) {
+        updateData.minSales = minSales;
     }
 
     await prisma.group.update({
@@ -846,15 +1053,10 @@ ApiRouter.post('/groups/:id/test', async (req, res) => {
 
         const shopee = new ShopeeClient(settings.shopeeAppId, plainSecret);
         
-        // Get keywords for this group or use defaults
-        let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
-        if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
-        const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-
-        // Search for offers
-        const offers = await shopee.searchOffers(keyword);
+        // Use new searchOffersForGroup helper
+        const offers = await searchOffersForGroup(shopee, group);
         if (!offers || offers.length === 0) {
-            return res.status(404).json({ error: 'Nenhuma oferta encontrada com as keywords do grupo.' });
+            return res.status(404).json({ error: 'Nenhuma oferta encontrada com a configuração do grupo.' });
         }
 
         // Apply blacklist filter
@@ -1052,13 +1254,9 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
             });
             const sentIds = new Set(recentOffers.map(o => o.itemId));
 
-            // Keyword Strategy
-            let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
-            if(keywords.length === 0) keywords = DEFAULT_KEYWORDS;
-            const keyword = keywords[Math.floor(Math.random() * keywords.length)];
-
             try {
-                const offers = await shopee.searchOffers(keyword);
+                // Use new searchOffersForGroup helper
+                const offers = await searchOffersForGroup(shopee, group);
                 const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
 
                 // Blacklist
@@ -1082,7 +1280,8 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                         await client.sendMessage(group.chatId, msg);
                     }
 
-                    // Record
+                    // Record - use empty string for keyword if using category search
+                    const keyword = group.productCatIds ? '' : (group.keywords || '');
                     await prisma.sentOffer.create({
                         data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                     });

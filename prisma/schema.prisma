@@ -64,6 +64,14 @@ model Group {
   negativeKeywords String   @default("")
   category         String?  // Categoria do grupo (ex: "Casa & Decoração", "Beleza", etc)
   lastMessageSent  DateTime? // Data/hora da última mensagem enviada
+  
+  // Shopee productOfferV2 API parameters
+  productCatIds       String?  // JSON array of category IDs, e.g. "[12345, 67890]"
+  sortType            Int      @default(2) // Shopee sort type: 1=RELEVANCE, 2=ITEM_SOLD, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION
+  minDiscountPercent  Int?     // Minimum discount percentage filter (0-100)
+  minRating           Float?   // Minimum rating filter (0.0-5.0)
+  minSales            Int?     // Minimum sales count filter
+  
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
