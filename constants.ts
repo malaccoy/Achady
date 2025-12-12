@@ -5,7 +5,7 @@ export const MOCK_PREVIEW_DATA = {
   titulo: "Kit 10 Organizadores Acrílico Gaveta Geladeira",
   preco: "R$ 50,19",
   precoOriginal: "R$ 66,64",
-  desconto: "25%",
+  desconto: "25",
   link: "https://s.shopee.com.br/exemplo"
 };
 
