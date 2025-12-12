@@ -137,7 +137,7 @@ export const getAutomationConfig = async (): Promise<AutomationConfig> => {
   try {
     return await request<AutomationConfig>('/automation');
   } catch (e) {
-    return { active: false, intervalMinutes: 60 };
+    return { active: false, intervalMinutes: 60, startTime: "07:00", endTime: "23:00" };
   }
 };
 
