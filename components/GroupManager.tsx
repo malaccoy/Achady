@@ -44,6 +44,14 @@ export const GroupManager: React.FC = () => {
   const [negativeInput, setNegativeInput] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   
+  // New Shopee productOfferV2 fields
+  const [editProductCatIds, setEditProductCatIds] = useState<number[]>([]);
+  const [editSortType, setEditSortType] = useState<number>(2);
+  const [editMinDiscountPercent, setEditMinDiscountPercent] = useState<number | null>(null);
+  const [editMinRating, setEditMinRating] = useState<number | null>(null);
+  const [editMinSales, setEditMinSales] = useState<number | null>(null);
+  const [categoryIdInput, setCategoryIdInput] = useState('');
+  
   // Actions
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -128,6 +136,14 @@ export const GroupManager: React.FC = () => {
     setEditCategory(group.category || '');
     setKeywordInput('');
     setNegativeInput('');
+    
+    // Set new productOfferV2 fields
+    setEditProductCatIds(group.productCatIds || []);
+    setEditSortType(group.sortType || 2);
+    setEditMinDiscountPercent(group.minDiscountPercent || null);
+    setEditMinRating(group.minRating || null);
+    setEditMinSales(group.minSales || null);
+    setCategoryIdInput('');
   };
 
   const closeEditModal = () => {
@@ -135,6 +151,14 @@ export const GroupManager: React.FC = () => {
     setEditKeywords([]);
     setEditNegative([]);
     setEditCategory('');
+    
+    // Reset new fields
+    setEditProductCatIds([]);
+    setEditSortType(2);
+    setEditMinDiscountPercent(null);
+    setEditMinRating(null);
+    setEditMinSales(null);
+    setCategoryIdInput('');
   };
 
   const addKeyword = () => {
@@ -165,6 +189,20 @@ export const GroupManager: React.FC = () => {
     const newTerms = QUICK_BLACKLIST_TERMS.filter(term => !editNegative.includes(term));
     setEditNegative([...editNegative, ...newTerms]);
   };
+  
+  const addCategoryId = () => {
+    if (categoryIdInput.trim()) {
+      const catId = parseInt(categoryIdInput.trim(), 10);
+      if (!isNaN(catId) && !editProductCatIds.includes(catId)) {
+        setEditProductCatIds([...editProductCatIds, catId]);
+        setCategoryIdInput('');
+      }
+    }
+  };
+  
+  const removeCategoryId = (index: number) => {
+    setEditProductCatIds(editProductCatIds.filter((_, i) => i !== index));
+  };
 
   const handleSaveSettings = async () => {
     if (!editingGroup) return;
@@ -173,13 +211,28 @@ export const GroupManager: React.FC = () => {
       await updateGroup(editingGroup.id, { 
         keywords: editKeywords, 
         negativeKeywords: editNegative,
-        category: editCategory || undefined
+        category: editCategory || undefined,
+        productCatIds: editProductCatIds,
+        sortType: editSortType,
+        minDiscountPercent: editMinDiscountPercent,
+        minRating: editMinRating,
+        minSales: editMinSales
       });
       
       // Update local state
       setGroups(groups.map(g => 
         g.id === editingGroup.id 
-          ? { ...g, keywords: editKeywords, negativeKeywords: editNegative, category: editCategory || undefined } 
+          ? { 
+              ...g, 
+              keywords: editKeywords, 
+              negativeKeywords: editNegative, 
+              category: editCategory || undefined,
+              productCatIds: editProductCatIds,
+              sortType: editSortType,
+              minDiscountPercent: editMinDiscountPercent,
+              minRating: editMinRating,
+              minSales: editMinSales
+            } 
           : g
       ));
       closeEditModal();
@@ -596,6 +649,136 @@ export const GroupManager: React.FC = () => {
                   <Lightbulb className="w-3.5 h-3.5" />
                   Sugestões rápidas: {QUICK_BLACKLIST_TERMS.join(', ')}
                 </button>
+              </div>
+              
+              {/* Divider */}
+              <div className="border-t border-slate-700 pt-6">
+                <h4 className="text-md font-bold text-slate-100 mb-4">🔥 Configurações Avançadas (Shopee API)</h4>
+                <p className="text-xs text-slate-400 mb-4">
+                  Configure filtros de qualidade e busca por categoria da Shopee. Se configurado, usa o productOfferV2 API ao invés de busca por palavras-chave.
+                </p>
+              </div>
+              
+              {/* Product Category IDs */}
+              <div>
+                <label className="block text-sm font-medium text-orange-300 mb-2">
+                  IDs de Categoria Shopee
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="number"
+                    placeholder="Ex: 12345"
+                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                    value={categoryIdInput}
+                    onChange={(e) => setCategoryIdInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addCategoryId();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addCategoryId}
+                    className="px-4 py-2 btn-secondary"
+                  >
+                    Adicionar
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  IDs de categoria da API Shopee. Se preenchido, usa busca por categoria ao invés de keyword.
+                </p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  {editProductCatIds.map((catId, index) => (
+                    <TagChip
+                      key={index}
+                      label={`Cat: ${catId}`}
+                      onRemove={() => removeCategoryId(index)}
+                    />
+                  ))}
+                  {editProductCatIds.length === 0 && (
+                    <span className="text-xs text-slate-500">Nenhuma categoria configurada. Usa busca por palavras-chave.</span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Sort Type */}
+              <div>
+                <label className="block text-sm font-medium text-orange-300 mb-2">
+                  Ordenação (Sort Type)
+                </label>
+                <select
+                  value={editSortType}
+                  onChange={(e) => setEditSortType(parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                >
+                  <option value={1}>Relevância</option>
+                  <option value={2}>Mais Vendidos (Padrão)</option>
+                  <option value={3}>Maior Preço</option>
+                  <option value={4}>Menor Preço</option>
+                  <option value={5}>Maior Comissão</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Como os produtos serão ordenados na busca.
+                </p>
+              </div>
+              
+              {/* Quality Filters */}
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-green-300 mb-2">
+                    Desconto Mínimo (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="Ex: 25"
+                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
+                    value={editMinDiscountPercent ?? ''}
+                    onChange={(e) => setEditMinDiscountPercent(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Filtrar produtos com desconto mínimo
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-yellow-300 mb-2">
+                    Avaliação Mínima
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    placeholder="Ex: 4.5"
+                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 outline-none transition text-white"
+                    value={editMinRating ?? ''}
+                    onChange={(e) => setEditMinRating(e.target.value ? parseFloat(e.target.value) : null)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Filtrar por nota (0.0 a 5.0)
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-blue-300 mb-2">
+                    Vendas Mínimas
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Ex: 100"
+                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-white"
+                    value={editMinSales ?? ''}
+                    onChange={(e) => setEditMinSales(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Filtrar por quantidade vendida
+                  </p>
+                </div>
               </div>
             </div>
 
