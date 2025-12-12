@@ -3,6 +3,15 @@ export interface WhatsAppStatus {
   qrCode?: string; // Base64 or URL
 }
 
+// Shopee API Sort Types
+export enum ShopeeSortType {
+  RELEVANCE_DESC = 1,
+  ITEM_SOLD_DESC = 2,
+  PRICE_DESC = 3,
+  PRICE_ASC = 4,
+  COMMISSION_DESC = 5
+}
+
 export interface Group {
   id: string;
   name: string;
@@ -15,7 +24,7 @@ export interface Group {
   lastMessageSent?: string; // ISO date string
   // Shopee productOfferV2 API parameters
   productCatIds?: number[]; // Shopee product category IDs
-  sortType?: number; // Sort type: 1=RELEVANCE, 2=ITEM_SOLD, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION (default: 2)
+  sortType?: number; // Sort type: use ShopeeSortType enum (default: ITEM_SOLD_DESC = 2)
   minDiscountPercent?: number | null; // Filter: minimum discount percentage (0-100)
   minRating?: number | null; // Filter: minimum rating (0.0-5.0)
   minSales?: number | null; // Filter: minimum sales count

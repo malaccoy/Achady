@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Group } from '../types';
+import { Group, ShopeeSortType } from '../types';
 import { getGroups, addGroup, toggleGroup, deleteGroup, joinGroup, updateGroup, sendTestMessage } from '../services/api';
 import { Plus, Trash2, Link as LinkIcon, Users, Loader2, LogIn, AlertCircle, Settings, Save, X, Send, Lightbulb, Tag, Filter } from 'lucide-react';
 import { TagChip } from './TagChip';
@@ -46,7 +46,7 @@ export const GroupManager: React.FC = () => {
   
   // New Shopee productOfferV2 fields
   const [editProductCatIds, setEditProductCatIds] = useState<number[]>([]);
-  const [editSortType, setEditSortType] = useState<number>(2);
+  const [editSortType, setEditSortType] = useState<number>(ShopeeSortType.ITEM_SOLD_DESC);
   const [editMinDiscountPercent, setEditMinDiscountPercent] = useState<number | null>(null);
   const [editMinRating, setEditMinRating] = useState<number | null>(null);
   const [editMinSales, setEditMinSales] = useState<number | null>(null);
@@ -139,7 +139,7 @@ export const GroupManager: React.FC = () => {
     
     // Set new productOfferV2 fields
     setEditProductCatIds(group.productCatIds || []);
-    setEditSortType(group.sortType || 2);
+    setEditSortType(group.sortType || ShopeeSortType.ITEM_SOLD_DESC);
     setEditMinDiscountPercent(group.minDiscountPercent || null);
     setEditMinRating(group.minRating || null);
     setEditMinSales(group.minSales || null);
@@ -154,7 +154,7 @@ export const GroupManager: React.FC = () => {
     
     // Reset new fields
     setEditProductCatIds([]);
-    setEditSortType(2);
+    setEditSortType(ShopeeSortType.ITEM_SOLD_DESC);
     setEditMinDiscountPercent(null);
     setEditMinRating(null);
     setEditMinSales(null);
@@ -193,9 +193,14 @@ export const GroupManager: React.FC = () => {
   const addCategoryId = () => {
     if (categoryIdInput.trim()) {
       const catId = parseInt(categoryIdInput.trim(), 10);
-      if (!isNaN(catId) && !editProductCatIds.includes(catId)) {
+      // Validate: must be a positive integer and not already in the list
+      if (!isNaN(catId) && catId > 0 && !editProductCatIds.includes(catId)) {
         setEditProductCatIds([...editProductCatIds, catId]);
         setCategoryIdInput('');
+      } else if (catId <= 0) {
+        alert('ID de categoria deve ser um número positivo.');
+      } else if (editProductCatIds.includes(catId)) {
+        alert('Este ID de categoria já foi adicionado.');
       }
     }
   };
@@ -687,7 +692,7 @@ export const GroupManager: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500 mb-3">
-                  IDs de categoria da API Shopee. Se preenchido, usa busca por categoria ao invés de keyword.
+                  IDs de categoria da API Shopee. Se preenchido, usa busca por categoria ao invés de keyword. <strong>Nota:</strong> Apenas o primeiro ID será usado na busca.
                 </p>
                 <div className="flex flex-wrap gap-2 items-center">
                   {editProductCatIds.map((catId, index) => (
@@ -713,11 +718,11 @@ export const GroupManager: React.FC = () => {
                   onChange={(e) => setEditSortType(parseInt(e.target.value, 10))}
                   className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
                 >
-                  <option value={1}>Relevância</option>
-                  <option value={2}>Mais Vendidos (Padrão)</option>
-                  <option value={3}>Maior Preço</option>
-                  <option value={4}>Menor Preço</option>
-                  <option value={5}>Maior Comissão</option>
+                  <option value={ShopeeSortType.RELEVANCE_DESC}>Relevância</option>
+                  <option value={ShopeeSortType.ITEM_SOLD_DESC}>Mais Vendidos (Padrão)</option>
+                  <option value={ShopeeSortType.PRICE_DESC}>Maior Preço</option>
+                  <option value={ShopeeSortType.PRICE_ASC}>Menor Preço</option>
+                  <option value={ShopeeSortType.COMMISSION_DESC}>Maior Comissão</option>
                 </select>
                 <p className="text-xs text-slate-500 mt-1">
                   Como os produtos serão ordenados na busca.
@@ -737,7 +742,12 @@ export const GroupManager: React.FC = () => {
                     placeholder="Ex: 25"
                     className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
                     value={editMinDiscountPercent ?? ''}
-                    onChange={(e) => setEditMinDiscountPercent(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                      if (val === null || (val >= 0 && val <= 100)) {
+                        setEditMinDiscountPercent(val);
+                      }
+                    }}
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     Filtrar produtos com desconto mínimo

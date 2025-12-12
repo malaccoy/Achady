@@ -636,7 +636,13 @@ async function searchOffersForGroup(shopee, group) {
     let productCatIds = [];
     if (group.productCatIds) {
         try {
-            productCatIds = JSON.parse(group.productCatIds);
+            const parsed = JSON.parse(group.productCatIds);
+            // Validate that it's an array of positive numbers
+            if (Array.isArray(parsed) && parsed.every(id => typeof id === 'number' && id > 0)) {
+                productCatIds = parsed;
+            } else {
+                console.error(`[SEARCH] Invalid productCatIds format for group ${group.name}: expected array of positive numbers`);
+            }
         } catch (e) {
             console.error(`[SEARCH] Failed to parse productCatIds for group ${group.name}:`, e.message);
         }
@@ -785,8 +791,8 @@ async function runAutomation() {
                             await client.sendMessage(group.chatId, msg);
                         }
 
-                        // Record - use empty string for keyword if using category search
-                        const keyword = group.productCatIds ? '' : (group.keywords || '');
+                        // Record - use descriptive marker for category search vs keyword search
+                        const keyword = group.productCatIds ? '[CATEGORY_SEARCH]' : (group.keywords || '[DEFAULT_KEYWORDS]');
                         await prisma.sentOffer.create({
                             data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                         });
@@ -1280,8 +1286,8 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                         await client.sendMessage(group.chatId, msg);
                     }
 
-                    // Record - use empty string for keyword if using category search
-                    const keyword = group.productCatIds ? '' : (group.keywords || '');
+                    // Record - use descriptive marker for category search vs keyword search
+                    const keyword = group.productCatIds ? '[CATEGORY_SEARCH]' : (group.keywords || '[DEFAULT_KEYWORDS]');
                     await prisma.sentOffer.create({
                         data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
                     });
