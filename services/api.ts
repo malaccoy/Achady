@@ -137,7 +137,7 @@ export const getAutomationConfig = async (): Promise<AutomationConfig> => {
   try {
     return await request<AutomationConfig>('/automation');
   } catch (e) {
-    return { active: false, intervalMinutes: 60, startTime: "07:00", endTime: "23:00" };
+    return { active: false, intervalMinutes: 60, startTime: "07:00", endTime: "23:00", scheduleEnabled: true };
   }
 };
 
@@ -155,10 +155,10 @@ export const setAutomationInterval = async (minutes: number): Promise<void> => {
   });
 };
 
-export const setAutomationTimeWindow = async (startTime: string, endTime: string): Promise<void> => {
+export const setAutomationTimeWindow = async (startTime: string, endTime: string, scheduleEnabled: boolean): Promise<void> => {
   await request('/automation/time-window', {
     method: 'PATCH',
-    body: JSON.stringify({ startTime, endTime }),
+    body: JSON.stringify({ startTime, endTime, scheduleEnabled }),
   });
 };
 

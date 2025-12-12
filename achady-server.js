@@ -541,10 +541,12 @@ async function runAutomation() {
         });
 
         for (const user of users) {
-            // Check time window
+            // Check time window only if scheduleEnabled is true
+            const scheduleEnabled = user.settings?.scheduleEnabled !== undefined ? user.settings.scheduleEnabled : true;
             const startTime = user.settings?.startTime || "07:00";
             const endTime = user.settings?.endTime || "23:00";
-            if (!isWithinTimeWindow(startTime, endTime)) {
+            
+            if (scheduleEnabled && !isWithinTimeWindow(startTime, endTime)) {
                 console.log(`[JOB] Skipping User ${user.id} - outside time window (${startTime}-${endTime})`);
                 continue;
             }
@@ -939,7 +941,8 @@ ApiRouter.get('/automation', async (req, res) => {
         active: settings?.automationActive || false, 
         intervalMinutes: settings?.intervalMinutes || 60,
         startTime: settings?.startTime || "07:00",
-        endTime: settings?.endTime || "23:00"
+        endTime: settings?.endTime || "23:00",
+        scheduleEnabled: settings?.scheduleEnabled !== undefined ? settings.scheduleEnabled : true
     });
 });
 
@@ -964,7 +967,7 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
 });
 
 ApiRouter.patch('/automation/time-window', async (req, res) => {
-    const { startTime, endTime } = req.body;
+    const { startTime, endTime, scheduleEnabled } = req.body;
     
     // Validate time format (HH:MM)
     const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
@@ -972,10 +975,16 @@ ApiRouter.patch('/automation/time-window', async (req, res) => {
         return res.status(400).json({ error: 'Formato de horário inválido. Use HH:MM (00:00 - 23:59)' });
     }
     
+    const updateData = { startTime, endTime };
+    // Only update scheduleEnabled if it's explicitly provided
+    if (scheduleEnabled !== undefined) {
+        updateData.scheduleEnabled = scheduleEnabled;
+    }
+    
     await prisma.userSettings.upsert({
         where: { userId: req.userId },
-        update: { startTime, endTime },
-        create: { userId: req.userId, startTime, endTime }
+        update: updateData,
+        create: { userId: req.userId, startTime, endTime, scheduleEnabled: scheduleEnabled !== undefined ? scheduleEnabled : true }
     });
     res.json({ ok: true });
 });

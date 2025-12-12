@@ -7,6 +7,7 @@ export const AutomationControl: React.FC = () => {
   const [interval, setIntervalVal] = useState(60);
   const [startTime, setStartTime] = useState("07:00");
   const [endTime, setEndTime] = useState("23:00");
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
   const [runningOnce, setRunningOnce] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
@@ -19,6 +20,7 @@ export const AutomationControl: React.FC = () => {
         setIntervalVal(config.intervalMinutes);
         setStartTime(config.startTime || "07:00");
         setEndTime(config.endTime || "23:00");
+        setScheduleEnabled(config.scheduleEnabled !== undefined ? config.scheduleEnabled : true);
     };
     init();
   }, []);
@@ -29,7 +31,7 @@ export const AutomationControl: React.FC = () => {
     try {
         await setAutomationStatus(active);
         await setAutomationInterval(interval);
-        await setAutomationTimeWindow(startTime, endTime);
+        await setAutomationTimeWindow(startTime, endTime, scheduleEnabled);
         setMessage({ type: 'success', text: 'Configurações salvas com sucesso!' });
     } catch (e) {
         setMessage({ type: 'error', text: 'Erro ao salvar configurações.' });
@@ -124,8 +126,25 @@ export const AutomationControl: React.FC = () => {
 
           {/* Time Window */}
           <div className="p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
+            {/* Schedule Toggle */}
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-700/50">
+              <div>
+                <h3 className="font-medium text-slate-200 mb-1">Usar horário de funcionamento</h3>
+                <p className="text-sm text-slate-500">Quando desativado, o bot pode enviar mensagens 24 horas por dia.</p>
+              </div>
+              <button
+                type="button"
+                className={`toggle ${scheduleEnabled ? "toggle--on" : "toggle--off"}`}
+                onClick={() => setScheduleEnabled(!scheduleEnabled)}
+                aria-pressed={scheduleEnabled}
+                aria-label="Ativar ou desativar horário de funcionamento"
+              >
+                <span className="toggle__thumb" />
+              </button>
+            </div>
+
             <h3 className="text-sm font-medium text-slate-300 mb-4">Horário de Funcionamento</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${!scheduleEnabled ? 'opacity-60' : ''}`}>
               <div>
                 <label className="block text-sm text-slate-400 mb-2">
                   Horário de início
@@ -134,7 +153,8 @@ export const AutomationControl: React.FC = () => {
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                  disabled={!scheduleEnabled}
+                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
               <div>
@@ -145,7 +165,8 @@ export const AutomationControl: React.FC = () => {
                   type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                  disabled={!scheduleEnabled}
+                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </div>
             </div>
