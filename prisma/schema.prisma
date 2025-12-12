@@ -36,17 +36,18 @@ model User {
 }
 
 model UserSettings {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  shopeeAppId      String?
-  shopeeSecret     String?
-  template         String?
-  automationActive Boolean  @default(false)
-  intervalMinutes  Int      @default(5)
-  startTime        String   @default("07:00")
-  endTime          String   @default("23:00")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  shopeeAppId        String?
+  shopeeSecret       String?
+  template           String?
+  automationActive   Boolean   @default(false)
+  intervalMinutes    Int       @default(5)
+  startTime          String    @default("07:00")
+  endTime            String    @default("23:00")
+  lastAutomationRun  DateTime? // Track when automation last ran for this user
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
