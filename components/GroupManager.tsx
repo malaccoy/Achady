@@ -305,7 +305,7 @@ export const GroupManager: React.FC = () => {
         </div>
 
         {/* Card: Groups Table */}
-        <div className="app-card overflow-hidden" style={{ padding: 0 }}>
+        <div className="app-card" style={{ padding: 0 }}>
           <div className="p-6 border-b border-slate-700/50">
             <h2 className="app-card__title mb-4">Lista de Grupos</h2>
             <div className="group-filters">
@@ -353,7 +353,7 @@ export const GroupManager: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="groups-table-wrapper">
             <table className="w-full">
               <thead className="bg-slate-900 border-b-2 border-slate-700">
                 <tr>
