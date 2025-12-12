@@ -9,7 +9,9 @@
  * Mapping of normalized category keys to Shopee LEVEL 1 category IDs
  * Keys are in lowercase with underscores, without accents
  * 
- * Note: The IDs here are placeholders. Replace with actual Shopee category IDs.
+ * IMPORTANT: The IDs here are placeholders. These should be replaced with 
+ * actual Shopee category IDs before production use. The user will fill in 
+ * the real IDs as needed.
  */
 export const CATEGORY_PRESETS_BR: Record<string, number> = {
   // Example mappings (to be filled with real Shopee category IDs)

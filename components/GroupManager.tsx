@@ -198,8 +198,9 @@ export const GroupManager: React.FC = () => {
     const isNumeric = /^\d+$/.test(input);
     const value = isNumeric ? parseInt(input, 10) : input;
     
-    // Check for duplicates (compare as strings for consistency)
-    const isDuplicate = editProductCatIds.some(item => String(item) === String(value));
+    // Check for duplicates by comparing the normalized string representation
+    const valueStr = String(value);
+    const isDuplicate = editProductCatIds.some(item => String(item) === valueStr);
     
     if (isDuplicate) {
       alert('Esta categoria já foi adicionada.');
