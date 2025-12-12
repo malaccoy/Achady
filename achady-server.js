@@ -573,9 +573,6 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
-            
-            // Track if we sent at least one message for this user
-            let sentAnyMessage = false;
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
@@ -646,7 +643,6 @@ async function runAutomation() {
                             data: { lastMessageSent: new Date() }
                         });
                         
-                        sentAnyMessage = true;
                         console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
                         await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
@@ -671,7 +667,8 @@ async function runAutomation() {
             }
             
             // Update lastAutomationRun for this user (whether we sent messages or not)
-            // This ensures the interval is respected
+            // This ensures the interval is respected even if no valid offers are found.
+            // If we only updated on success, a user with no valid offers would run every minute.
             try {
                 await prisma.userSettings.update({
                     where: { userId: user.id },
