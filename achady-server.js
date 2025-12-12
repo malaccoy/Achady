@@ -549,6 +549,17 @@ async function runAutomation() {
                 continue;
             }
             
+            // Check if enough time has passed since last automation run
+            const intervalMinutes = user.settings?.intervalMinutes || 5;
+            const lastRun = user.settings?.lastAutomationRun;
+            if (lastRun) {
+                const minutesSinceLastRun = (Date.now() - lastRun.getTime()) / (1000 * 60);
+                if (minutesSinceLastRun < intervalMinutes) {
+                    console.log(`[JOB] Skipping User ${user.id} - interval not reached (${Math.floor(minutesSinceLastRun)}/${intervalMinutes} min)`);
+                    continue;
+                }
+            }
+            
             // Check credentials
             if (!user.settings.shopeeAppId || !user.settings.shopeeSecret) continue;
             const plainSecret = decrypt(user.settings.shopeeSecret);
@@ -562,11 +573,24 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+            
+            // Track if we sent at least one message for this user
+            let sentAnyMessage = false;
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
                 
-                // Dedupe: Check history for THIS group
+                // Check if this group was recently sent a message (within intervalMinutes)
+                // This prevents sending multiple different offers to the same group too frequently
+                if (group.lastMessageSent) {
+                    const minutesSinceLastMessage = (Date.now() - new Date(group.lastMessageSent).getTime()) / (1000 * 60);
+                    if (minutesSinceLastMessage < intervalMinutes) {
+                        console.log(`[JOB] Skipping Group ${group.name} - sent message ${Math.floor(minutesSinceLastMessage)} min ago (interval: ${intervalMinutes} min)`);
+                        continue;
+                    }
+                }
+                
+                // Dedupe: Check history for THIS group (last 24 hours for item-level deduplication)
                 const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
                 const recentOffers = await prisma.sentOffer.findMany({
                     where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
@@ -622,6 +646,7 @@ async function runAutomation() {
                             data: { lastMessageSent: new Date() }
                         });
                         
+                        sentAnyMessage = true;
                         console.log(`[JOB] Enviado User ${user.id} -> Grupo ${group.name}`);
                         await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
@@ -643,6 +668,17 @@ async function runAutomation() {
                         console.error(`[JOB] Failed to log error:`, logErr.message);
                     }
                 }
+            }
+            
+            // Update lastAutomationRun for this user (whether we sent messages or not)
+            // This ensures the interval is respected
+            try {
+                await prisma.userSettings.update({
+                    where: { userId: user.id },
+                    data: { lastAutomationRun: new Date() }
+                });
+            } catch (updateErr) {
+                console.error(`[JOB] Failed to update lastAutomationRun for User ${user.id}:`, updateErr.message);
             }
         }
     } catch (e) { console.error('Scheduler Fatal:', e); }
@@ -983,11 +1019,24 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
         const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
         let sentCount = 0;
         let errorCount = 0;
+        
+        // Get interval setting for duplicate prevention
+        const intervalMinutes = user.settings?.intervalMinutes || 5;
 
         for (const group of user.groups) {
             if (!group.chatId) continue;
             
-            // Dedupe: Check history for THIS group
+            // Check if this group was recently sent a message (within intervalMinutes)
+            // This prevents sending multiple offers to the same group too frequently
+            if (group.lastMessageSent) {
+                const minutesSinceLastMessage = (Date.now() - new Date(group.lastMessageSent).getTime()) / (1000 * 60);
+                if (minutesSinceLastMessage < intervalMinutes) {
+                    console.log(`[RUN-ONCE] Skipping Group ${group.name} - sent message ${Math.floor(minutesSinceLastMessage)} min ago (interval: ${intervalMinutes} min)`);
+                    continue;
+                }
+            }
+            
+            // Dedupe: Check history for THIS group (item-level deduplication)
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
             const recentOffers = await prisma.sentOffer.findMany({
                 where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
