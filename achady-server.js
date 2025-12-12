@@ -1036,6 +1036,14 @@ ApiRouter.get('/logs', async (req, res) => {
 
 app.use('/api', ApiRouter);
 
+// Serve static assets for the dashboard frontend
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Catch-all route: serve index.html for any non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 app.listen(PORT, async () => {
   console.log(`ACHADY Server running on port ${PORT}`);
 });
