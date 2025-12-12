@@ -589,10 +589,11 @@ async function runAutomation() {
                     }
                 }
                 
-                // Dedupe: Check history for THIS group (last 24 hours for item-level deduplication)
-                const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                // Dedupe: Check history for THIS group (same calendar day to prevent repeating offers)
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
                 const recentOffers = await prisma.sentOffer.findMany({
-                    where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
+                    where: { groupId: group.id, sentAt: { gte: todayStart } },
                     select: { itemId: true }
                 });
                 const sentIds = new Set(recentOffers.map(o => o.itemId));
@@ -1042,10 +1043,11 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                 }
             }
             
-            // Dedupe: Check history for THIS group (item-level deduplication)
-            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            // Dedupe: Check history for THIS group (same calendar day to prevent repeating offers)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
             const recentOffers = await prisma.sentOffer.findMany({
-                where: { groupId: group.id, sentAt: { gt: oneDayAgo } },
+                where: { groupId: group.id, sentAt: { gte: todayStart } },
                 select: { itemId: true }
             });
             const sentIds = new Set(recentOffers.map(o => o.itemId));
