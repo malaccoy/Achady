@@ -454,11 +454,34 @@ function renderMessage(template, offer) {
     const maxPrice = offer.priceMax || price;
     const original = maxPrice ? (maxPrice * 1.2).toFixed(2) : (price * 1.2).toFixed(2);
     
+    // Parse numeric values for discount calculation
+    const precoOriginalNumber = parseFloat(original);
+    const precoNumber = price;
+    
+    // Compute the discount percentage safely
+    let discountPercent = null;
+    
+    if (
+        Number.isFinite(precoOriginalNumber) &&
+        Number.isFinite(precoNumber) &&
+        precoOriginalNumber > 0 &&
+        precoNumber > 0 &&
+        precoNumber < precoOriginalNumber
+    ) {
+        const diff = precoOriginalNumber - precoNumber;
+        discountPercent = Math.round((diff / precoOriginalNumber) * 100);
+    }
+    
+    // Build the desconto variable as a string (only the number, no "%")
+    const descontoValue = discountPercent !== null && discountPercent > 0
+        ? String(discountPercent)
+        : '';
+    
     return text
         .replace(/{{\s*titulo\s*}}/gi, offer.productName || 'Produto')
         .replace(/{{\s*preco\s*}}/gi, `R$ ${price.toFixed(2)}`)
         .replace(/{{\s*precoOriginal\s*}}/gi, `R$ ${original}`)
-        .replace(/{{\s*desconto\s*}}/gi, offer.commissionRate ? `${Math.floor(offer.commissionRate * 100)}% CB` : 'Oferta')
+        .replace(/{{\s*desconto\s*}}/gi, descontoValue)
         .replace(/{{\s*link\s*}}/gi, offer.shortLink || offer.offerLink || '');
 }
 
