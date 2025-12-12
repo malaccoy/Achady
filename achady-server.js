@@ -494,21 +494,33 @@ let isJobRunning = false;
 function isWithinTimeWindow(startTime, endTime) {
     if (!startTime || !endTime) return true; // No restriction if not configured
     
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTimeInMinutes = currentHour * 60 + currentMinute;
-    
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
-    const startTimeInMinutes = startHour * 60 + startMinute;
-    const endTimeInMinutes = endHour * 60 + endMinute;
-    
-    // Handle case where window crosses midnight (e.g., 22:00 to 02:00)
-    if (startTimeInMinutes <= endTimeInMinutes) {
-        return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
-    } else {
-        return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
+    try {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        const [endHour, endMinute] = endTime.split(':').map(Number);
+        
+        // Validate parsed values
+        if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+            console.error('[TIME WINDOW] Invalid time format, allowing automation');
+            return true;
+        }
+        
+        const startTimeInMinutes = startHour * 60 + startMinute;
+        const endTimeInMinutes = endHour * 60 + endMinute;
+        
+        // Handle case where window crosses midnight (e.g., 22:00 to 02:00)
+        if (startTimeInMinutes < endTimeInMinutes) {
+            return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+        } else {
+            return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
+        }
+    } catch (e) {
+        console.error('[TIME WINDOW] Error checking time window:', e.message);
+        return true; // Allow automation on error to prevent blocking
     }
 }
 
@@ -920,6 +932,13 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
 
 ApiRouter.patch('/automation/time-window', async (req, res) => {
     const { startTime, endTime } = req.body;
+    
+    // Validate time format (HH:MM)
+    const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+        return res.status(400).json({ error: 'Formato de horário inválido. Use HH:MM (00:00 - 23:59)' });
+    }
+    
     await prisma.userSettings.upsert({
         where: { userId: req.userId },
         update: { startTime, endTime },
