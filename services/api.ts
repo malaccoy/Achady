@@ -155,6 +155,13 @@ export const setAutomationInterval = async (minutes: number): Promise<void> => {
   });
 };
 
+export const setAutomationTimeWindow = async (startTime: string, endTime: string): Promise<void> => {
+  await request('/automation/time-window', {
+    method: 'PATCH',
+    body: JSON.stringify({ startTime, endTime }),
+  });
+};
+
 export const runAutomationOnce = async (): Promise<{ ok: boolean; sent: number; errors: number }> => {
   return request<{ ok: boolean; sent: number; errors: number }>('/automation/run-once', { method: 'POST' });
 };

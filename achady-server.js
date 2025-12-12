@@ -489,6 +489,29 @@ function renderMessage(template, offer) {
 // SCHEDULER (MULTI-USER)
 // =======================
 let isJobRunning = false;
+
+// Helper function to check if current time is within the configured time window
+function isWithinTimeWindow(startTime, endTime) {
+    if (!startTime || !endTime) return true; // No restriction if not configured
+    
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const startTimeInMinutes = startHour * 60 + startMinute;
+    const endTimeInMinutes = endHour * 60 + endMinute;
+    
+    // Handle case where window crosses midnight (e.g., 22:00 to 02:00)
+    if (startTimeInMinutes <= endTimeInMinutes) {
+        return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+    } else {
+        return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
+    }
+}
+
 async function runAutomation() {
     if (isJobRunning) return;
     isJobRunning = true;
@@ -506,6 +529,14 @@ async function runAutomation() {
         });
 
         for (const user of users) {
+            // Check time window
+            const startTime = user.settings?.startTime || "07:00";
+            const endTime = user.settings?.endTime || "23:00";
+            if (!isWithinTimeWindow(startTime, endTime)) {
+                console.log(`[JOB] Skipping User ${user.id} - outside time window (${startTime}-${endTime})`);
+                continue;
+            }
+            
             // Check credentials
             if (!user.settings.shopeeAppId || !user.settings.shopeeSecret) continue;
             const plainSecret = decrypt(user.settings.shopeeSecret);
@@ -859,7 +890,12 @@ ApiRouter.post('/shopee/test', async (req, res) => {
 
 ApiRouter.get('/automation', async (req, res) => {
     const settings = await prisma.userSettings.findUnique({ where: { userId: req.userId } });
-    res.json({ active: settings?.automationActive || false, intervalMinutes: settings?.intervalMinutes || 60 });
+    res.json({ 
+        active: settings?.automationActive || false, 
+        intervalMinutes: settings?.intervalMinutes || 60,
+        startTime: settings?.startTime || "07:00",
+        endTime: settings?.endTime || "23:00"
+    });
 });
 
 ApiRouter.patch('/automation/status', async (req, res) => {
@@ -878,6 +914,16 @@ ApiRouter.patch('/automation/interval', async (req, res) => {
         where: { userId: req.userId },
         update: { intervalMinutes },
         create: { userId: req.userId, intervalMinutes }
+    });
+    res.json({ ok: true });
+});
+
+ApiRouter.patch('/automation/time-window', async (req, res) => {
+    const { startTime, endTime } = req.body;
+    await prisma.userSettings.upsert({
+        where: { userId: req.userId },
+        update: { startTime, endTime },
+        create: { userId: req.userId, startTime, endTime }
     });
     res.json({ ok: true });
 });

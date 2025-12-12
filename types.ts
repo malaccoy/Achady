@@ -18,6 +18,8 @@ export interface Group {
 export interface AutomationConfig {
   active: boolean;
   intervalMinutes: number;
+  startTime: string;
+  endTime: string;
 }
 
 export interface MessageTemplate {

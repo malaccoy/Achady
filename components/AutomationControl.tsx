@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { getAutomationConfig, setAutomationStatus, setAutomationInterval, runAutomationOnce } from '../services/api';
+import { getAutomationConfig, setAutomationStatus, setAutomationInterval, setAutomationTimeWindow, runAutomationOnce } from '../services/api';
 import { Zap, Play, Clock, Save, Loader2 } from 'lucide-react';
 
 export const AutomationControl: React.FC = () => {
   const [active, setActive] = useState(false);
   const [interval, setIntervalVal] = useState(60);
+  const [startTime, setStartTime] = useState("07:00");
+  const [endTime, setEndTime] = useState("23:00");
   const [loading, setLoading] = useState(false);
   const [runningOnce, setRunningOnce] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
@@ -15,6 +17,8 @@ export const AutomationControl: React.FC = () => {
         const config = await getAutomationConfig();
         setActive(config.active);
         setIntervalVal(config.intervalMinutes);
+        setStartTime(config.startTime || "07:00");
+        setEndTime(config.endTime || "23:00");
     };
     init();
   }, []);
@@ -25,6 +29,7 @@ export const AutomationControl: React.FC = () => {
     try {
         await setAutomationStatus(active);
         await setAutomationInterval(interval);
+        await setAutomationTimeWindow(startTime, endTime);
         setMessage({ type: 'success', text: 'Configurações salvas com sucesso!' });
     } catch (e) {
         setMessage({ type: 'error', text: 'Erro ao salvar configurações.' });
@@ -114,6 +119,38 @@ export const AutomationControl: React.FC = () => {
             </div>
             <p className="field-helper">
               O bot buscará novas ofertas na Shopee e enviará aos grupos nesse intervalo.
+            </p>
+          </div>
+
+          {/* Time Window */}
+          <div className="p-4 bg-slate-900/30 rounded-lg border border-slate-700/50">
+            <h3 className="text-sm font-medium text-slate-300 mb-4">Horário de Funcionamento</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">
+                  Horário de início
+                </label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">
+                  Horário de término
+                </label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
+                />
+              </div>
+            </div>
+            <p className="field-helper mt-3">
+              O bot só enviará mensagens entre estes horários (horário do servidor).
             </p>
           </div>
 
