@@ -20,6 +20,7 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const nodemailer = require('nodemailer');
 const { z } = require('zod');
+const { resolveShopeeCategoryId } = require('./src/config/shopeeCategories');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -970,11 +971,23 @@ ApiRouter.put('/groups/:id', async (req, res) => {
         updateData.category = category;
     }
     
-    // Handle new productOfferV2 fields
+    // Handle new productOfferV2 fields with category name/ID resolution
     if (productCatIds !== undefined) {
-        // Convert array to JSON string for storage
-        updateData.productCatIds = Array.isArray(productCatIds) && productCatIds.length > 0 
-            ? JSON.stringify(productCatIds) 
+        // Convert array to resolved numeric IDs
+        let resolvedCategoryIds = [];
+        if (Array.isArray(productCatIds)) {
+            resolvedCategoryIds = productCatIds
+                .map(item => {
+                    // Handle both string and number inputs
+                    const strValue = String(item);
+                    return resolveShopeeCategoryId(strValue);
+                })
+                .filter(id => id !== null); // Remove invalid entries
+        }
+        
+        // Convert to JSON string for storage, or null if empty
+        updateData.productCatIds = resolvedCategoryIds.length > 0 
+            ? JSON.stringify(resolvedCategoryIds) 
             : null;
     }
     if (sortType !== undefined) {
