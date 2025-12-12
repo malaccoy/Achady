@@ -20,6 +20,7 @@ export interface AutomationConfig {
   intervalMinutes: number;
   startTime: string;
   endTime: string;
+  scheduleEnabled: boolean;
 }
 
 export interface MessageTemplate {

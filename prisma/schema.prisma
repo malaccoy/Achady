@@ -45,6 +45,7 @@ model UserSettings {
   intervalMinutes    Int       @default(5)
   startTime          String    @default("07:00")
   endTime            String    @default("23:00")
+  scheduleEnabled    Boolean   @default(true)
   lastAutomationRun  DateTime? // Track when automation last ran for this user
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
