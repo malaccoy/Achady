@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Group } from '../types';
+import { Group, ShopeeSortType } from '../types';
 import { getGroups, addGroup, toggleGroup, deleteGroup, joinGroup, updateGroup, sendTestMessage } from '../services/api';
 import { Plus, Trash2, Link as LinkIcon, Users, Loader2, LogIn, AlertCircle, Settings, Save, X, Send, Lightbulb, Tag, Filter } from 'lucide-react';
 import { TagChip } from './TagChip';
@@ -43,6 +43,14 @@ export const GroupManager: React.FC = () => {
   const [keywordInput, setKeywordInput] = useState('');
   const [negativeInput, setNegativeInput] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
+  
+  // New Shopee productOfferV2 fields
+  const [editProductCatIds, setEditProductCatIds] = useState<number[]>([]);
+  const [editSortType, setEditSortType] = useState<number>(ShopeeSortType.ITEM_SOLD_DESC);
+  const [editMinDiscountPercent, setEditMinDiscountPercent] = useState<number | null>(null);
+  const [editMinRating, setEditMinRating] = useState<number | null>(null);
+  const [editMinSales, setEditMinSales] = useState<number | null>(null);
+  const [categoryIdInput, setCategoryIdInput] = useState('');
   
   // Actions
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -128,6 +136,14 @@ export const GroupManager: React.FC = () => {
     setEditCategory(group.category || '');
     setKeywordInput('');
     setNegativeInput('');
+    
+    // Set new productOfferV2 fields
+    setEditProductCatIds(group.productCatIds || []);
+    setEditSortType(group.sortType || ShopeeSortType.ITEM_SOLD_DESC);
+    setEditMinDiscountPercent(group.minDiscountPercent || null);
+    setEditMinRating(group.minRating || null);
+    setEditMinSales(group.minSales || null);
+    setCategoryIdInput('');
   };
 
   const closeEditModal = () => {
@@ -135,6 +151,14 @@ export const GroupManager: React.FC = () => {
     setEditKeywords([]);
     setEditNegative([]);
     setEditCategory('');
+    
+    // Reset new fields
+    setEditProductCatIds([]);
+    setEditSortType(ShopeeSortType.ITEM_SOLD_DESC);
+    setEditMinDiscountPercent(null);
+    setEditMinRating(null);
+    setEditMinSales(null);
+    setCategoryIdInput('');
   };
 
   const addKeyword = () => {
@@ -165,6 +189,25 @@ export const GroupManager: React.FC = () => {
     const newTerms = QUICK_BLACKLIST_TERMS.filter(term => !editNegative.includes(term));
     setEditNegative([...editNegative, ...newTerms]);
   };
+  
+  const addCategoryId = () => {
+    if (categoryIdInput.trim()) {
+      const catId = parseInt(categoryIdInput.trim(), 10);
+      // Validate: must be a positive integer and not already in the list
+      if (!isNaN(catId) && catId > 0 && !editProductCatIds.includes(catId)) {
+        setEditProductCatIds([...editProductCatIds, catId]);
+        setCategoryIdInput('');
+      } else if (catId <= 0) {
+        alert('ID de categoria deve ser um número positivo.');
+      } else if (editProductCatIds.includes(catId)) {
+        alert('Este ID de categoria já foi adicionado.');
+      }
+    }
+  };
+  
+  const removeCategoryId = (index: number) => {
+    setEditProductCatIds(editProductCatIds.filter((_, i) => i !== index));
+  };
 
   const handleSaveSettings = async () => {
     if (!editingGroup) return;
@@ -173,13 +216,28 @@ export const GroupManager: React.FC = () => {
       await updateGroup(editingGroup.id, { 
         keywords: editKeywords, 
         negativeKeywords: editNegative,
-        category: editCategory || undefined
+        category: editCategory || undefined,
+        productCatIds: editProductCatIds,
+        sortType: editSortType,
+        minDiscountPercent: editMinDiscountPercent,
+        minRating: editMinRating,
+        minSales: editMinSales
       });
       
       // Update local state
       setGroups(groups.map(g => 
         g.id === editingGroup.id 
-          ? { ...g, keywords: editKeywords, negativeKeywords: editNegative, category: editCategory || undefined } 
+          ? { 
+              ...g, 
+              keywords: editKeywords, 
+              negativeKeywords: editNegative, 
+              category: editCategory || undefined,
+              productCatIds: editProductCatIds,
+              sortType: editSortType,
+              minDiscountPercent: editMinDiscountPercent,
+              minRating: editMinRating,
+              minSales: editMinSales
+            } 
           : g
       ));
       closeEditModal();
@@ -542,6 +600,128 @@ export const GroupManager: React.FC = () => {
                   {editKeywords.length === 0 && (
                     <span className="text-xs text-slate-500">Nenhuma keyword adicionada. Usa as palavras-chave gerais.</span>
                   )}
+                </div>
+              </div>
+
+              {/* Filtros de ofertas (opcional) */}
+              <div>
+                <label className="block text-sm font-medium text-orange-300 mb-2">
+                  Filtros de ofertas (opcional)
+                </label>
+                <p className="text-xs text-slate-400 mb-4">
+                  Se você não preencher nada aqui, o bot usa apenas as palavras-chave, como hoje.
+                </p>
+                
+                <div className="space-y-4">
+                  {/* Categorias Shopee */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-2">
+                      Categorias Shopee
+                    </label>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="number"
+                        placeholder="ID da categoria (ex: 12345)"
+                        className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={categoryIdInput}
+                        onChange={(e) => setCategoryIdInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addCategoryId();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCategoryId}
+                        className="px-4 py-2 btn-secondary"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {editProductCatIds.map((catId, index) => (
+                        <TagChip
+                          key={index}
+                          label={`${catId}`}
+                          onRemove={() => removeCategoryId(index)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Grid for filters */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Ordenação */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Ordenação
+                      </label>
+                      <select
+                        value={editSortType}
+                        onChange={(e) => setEditSortType(parseInt(e.target.value, 10))}
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                      >
+                        <option value={ShopeeSortType.ITEM_SOLD_DESC}>Mais vendidos (recomendado)</option>
+                        <option value={ShopeeSortType.COMMISSION_DESC}>Maior comissão</option>
+                        <option value={3}>Maior desconto</option>
+                      </select>
+                    </div>
+
+                    {/* Desconto mínimo */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Desconto mínimo (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        placeholder="Ex: 25"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinDiscountPercent ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                          if (val === null || (val >= 0 && val <= 100)) {
+                            setEditMinDiscountPercent(val);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* Avaliação mínima */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Avaliação mínima
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5"
+                        step="0.1"
+                        placeholder="Ex: 4.5"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinRating ?? ''}
+                        onChange={(e) => setEditMinRating(e.target.value ? parseFloat(e.target.value) : null)}
+                      />
+                    </div>
+
+                    {/* Vendas mínimas */}
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-2">
+                        Vendas mínimas
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="Ex: 100"
+                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition text-white"
+                        value={editMinSales ?? ''}
+                        onChange={(e) => setEditMinSales(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
