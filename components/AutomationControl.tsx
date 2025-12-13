@@ -113,6 +113,7 @@ export const AutomationControl: React.FC = () => {
                 onChange={(e) => setIntervalVal(Number(e.target.value))}
                 className="flex-1 max-w-xs p-3 bg-slate-900/50 border border-slate-700 rounded-md focus:ring-2 focus:ring-orange-500 outline-none text-white"
               >
+                <option value={1}>A cada 1 minuto</option>
                 <option value={5}>A cada 5 minutos</option>
                 <option value={15}>A cada 15 minutos</option>
                 <option value={30}>A cada 30 minutos</option>
