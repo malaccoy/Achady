@@ -1397,6 +1397,269 @@ app.use('/api', ApiRouter);
 // Serve static assets for the dashboard frontend
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// =======================
+// PUBLIC LEGAL PAGES (No Auth, No SPA Shell)
+// =======================
+const LEGAL_PAGE_STYLE = `
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; line-height: 1.6; color: #333; background: #f9f9f9; margin: 0; padding: 20px; }
+  .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  h1 { color: #1a1a1a; margin-bottom: 10px; }
+  h2 { color: #333; margin-top: 30px; }
+  p, li { margin-bottom: 12px; }
+  ul { padding-left: 20px; }
+  .update-date { color: #666; font-size: 14px; margin-bottom: 30px; }
+  a { color: #0066cc; }
+`;
+
+const LEGAL_DOMAIN = 'https://www.achady.com.br';
+const LEGAL_EMAIL = 'suporte@achady.com.br';
+const LEGAL_UPDATE_DATE = '12/12/2025';
+
+// GET /politica-de-privacidade - Privacy Policy
+app.get('/politica-de-privacidade', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Política de Privacidade - Achady</title>
+  <style>${LEGAL_PAGE_STYLE}</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Política de Privacidade</h1>
+    <p class="update-date">Última atualização: ${LEGAL_UPDATE_DATE}</p>
+    
+    <p>A Achady ("nós", "nosso" ou "empresa"), acessível em <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a>, está comprometida em proteger a privacidade dos nossos usuários. Esta Política de Privacidade descreve como coletamos, usamos, armazenamos e protegemos suas informações pessoais.</p>
+    
+    <h2>1. Informações que Coletamos</h2>
+    <p>Podemos coletar os seguintes tipos de informações:</p>
+    <ul>
+      <li><strong>Dados de cadastro:</strong> nome, e-mail, senha (criptografada).</li>
+      <li><strong>Dados de uso:</strong> informações sobre como você utiliza nossa plataforma, incluindo logs de acesso e interações.</li>
+      <li><strong>Dados de integração:</strong> credenciais de API da Shopee e informações de grupos do WhatsApp que você configurar.</li>
+      <li><strong>Cookies e tecnologias similares:</strong> para manter sua sessão e melhorar a experiência do usuário.</li>
+    </ul>
+    
+    <h2>2. Como Usamos Suas Informações</h2>
+    <p>Utilizamos suas informações para:</p>
+    <ul>
+      <li>Fornecer e manter nossos serviços de automação de ofertas.</li>
+      <li>Autenticar sua conta e proteger contra acessos não autorizados.</li>
+      <li>Enviar comunicações relacionadas ao serviço.</li>
+      <li>Melhorar e personalizar sua experiência na plataforma.</li>
+      <li>Cumprir obrigações legais.</li>
+    </ul>
+    
+    <h2>3. Compartilhamento de Dados</h2>
+    <p>Não vendemos, alugamos ou compartilhamos suas informações pessoais com terceiros, exceto:</p>
+    <ul>
+      <li>Quando necessário para fornecer o serviço (ex: APIs da Shopee).</li>
+      <li>Para cumprir obrigações legais ou ordens judiciais.</li>
+      <li>Para proteger nossos direitos, privacidade, segurança ou propriedade.</li>
+    </ul>
+    
+    <h2>4. Segurança dos Dados</h2>
+    <p>Implementamos medidas de segurança técnicas e organizacionais para proteger suas informações, incluindo:</p>
+    <ul>
+      <li>Criptografia de senhas e dados sensíveis.</li>
+      <li>Uso de HTTPS em todas as comunicações.</li>
+      <li>Limitação de acesso aos dados apenas a funcionários autorizados.</li>
+    </ul>
+    
+    <h2>5. Retenção de Dados</h2>
+    <p>Mantemos suas informações pessoais pelo tempo necessário para fornecer nossos serviços ou conforme exigido por lei. Você pode solicitar a exclusão de seus dados a qualquer momento.</p>
+    
+    <h2>6. Seus Direitos</h2>
+    <p>De acordo com a Lei Geral de Proteção de Dados (LGPD), você tem direito a:</p>
+    <ul>
+      <li>Acessar seus dados pessoais.</li>
+      <li>Corrigir dados incompletos ou desatualizados.</li>
+      <li>Solicitar a exclusão de seus dados.</li>
+      <li>Revogar o consentimento para o tratamento de dados.</li>
+      <li>Solicitar a portabilidade dos dados.</li>
+    </ul>
+    
+    <h2>7. Cookies</h2>
+    <p>Utilizamos cookies essenciais para manter sua sessão autenticada. Não utilizamos cookies de rastreamento ou publicidade de terceiros.</p>
+    
+    <h2>8. Alterações nesta Política</h2>
+    <p>Podemos atualizar esta Política de Privacidade periodicamente. Notificaremos sobre alterações significativas através do e-mail cadastrado ou aviso na plataforma.</p>
+    
+    <h2>9. Contato</h2>
+    <p>Para dúvidas, solicitações ou reclamações relacionadas à privacidade, entre em contato conosco:</p>
+    <p>E-mail: <a href="mailto:${LEGAL_EMAIL}">${LEGAL_EMAIL}</a></p>
+    <p>Site: <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a></p>
+  </div>
+</body>
+</html>`);
+});
+
+// GET /termos - Terms of Service
+app.get('/termos', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Termos de Uso - Achady</title>
+  <style>${LEGAL_PAGE_STYLE}</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Termos de Uso</h1>
+    <p class="update-date">Última atualização: ${LEGAL_UPDATE_DATE}</p>
+    
+    <p>Bem-vindo à Achady! Ao acessar ou utilizar nossa plataforma em <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a>, você concorda com estes Termos de Uso. Por favor, leia-os atentamente.</p>
+    
+    <h2>1. Aceitação dos Termos</h2>
+    <p>Ao criar uma conta ou utilizar nossos serviços, você declara ter lido, compreendido e concordado com estes Termos de Uso e nossa Política de Privacidade.</p>
+    
+    <h2>2. Descrição do Serviço</h2>
+    <p>A Achady é uma plataforma de automação que permite aos usuários:</p>
+    <ul>
+      <li>Conectar contas do WhatsApp para envio de mensagens automatizadas.</li>
+      <li>Integrar com a API de Afiliados da Shopee para buscar ofertas.</li>
+      <li>Configurar grupos e parâmetros de automação.</li>
+      <li>Gerenciar templates de mensagens e filtros de produtos.</li>
+    </ul>
+    
+    <h2>3. Requisitos de Uso</h2>
+    <p>Para utilizar nossos serviços, você deve:</p>
+    <ul>
+      <li>Ter pelo menos 18 anos de idade.</li>
+      <li>Fornecer informações verdadeiras e atualizadas no cadastro.</li>
+      <li>Manter a confidencialidade de suas credenciais de acesso.</li>
+      <li>Usar o serviço de acordo com as leis aplicáveis e políticas das plataformas integradas (WhatsApp, Shopee).</li>
+    </ul>
+    
+    <h2>4. Responsabilidades do Usuário</h2>
+    <p>Você é responsável por:</p>
+    <ul>
+      <li>Todo o conteúdo enviado através da plataforma.</li>
+      <li>Garantir que possui autorização para enviar mensagens aos grupos configurados.</li>
+      <li>Cumprir os Termos de Serviço do WhatsApp e da Shopee.</li>
+      <li>Não utilizar o serviço para spam, fraude ou atividades ilegais.</li>
+    </ul>
+    
+    <h2>5. Limitações de Responsabilidade</h2>
+    <p>A Achady não se responsabiliza por:</p>
+    <ul>
+      <li>Bloqueios ou restrições aplicados pelo WhatsApp ou Shopee à sua conta.</li>
+      <li>Indisponibilidade temporária dos serviços por manutenção ou problemas técnicos.</li>
+      <li>Perdas ou danos resultantes do uso inadequado da plataforma.</li>
+      <li>Alterações nas APIs ou políticas de terceiros que afetem a funcionalidade.</li>
+    </ul>
+    
+    <h2>6. Propriedade Intelectual</h2>
+    <p>Todo o conteúdo, código, design e marca da Achady são de propriedade exclusiva da empresa e protegidos por leis de propriedade intelectual. É proibida a reprodução, distribuição ou modificação sem autorização prévia.</p>
+    
+    <h2>7. Suspensão e Encerramento</h2>
+    <p>Reservamo-nos o direito de suspender ou encerrar sua conta, sem aviso prévio, caso:</p>
+    <ul>
+      <li>Você viole estes Termos de Uso.</li>
+      <li>Seu uso represente risco à segurança da plataforma ou outros usuários.</li>
+      <li>Seja necessário para cumprir determinação legal.</li>
+    </ul>
+    
+    <h2>8. Modificações nos Termos</h2>
+    <p>Podemos modificar estes Termos de Uso a qualquer momento. Alterações significativas serão comunicadas por e-mail ou aviso na plataforma. O uso continuado após as alterações constitui aceitação dos novos termos.</p>
+    
+    <h2>9. Lei Aplicável e Foro</h2>
+    <p>Estes Termos são regidos pelas leis da República Federativa do Brasil. Qualquer disputa será resolvida no foro da comarca de São Paulo, SP.</p>
+    
+    <h2>10. Contato</h2>
+    <p>Para dúvidas sobre estes Termos de Uso, entre em contato:</p>
+    <p>E-mail: <a href="mailto:${LEGAL_EMAIL}">${LEGAL_EMAIL}</a></p>
+    <p>Site: <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a></p>
+  </div>
+</body>
+</html>`);
+});
+
+// GET /exclusao-de-dados - Data Deletion Instructions
+app.get('/exclusao-de-dados', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+  res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exclusão de Dados - Achady</title>
+  <style>${LEGAL_PAGE_STYLE}</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Exclusão de Dados</h1>
+    <p class="update-date">Última atualização: ${LEGAL_UPDATE_DATE}</p>
+    
+    <p>Na Achady, respeitamos seu direito à privacidade e oferecemos formas simples de solicitar a exclusão dos seus dados pessoais, conforme previsto na Lei Geral de Proteção de Dados (LGPD).</p>
+    
+    <h2>1. Como Solicitar a Exclusão dos Seus Dados</h2>
+    <p>Você pode solicitar a exclusão dos seus dados de duas formas:</p>
+    
+    <h3>Opção 1: Exclusão pela Plataforma</h3>
+    <p>Se você possui acesso à sua conta:</p>
+    <ul>
+      <li>Acesse <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a> e faça login.</li>
+      <li>Navegue até as Configurações da sua conta.</li>
+      <li>Selecione a opção "Excluir Conta".</li>
+      <li>Confirme a exclusão digitando "EXCLUIR" e sua senha.</li>
+    </ul>
+    
+    <h3>Opção 2: Exclusão por E-mail</h3>
+    <p>Se você não consegue acessar sua conta ou prefere solicitar por e-mail:</p>
+    <ul>
+      <li>Envie um e-mail para <a href="mailto:${LEGAL_EMAIL}">${LEGAL_EMAIL}</a>.</li>
+      <li>Use o assunto: "Solicitação de Exclusão de Dados".</li>
+      <li>Inclua no corpo do e-mail: seu nome completo e o e-mail cadastrado na plataforma.</li>
+    </ul>
+    
+    <h2>2. Dados que Serão Excluídos</h2>
+    <p>Ao solicitar a exclusão, removeremos permanentemente:</p>
+    <ul>
+      <li>Dados de cadastro (nome, e-mail, senha criptografada).</li>
+      <li>Configurações da conta e preferências.</li>
+      <li>Credenciais de integração (Shopee API).</li>
+      <li>Grupos cadastrados e configurações de automação.</li>
+      <li>Histórico de ofertas enviadas e logs de atividade.</li>
+      <li>Sessões do WhatsApp associadas à conta.</li>
+    </ul>
+    
+    <h2>3. Prazo para Exclusão</h2>
+    <ul>
+      <li><strong>Exclusão pela plataforma:</strong> imediata.</li>
+      <li><strong>Exclusão por e-mail:</strong> até 15 dias úteis após confirmação da identidade.</li>
+    </ul>
+    
+    <h2>4. Dados Retidos</h2>
+    <p>Alguns dados podem ser retidos por períodos adicionais quando:</p>
+    <ul>
+      <li>Exigido por lei ou regulamentação aplicável.</li>
+      <li>Necessário para exercício regular de direitos em processos judiciais.</li>
+      <li>Anonimizados para fins estatísticos (sem identificação pessoal).</li>
+    </ul>
+    
+    <h2>5. Consequências da Exclusão</h2>
+    <p>Após a exclusão dos dados:</p>
+    <ul>
+      <li>Você perderá acesso permanente à sua conta.</li>
+      <li>Todas as configurações e integrações serão removidas.</li>
+      <li>Não será possível recuperar os dados excluídos.</li>
+      <li>Você poderá criar uma nova conta a qualquer momento.</li>
+    </ul>
+    
+    <h2>6. Contato</h2>
+    <p>Para dúvidas sobre exclusão de dados ou exercício de outros direitos previstos na LGPD:</p>
+    <p>E-mail: <a href="mailto:${LEGAL_EMAIL}">${LEGAL_EMAIL}</a></p>
+    <p>Site: <a href="${LEGAL_DOMAIN}">${LEGAL_DOMAIN}</a></p>
+  </div>
+</body>
+</html>`);
+});
+
 // Catch-all route: serve index.html for any non-API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
