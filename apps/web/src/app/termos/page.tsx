@@ -59,9 +59,7 @@ export default function Termos() {
           O Achady oferece integrações com serviços de terceiros, incluindo, mas não se limitando a:
         </p>
         <ul>
-          <li>Meta/Instagram</li>
-          <li>Shopee</li>
-          <li>WhatsApp</li>
+          <li>Meta (Instagram e Facebook)</li>
         </ul>
         <p>
           Ao conectar sua conta a esses serviços:
