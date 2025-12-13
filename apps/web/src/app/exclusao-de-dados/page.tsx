@@ -21,7 +21,7 @@ export default function ExclusaoDeDados() {
         
         <ul>
           <li>
-            <strong>Assunto:</strong> "Exclusão de Dados - Achady"
+            <strong>Assunto:</strong> &quot;Exclusão de Dados - Achady&quot;
           </li>
           <li>
             <strong>Nome completo:</strong> o nome associado à sua conta.
