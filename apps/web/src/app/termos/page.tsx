@@ -98,7 +98,7 @@ export default function Termos() {
 
         <h2>7. Isenção de Garantias e Limitação de Responsabilidade</h2>
         <p>
-          O serviço é fornecido <strong>"como está"</strong> e <strong>"conforme disponível"</strong>, 
+          O serviço é fornecido <strong>&quot;como está&quot;</strong> e <strong>&quot;conforme disponível&quot;</strong>, 
           sem garantias de qualquer tipo, expressas ou implícitas.
         </p>
         <p>
