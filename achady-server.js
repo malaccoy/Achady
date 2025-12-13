@@ -793,9 +793,18 @@ async function runAutomation() {
                         }
 
                         // Record - use descriptive marker for category search vs keyword search
+                        // Use upsert to handle race conditions where same offer might be inserted concurrently
                         const keyword = group.productCatIds ? '[CATEGORY_SEARCH]' : (group.keywords || '[DEFAULT_KEYWORDS]');
-                        await prisma.sentOffer.create({
-                            data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
+                        await prisma.sentOffer.upsert({
+                            where: {
+                                userId_groupId_itemId: {
+                                    userId: user.id,
+                                    groupId: group.id,
+                                    itemId: String(safeOffer.itemId)
+                                }
+                            },
+                            update: { sentAt: new Date(), keyword },
+                            create: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword, sentAt: new Date() }
                         });
                         
                         await prisma.log.create({
@@ -1300,9 +1309,18 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     }
 
                     // Record - use descriptive marker for category search vs keyword search
+                    // Use upsert to handle race conditions where same offer might be inserted concurrently
                     const keyword = group.productCatIds ? '[CATEGORY_SEARCH]' : (group.keywords || '[DEFAULT_KEYWORDS]');
-                    await prisma.sentOffer.create({
-                        data: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword }
+                    await prisma.sentOffer.upsert({
+                        where: {
+                            userId_groupId_itemId: {
+                                userId: user.id,
+                                groupId: group.id,
+                                itemId: String(safeOffer.itemId)
+                            }
+                        },
+                        update: { sentAt: new Date(), keyword },
+                        create: { userId: user.id, groupId: group.id, itemId: String(safeOffer.itemId), keyword, sentAt: new Date() }
                     });
                     
                     await prisma.log.create({
