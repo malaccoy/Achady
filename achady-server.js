@@ -1520,8 +1520,7 @@ app.get('/termos', (req, res) => {
     <h2>2. Descrição do Serviço</h2>
     <p>A Achady é uma plataforma de automação que permite aos usuários:</p>
     <ul>
-      <li>Conectar contas do WhatsApp para envio de mensagens automatizadas.</li>
-      <li>Integrar com a API de Afiliados da Shopee para buscar ofertas.</li>
+      <li>Realizar integrações solicitadas pelo usuário (Meta/Instagram) para mensagens e automação, dentro das permissões e políticas das plataformas.</li>
       <li>Configurar grupos e parâmetros de automação.</li>
       <li>Gerenciar templates de mensagens e filtros de produtos.</li>
     </ul>
@@ -1532,7 +1531,7 @@ app.get('/termos', (req, res) => {
       <li>Ter pelo menos 18 anos de idade.</li>
       <li>Fornecer informações verdadeiras e atualizadas no cadastro.</li>
       <li>Manter a confidencialidade de suas credenciais de acesso.</li>
-      <li>Usar o serviço de acordo com as leis aplicáveis e políticas das plataformas integradas (WhatsApp, Shopee).</li>
+      <li>Usar o serviço de acordo com as leis aplicáveis e políticas das plataformas integradas.</li>
     </ul>
     
     <h2>4. Responsabilidades do Usuário</h2>
@@ -1540,14 +1539,14 @@ app.get('/termos', (req, res) => {
     <ul>
       <li>Todo o conteúdo enviado através da plataforma.</li>
       <li>Garantir que possui autorização para enviar mensagens aos grupos configurados.</li>
-      <li>Cumprir os Termos de Serviço do WhatsApp e da Shopee.</li>
+      <li>Cumprir os Termos de Serviço das plataformas integradas.</li>
       <li>Não utilizar o serviço para spam, fraude ou atividades ilegais.</li>
     </ul>
     
     <h2>5. Limitações de Responsabilidade</h2>
     <p>A Achady não se responsabiliza por:</p>
     <ul>
-      <li>Bloqueios ou restrições aplicados pelo WhatsApp ou Shopee à sua conta.</li>
+      <li>Bloqueios ou restrições aplicados pelas plataformas integradas à sua conta.</li>
       <li>Indisponibilidade temporária dos serviços por manutenção ou problemas técnicos.</li>
       <li>Perdas ou danos resultantes do uso inadequado da plataforma.</li>
       <li>Alterações nas APIs ou políticas de terceiros que afetem a funcionalidade.</li>
