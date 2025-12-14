@@ -1,5 +1,5 @@
-require('dotenv').config();
-const path = require('path');
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 // Set default DATABASE_URL for Prisma if not provided
 if (!process.env.DATABASE_URL) {
@@ -1398,13 +1398,13 @@ ApiRouter.get('/logs', async (req, res) => {
 // GET: Meta webhook verification (responds with hub.challenge when token matches)
 app.get('/api/meta/webhook/instagram', (req, res) => {
   const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const receivedToken = String(req.query["hub.verify_token"] || "").trim();
   const challenge = req.query['hub.challenge'];
 
-  const verifyToken = process.env.META_IG_VERIFY_TOKEN;
+  const expectedToken = (process.env.META_IG_VERIFY_TOKEN || "").trim();
 
-  // Ensure verifyToken is configured and token matches
-  if (verifyToken && mode === 'subscribe' && token === verifyToken) {
+  // Ensure expectedToken is configured and token matches
+  if (expectedToken && mode === 'subscribe' && receivedToken === expectedToken) {
     console.log('[META WEBHOOK] Verification successful');
     return res.status(200).send(String(challenge));
   }
@@ -1696,4 +1696,9 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, async () => {
   console.log(`ACHADY Server running on port ${PORT}`);
+  
+  // Warn if META_IG_VERIFY_TOKEN is not configured
+  if (!(process.env.META_IG_VERIFY_TOKEN || "").trim()) {
+    console.warn("META_IG_VERIFY_TOKEN is empty - webhook verification will fail");
+  }
 });
