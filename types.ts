@@ -75,4 +75,13 @@ export enum Tab {
   TEMPLATE = 'TEMPLATE',
   LOGS = 'LOGS',
   SHOPEE = 'SHOPEE',
+  INSTAGRAM = 'INSTAGRAM',
+}
+
+export interface InstagramStatus {
+  connected: boolean;
+  igUsername?: string;
+  pageId?: string;
+  igBusinessId?: string;
+  expiresAt?: string;
 }

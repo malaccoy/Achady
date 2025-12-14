@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics } from '../types';
+import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics, InstagramStatus } from '../types';
 
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -228,4 +228,14 @@ export const getLogs = async (): Promise<LogEntry[]> => {
     console.error("Error fetching logs:", e);
     return [];
   }
+};
+
+// --- Instagram ---
+
+export const getInstagramStatus = async (): Promise<InstagramStatus> => {
+  return request<InstagramStatus>('/meta/instagram/status');
+};
+
+export const disconnectInstagram = async (): Promise<void> => {
+  await request('/meta/instagram/disconnect', { method: 'DELETE' });
 };
