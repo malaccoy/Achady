@@ -86,6 +86,27 @@ View your app in AI Studio: https://ai.studio/apps/drive/1LDnOOoLxV57_jRqS5Re0Ks
 - ✅ Adição dos modelos `Log` e `SentOffer` no Prisma schema
 - ✅ Validação completa do fluxo de autenticação
 - ✅ Configuração adequada do ambiente de desenvolvimento
+- ✅ Webhook Instagram/Meta público para validação
+
+## Meta Instagram Webhook
+
+Para integrar com o Instagram via Meta, configure o webhook:
+
+### Configuração
+
+1. **URL do Webhook**: `https://www.achady.com.br/api/meta/webhook/instagram`
+2. **Token de Verificação**: Defina `META_IG_VERIFY_TOKEN` no arquivo `.env` com um token forte
+3. No Meta Developer Console, configure a mesma URL e token
+
+### Testando o Webhook
+
+```bash
+# Teste de verificação (deve retornar 200 e o challenge "123")
+curl -i "https://www.achady.com.br/api/meta/webhook/instagram?hub.mode=subscribe&hub.verify_token=SEU_TOKEN&hub.challenge=123"
+
+# Teste local (substitua SEU_TOKEN pelo valor de META_IG_VERIFY_TOKEN)
+curl -i "http://localhost:3001/api/meta/webhook/instagram?hub.mode=subscribe&hub.verify_token=SEU_TOKEN&hub.challenge=123"
+```
 
 ## Desenvolvimento
 
