@@ -1392,6 +1392,36 @@ ApiRouter.get('/logs', async (req, res) => {
     res.json(logs);
 });
 
+// =======================
+// PUBLIC META WEBHOOK (No Auth - must be before protected API routes)
+// =======================
+// GET: Meta webhook verification (responds with hub.challenge when token matches)
+app.get('/api/meta/webhook/instagram', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const verifyToken = process.env.META_IG_VERIFY_TOKEN;
+
+  // Ensure verifyToken is configured and token matches
+  if (verifyToken && mode === 'subscribe' && token === verifyToken) {
+    console.log('[META WEBHOOK] Verification successful');
+    return res.status(200).send(String(challenge));
+  }
+
+  console.log('[META WEBHOOK] Verification failed');
+  return res.sendStatus(403);
+});
+
+// POST: Meta webhook event receiver (acknowledge immediately)
+app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), (req, res) => {
+  // Log only non-sensitive metadata
+  const eventType = req.body?.object || 'unknown';
+  console.log('[META WEBHOOK] Received event type:', eventType);
+  // Acknowledge quickly - process async if needed in the future
+  return res.status(200).json({ ok: true });
+});
+
 app.use('/api', ApiRouter);
 
 // Serve static assets for the dashboard frontend
