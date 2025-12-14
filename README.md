@@ -87,6 +87,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1LDnOOoLxV57_jRqS5Re0Ks
 - ✅ Validação completa do fluxo de autenticação
 - ✅ Configuração adequada do ambiente de desenvolvimento
 - ✅ Webhook Instagram/Meta público para validação
+- ✅ OAuth Instagram Business para integração multi-tenant
 
 ## Meta Instagram Webhook
 
@@ -107,6 +108,77 @@ curl -i "https://www.achady.com.br/api/meta/webhook/instagram?hub.mode=subscribe
 # Teste local (substitua SEU_TOKEN pelo valor de META_IG_VERIFY_TOKEN)
 curl -i "http://localhost:3001/api/meta/webhook/instagram?hub.mode=subscribe&hub.verify_token=SEU_TOKEN&hub.challenge=123"
 ```
+
+## Instagram Business OAuth
+
+O Achady suporta integração com Instagram Business via OAuth para cada usuário (multi-tenant).
+
+### Variáveis de Ambiente Necessárias
+
+Configure no `.env`:
+
+```env
+META_APP_ID="seu_app_id_do_meta"
+META_APP_SECRET="seu_app_secret_do_meta"
+META_IG_REDIRECT_URI="https://www.achady.com.br/api/meta/auth/instagram/callback"
+META_IG_SCOPES="instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata"
+META_IG_STATE_COOKIE="achady_ig_oauth_state"
+```
+
+### Rotas Disponíveis
+
+| Rota | Método | Autenticação | Descrição |
+|------|--------|--------------|-----------|
+| `/api/meta/auth/instagram` | GET | Requer login | Inicia o fluxo OAuth, redireciona para Meta |
+| `/api/meta/auth/instagram/callback` | GET | Requer login | Recebe code, troca por token, salva integração |
+| `/api/meta/instagram/status` | GET | Requer login | Retorna status da integração do usuário |
+| `/api/meta/instagram/disconnect` | DELETE | Requer login | Desconecta a integração do usuário |
+
+### Fluxo de Integração
+
+1. Usuário faz login no Achady
+2. Acessa `/api/meta/auth/instagram` 
+3. É redirecionado para o Facebook para autorizar
+4. Após autorização, volta para o callback
+5. O sistema troca o code por token (curto → longo prazo)
+6. Busca as Pages do usuário com Instagram Business conectado
+7. Salva a integração no banco (tokens criptografados)
+8. Redireciona para `/integracoes/instagram?status=connected`
+
+### Testando a Integração
+
+```bash
+# 1. Fazer login no Achady (via frontend ou obter cookie token)
+
+# 2. Acessar a URL de OAuth (abrirá no navegador)
+# https://www.achady.com.br/api/meta/auth/instagram
+
+# 3. Após conectar, verificar status:
+curl -b "token=SEU_JWT_TOKEN" "https://www.achady.com.br/api/meta/instagram/status"
+
+# 4. Para desconectar:
+curl -X DELETE -b "token=SEU_JWT_TOKEN" "https://www.achady.com.br/api/meta/instagram/disconnect"
+```
+
+### Requisitos no Meta Developer Console
+
+1. Criar um App do tipo "Business"
+2. Adicionar o produto "Instagram"
+3. Configurar OAuth redirect URI
+4. Solicitar as permissões necessárias
+5. O usuário deve ter uma Page com Instagram Business Account vinculada
+
+### Campos Salvos no Banco
+
+A tabela `SocialAccount` armazena:
+- `userId` - ID do usuário Achady
+- `provider` - 'instagram'
+- `pageId` - ID da Facebook Page
+- `igBusinessId` - ID da conta Instagram Business
+- `igUsername` - Username do Instagram
+- `pageAccessToken` - Token da Page (criptografado)
+- `userAccessToken` - Token do usuário long-lived (criptografado)
+- `expiresAt` - Data de expiração do token
 
 ## Desenvolvimento
 

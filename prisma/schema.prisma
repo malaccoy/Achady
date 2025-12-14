@@ -30,6 +30,7 @@ model User {
   refreshTokens           RefreshToken[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
+  socialAccounts          SocialAccount[]
 
   // opcional p/ SaaS multi-tenant (time/empresa)
   memberships     Membership[]
@@ -205,4 +206,25 @@ model SentOffer {
   @@index([userId])
   @@index([groupId])
   @@index([itemId])
+}
+
+// Social account integrations (Instagram Business, etc.)
+model SocialAccount {
+  id               String    @id @default(cuid())
+  userId           String
+  provider         String    // 'instagram', 'facebook', etc.
+  pageId           String?   // Facebook Page ID
+  igBusinessId     String?   // Instagram Business Account ID
+  igUsername       String?   // Instagram username
+  pageAccessToken  String?   // Encrypted Page Access Token
+  userAccessToken  String?   // Encrypted User Access Token (long-lived)
+  expiresAt        DateTime? // Token expiration date
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@index([provider])
 }

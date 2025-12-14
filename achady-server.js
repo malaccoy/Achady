@@ -62,6 +62,13 @@ const apiLimiter = rateLimit({
   max: 300
 });
 
+// OAuth rate limiter - more permissive but still protected
+const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // Allow some retries for OAuth flow
+  message: { error: 'Muitas tentativas de integração. Aguarde alguns minutos.' }
+});
+
 // =======================
 // CRYPTO HELPERS (Shopee Secret)
 // =======================
@@ -1420,6 +1427,260 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), (req, res
   console.log('[META WEBHOOK] Received event type:', eventType);
   // Acknowledge quickly - process async if needed in the future
   return res.status(200).json({ ok: true });
+});
+
+// =======================
+// META INSTAGRAM OAUTH (requires authentication)
+// =======================
+// Helper function for Graph API requests
+async function graphGet(url, accessToken) {
+  try {
+    const separator = url.includes('?') ? '&' : '?';
+    const fullUrl = `${url}${separator}access_token=${accessToken}`;
+    const response = await axios.get(fullUrl, { timeout: 15000 });
+    return response.data;
+  } catch (error) {
+    // Log error without exposing tokens
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error('[GRAPH API] Error:', errorMsg);
+    throw new Error(`Graph API Error: ${errorMsg}`);
+  }
+}
+
+// GET: Start Instagram OAuth flow - redirects to Meta login
+app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
+  const META_APP_ID = process.env.META_APP_ID;
+  const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
+  const META_IG_SCOPES = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata';
+  const META_IG_STATE_COOKIE = process.env.META_IG_STATE_COOKIE || 'achady_ig_oauth_state';
+
+  if (!META_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[META OAUTH] Missing META_APP_ID or META_IG_REDIRECT_URI');
+    return res.status(500).json({ error: 'Configuração do Meta não encontrada. Contate o suporte.' });
+  }
+
+  // Generate secure state for CSRF protection
+  const state = crypto.randomBytes(32).toString('hex');
+
+  // Save state in httpOnly cookie (10 min expiration)
+  res.cookie(META_IG_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 10 * 60 * 1000 // 10 minutes
+  });
+
+  // Build OAuth URL
+  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
+  oauthUrl.searchParams.set('client_id', META_APP_ID);
+  oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
+  oauthUrl.searchParams.set('state', state);
+  oauthUrl.searchParams.set('response_type', 'code');
+  oauthUrl.searchParams.set('scope', META_IG_SCOPES);
+
+  console.log('[META OAUTH] Redirecting user to Meta OAuth');
+  res.redirect(oauthUrl.toString());
+});
+
+// GET: OAuth callback - receives code and exchanges for tokens
+app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (req, res) => {
+  const META_APP_ID = process.env.META_APP_ID;
+  const META_APP_SECRET = process.env.META_APP_SECRET;
+  const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
+  const META_IG_STATE_COOKIE = process.env.META_IG_STATE_COOKIE || 'achady_ig_oauth_state';
+  const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
+
+  const { code, state, error: oauthError, error_description } = req.query;
+  const storedState = req.cookies[META_IG_STATE_COOKIE];
+
+  // Clear state cookie regardless of outcome
+  res.clearCookie(META_IG_STATE_COOKIE);
+
+  // Handle OAuth errors from Meta
+  if (oauthError) {
+    console.error('[META OAUTH] OAuth error:', oauthError, error_description);
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(error_description || oauthError)}`);
+  }
+
+  // Validate state (CSRF protection)
+  if (!state || !storedState || state !== storedState) {
+    console.error('[META OAUTH] State mismatch - possible CSRF attack');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=invalid_state`);
+  }
+
+  // Validate code presence
+  if (!code) {
+    console.error('[META OAUTH] No code received');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_code`);
+  }
+
+  // Validate server configuration
+  if (!META_APP_ID || !META_APP_SECRET || !META_IG_REDIRECT_URI) {
+    console.error('[META OAUTH] Missing server configuration');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
+  }
+
+  try {
+    // Step 1: Exchange code for short-lived user access token
+    console.log('[META OAUTH] Exchanging code for access token');
+    const tokenUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
+    tokenUrl.searchParams.set('client_id', META_APP_ID);
+    tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
+    tokenUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
+    tokenUrl.searchParams.set('code', code);
+
+    const tokenResponse = await axios.get(tokenUrl.toString(), { timeout: 15000 });
+    const shortLivedToken = tokenResponse.data.access_token;
+
+    if (!shortLivedToken) {
+      throw new Error('No access token received from Meta');
+    }
+
+    // Step 2: Exchange for long-lived token
+    console.log('[META OAUTH] Exchanging for long-lived token');
+    const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
+    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
+    longLivedUrl.searchParams.set('client_id', META_APP_ID);
+    longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
+    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
+
+    const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
+    const longLivedToken = longLivedResponse.data.access_token;
+    const expiresIn = longLivedResponse.data.expires_in; // seconds (typically ~60 days)
+
+    // Calculate expiration date with validation
+    let expiresAt = null;
+    if (typeof expiresIn === 'number' && expiresIn > 0 && expiresIn < 365 * 24 * 60 * 60) {
+      // Valid range: between 1 second and 1 year
+      expiresAt = new Date(Date.now() + expiresIn * 1000);
+    }
+
+    // Step 3: Get user's Facebook Pages with Instagram Business Account
+    console.log('[META OAUTH] Fetching Pages with Instagram Business Account');
+    const pagesData = await graphGet(
+      'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}',
+      longLivedToken
+    );
+
+    // Find first page with Instagram Business Account
+    const pageWithIG = pagesData.data?.find(page => page.instagram_business_account);
+
+    if (!pageWithIG) {
+      console.error('[META OAUTH] No Page with Instagram Business Account found');
+      return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_instagram_business`);
+    }
+
+    const pageId = pageWithIG.id;
+    const pageName = pageWithIG.name;
+    const pageAccessToken = pageWithIG.access_token;
+    const igBusinessId = pageWithIG.instagram_business_account?.id;
+    const igUsername = pageWithIG.instagram_business_account?.username;
+
+    console.log(`[META OAUTH] Found IG Business: @${igUsername} (Page: ${pageName})`);
+
+    // Step 4: Save to database (encrypted tokens)
+    await prisma.socialAccount.upsert({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      update: {
+        pageId,
+        igBusinessId,
+        igUsername,
+        pageAccessToken: encrypt(pageAccessToken),
+        userAccessToken: encrypt(longLivedToken),
+        expiresAt,
+        updatedAt: new Date()
+      },
+      create: {
+        userId: req.userId,
+        provider: 'instagram',
+        pageId,
+        igBusinessId,
+        igUsername,
+        pageAccessToken: encrypt(pageAccessToken),
+        userAccessToken: encrypt(longLivedToken),
+        expiresAt
+      }
+    });
+
+    console.log(`[META OAUTH] Successfully saved integration for user ${req.userId}`);
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
+
+  } catch (error) {
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error('[META OAUTH] Error during token exchange:', errorMsg);
+    
+    // In development, return JSON error for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      return res.status(500).json({ error: 'OAuth failed', details: errorMsg });
+    }
+    
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent('token_exchange_failed')}`);
+  }
+});
+
+// GET: Instagram integration status (DEV only shows full status, PROD shows minimal)
+app.get('/api/meta/instagram/status', oauthLimiter, requireAuth, async (req, res) => {
+  try {
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      select: {
+        igUsername: true,
+        igBusinessId: true,
+        pageId: true,
+        expiresAt: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!integration) {
+      return res.json({ connected: false });
+    }
+
+    const isExpired = integration.expiresAt && new Date() > integration.expiresAt;
+
+    res.json({
+      connected: true,
+      expired: isExpired,
+      igUsername: integration.igUsername,
+      igBusinessId: integration.igBusinessId,
+      pageId: integration.pageId,
+      expiresAt: integration.expiresAt?.toISOString() || null,
+      connectedAt: integration.createdAt.toISOString(),
+      updatedAt: integration.updatedAt.toISOString()
+    });
+  } catch (error) {
+    console.error('[META STATUS] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao verificar integração' });
+  }
+});
+
+// DELETE: Disconnect Instagram integration
+app.delete('/api/meta/instagram/disconnect', oauthLimiter, requireAuth, async (req, res) => {
+  try {
+    await prisma.socialAccount.deleteMany({
+      where: {
+        userId: req.userId,
+        provider: 'instagram'
+      }
+    });
+
+    console.log(`[META OAUTH] Disconnected Instagram for user ${req.userId}`);
+    res.json({ ok: true, message: 'Integração Instagram desconectada com sucesso' });
+  } catch (error) {
+    console.error('[META DISCONNECT] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao desconectar integração' });
+  }
 });
 
 app.use('/api', ApiRouter);
