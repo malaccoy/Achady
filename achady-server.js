@@ -62,6 +62,13 @@ const apiLimiter = rateLimit({
   max: 300
 });
 
+// OAuth rate limiter - more permissive but still protected
+const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // Allow some retries for OAuth flow
+  message: { error: 'Muitas tentativas de integração. Aguarde alguns minutos.' }
+});
+
 // =======================
 // CRYPTO HELPERS (Shopee Secret)
 // =======================
@@ -1441,7 +1448,7 @@ async function graphGet(url, accessToken) {
 }
 
 // GET: Start Instagram OAuth flow - redirects to Meta login
-app.get('/api/meta/auth/instagram', requireAuth, (req, res) => {
+app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const META_APP_ID = process.env.META_APP_ID;
   const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
   const META_IG_SCOPES = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata';
@@ -1476,7 +1483,7 @@ app.get('/api/meta/auth/instagram', requireAuth, (req, res) => {
 });
 
 // GET: OAuth callback - receives code and exchanges for tokens
-app.get('/api/meta/auth/instagram/callback', requireAuth, async (req, res) => {
+app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (req, res) => {
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
   const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
@@ -1539,10 +1546,14 @@ app.get('/api/meta/auth/instagram/callback', requireAuth, async (req, res) => {
 
     const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
     const longLivedToken = longLivedResponse.data.access_token;
-    const expiresIn = longLivedResponse.data.expires_in; // seconds
+    const expiresIn = longLivedResponse.data.expires_in; // seconds (typically ~60 days)
 
-    // Calculate expiration date
-    const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+    // Calculate expiration date with validation
+    let expiresAt = null;
+    if (typeof expiresIn === 'number' && expiresIn > 0 && expiresIn < 365 * 24 * 60 * 60) {
+      // Valid range: between 1 second and 1 year
+      expiresAt = new Date(Date.now() + expiresIn * 1000);
+    }
 
     // Step 3: Get user's Facebook Pages with Instagram Business Account
     console.log('[META OAUTH] Fetching Pages with Instagram Business Account');
@@ -1613,7 +1624,7 @@ app.get('/api/meta/auth/instagram/callback', requireAuth, async (req, res) => {
 });
 
 // GET: Instagram integration status (DEV only shows full status, PROD shows minimal)
-app.get('/api/meta/instagram/status', requireAuth, async (req, res) => {
+app.get('/api/meta/instagram/status', oauthLimiter, requireAuth, async (req, res) => {
   try {
     const integration = await prisma.socialAccount.findUnique({
       where: {
@@ -1655,7 +1666,7 @@ app.get('/api/meta/instagram/status', requireAuth, async (req, res) => {
 });
 
 // DELETE: Disconnect Instagram integration
-app.delete('/api/meta/instagram/disconnect', requireAuth, async (req, res) => {
+app.delete('/api/meta/instagram/disconnect', oauthLimiter, requireAuth, async (req, res) => {
   try {
     await prisma.socialAccount.deleteMany({
       where: {
