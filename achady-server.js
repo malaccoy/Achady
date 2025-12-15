@@ -1612,12 +1612,11 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
 
   } catch (error) {
-    const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error('[META OAUTH] Error during token exchange:', errorMsg);
+    console.error('[INSTAGRAM OAUTH] Token exchange failed:', error?.response?.status, error?.response?.data || error.message);
     
     // In development, return JSON error for debugging
     if (process.env.NODE_ENV !== 'production') {
-      return res.status(500).json({ error: 'OAuth failed', details: errorMsg });
+      return res.status(500).json({ error: 'OAuth failed', details: error?.response?.data || error.message });
     }
     
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent('token_exchange_failed')}`);
