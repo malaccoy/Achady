@@ -827,10 +827,12 @@ async function runAutomation() {
                         return !blacklist.some(bad => title.includes(bad));
                     });
                     
-                    if (!safeOffer && validOffers.length > 0) {
-                        console.log(`[JOB] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
-                    } else if (!safeOffer) {
-                        console.log(`[JOB] No valid offers to send (all filtered) for group ${group.name}`);
+                    if (!safeOffer) {
+                        if (validOffers.length > 0) {
+                            console.log(`[JOB] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
+                        } else {
+                            console.log(`[JOB] No valid offers to send (all duplicates) for group ${group.name}`);
+                        }
                     }
                     
                     if (safeOffer) {
@@ -1363,10 +1365,12 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     return !blacklist.some(bad => title.includes(bad));
                 });
                 
-                if (!safeOffer && validOffers.length > 0) {
-                    console.log(`[RUN-ONCE] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
-                } else if (!safeOffer) {
-                    console.log(`[RUN-ONCE] No valid offers to send (all filtered) for group ${group.name}`);
+                if (!safeOffer) {
+                    if (validOffers.length > 0) {
+                        console.log(`[RUN-ONCE] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
+                    } else {
+                        console.log(`[RUN-ONCE] No valid offers to send (all duplicates) for group ${group.name}`);
+                    }
                 }
                 
                 if (safeOffer) {
