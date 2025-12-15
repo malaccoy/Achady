@@ -37,6 +37,11 @@ const DEFAULT_KEYWORDS = ['promoção', 'oferta', 'casa', 'cozinha'];
 const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled automation
 const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
 
+// Meta Business Login constants (Instagram via Facebook OAuth)
+// App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
+const META_FB_APP_ID = '1400700461730372';
+const META_IG_REDIRECT_URI = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -1447,11 +1452,12 @@ async function graphGet(url, accessToken) {
   }
 }
 
-// GET: Start Instagram OAuth flow - redirects to Instagram Login
+// GET: Start Instagram OAuth flow - redirects to Meta Business Login via Facebook OAuth dialog
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
-  // Build Instagram OAuth URL with required parameters
-  const clientId = '1502112714212333';
-  const redirectUri = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+  // Build Facebook OAuth URL for Meta Business Login (Instagram Business use case)
+  const configId = process.env.META_IG_CONFIG_ID;
+  
+  // Scopes required for Instagram Business via Graph API
   const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
   // Create signed state parameter containing userId for callback verification
@@ -1459,26 +1465,38 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&force_reauth=true&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
+  // Build the Facebook OAuth dialog URL
+  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
+  oauthUrl.searchParams.set('client_id', META_FB_APP_ID);
+  oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
+  oauthUrl.searchParams.set('response_type', 'code');
+  oauthUrl.searchParams.set('scope', scope);
+  oauthUrl.searchParams.set('state', state);
+  
+  // Include config_id if provided (required for Meta Business Login)
+  if (configId) {
+    oauthUrl.searchParams.set('config_id', configId);
+  }
+  
+  // Force re-authentication for security
+  oauthUrl.searchParams.set('auth_type', 'rerequest');
 
-  console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', redirectUri);
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth');
-  res.redirect(oauthUrl);
+  console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', META_IG_REDIRECT_URI);
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Facebook OAuth dialog for Meta Business Login');
+  res.redirect(oauthUrl.toString());
 });
 
-// GET: OAuth callback - receives code and exchanges for tokens
+// GET: OAuth callback - receives code and exchanges for tokens via Graph API
 // NOTE: This route does NOT require site auth token - userId is extracted from signed state parameter
 app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
-  const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
-  const META_IG_REDIRECT_URI = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
   console.log('[INSTAGRAM OAUTH] EXCHANGE redirect_uri =', META_IG_REDIRECT_URI);
 
   const { code, error: oauthError, error_description, state } = req.query;
 
-  // Handle OAuth errors from Instagram
+  // Handle OAuth errors from Facebook
   if (oauthError) {
     console.error('[INSTAGRAM OAUTH] OAuth error:', oauthError, error_description);
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(error_description || oauthError)}`);
@@ -1509,48 +1527,42 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   // Validate server configuration
-  if (!META_APP_ID || !META_APP_SECRET || !META_IG_REDIRECT_URI) {
-    console.error('[INSTAGRAM OAUTH] Missing server configuration');
+  if (!META_APP_SECRET) {
+    console.error('[INSTAGRAM OAUTH] Missing server configuration (META_APP_SECRET)');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
   try {
-    // Step 1: Exchange code for short-lived user access token using Instagram token endpoint
-    console.log('[META OAUTH] Exchanging code for access token via Instagram API');
-    const tokenParams = new URLSearchParams();
-    tokenParams.append('client_id', META_APP_ID);
-    tokenParams.append('client_secret', META_APP_SECRET);
-    tokenParams.append('grant_type', 'authorization_code');
-    tokenParams.append('redirect_uri', META_IG_REDIRECT_URI);
-    tokenParams.append('code', code);
+    // Step 1: Exchange code for short-lived access token via Graph API (GET request)
+    console.log('[META OAUTH] Exchanging code for access token via Graph API');
+    const tokenUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
+    tokenUrl.searchParams.set('client_id', META_FB_APP_ID);
+    tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
+    tokenUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
+    tokenUrl.searchParams.set('code', code);
 
-    const tokenResponse = await axios.post(
-      'https://api.instagram.com/oauth/access_token',
-      tokenParams,
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: 15000
-      }
-    );
+    const tokenResponse = await axios.get(tokenUrl.toString(), { timeout: 15000 });
     const shortLivedToken = tokenResponse.data.access_token;
 
     if (!shortLivedToken) {
-      throw new Error('No access token received from Instagram');
+      throw new Error('No access token received from Graph API');
     }
 
-    // Step 2: Long-lived token exchange (temporarily disabled)
-    // TODO: Re-enable when Instagram long-lived token exchange endpoint is confirmed
-    // console.log('[META OAUTH] Exchanging for long-lived token');
-    // const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
-    // longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-    // longLivedUrl.searchParams.set('client_id', META_APP_ID);
-    // longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
-    // longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
-    // const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
-    // const longLivedToken = longLivedResponse.data.access_token;
-    // const expiresIn = longLivedResponse.data.expires_in;
-    const longLivedToken = shortLivedToken;
-    const expiresIn = null;
+    // Step 2: Exchange short-lived token for long-lived token via Graph API
+    console.log('[META OAUTH] Exchanging for long-lived token');
+    const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
+    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
+    longLivedUrl.searchParams.set('client_id', META_FB_APP_ID);
+    longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
+    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
+    
+    const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
+    const longLivedToken = longLivedResponse.data.access_token;
+    const expiresIn = longLivedResponse.data.expires_in;
+
+    if (!longLivedToken) {
+      throw new Error('No long-lived access token received from Graph API');
+    }
 
     // Calculate expiration date with validation
     let expiresAt = null;
