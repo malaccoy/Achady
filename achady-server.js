@@ -499,27 +499,45 @@ class ShopeeClient {
         
         const res = await this.request(q, variables);
         let offers = res?.productOfferV2?.nodes || [];
+        const initialCount = offers.length;
         
         // Apply server-side filters
         if (minDiscountPercent !== undefined && minDiscountPercent !== null) {
+            const beforeCount = offers.length;
             offers = offers.filter(offer => {
                 const discount = offer.priceDiscountRate || 0;
                 return discount >= minDiscountPercent;
             });
+            if (offers.length < beforeCount) {
+                console.log(`[SEARCH] Filtered ${beforeCount - offers.length} offers by minDiscountPercent (${minDiscountPercent}%)`);
+            }
         }
         
         if (minRating !== undefined && minRating !== null) {
+            const beforeCount = offers.length;
             offers = offers.filter(offer => {
                 const rating = parseFloat(offer.ratingStar || '0');
                 return rating >= minRating;
             });
+            if (offers.length < beforeCount) {
+                console.log(`[SEARCH] Filtered ${beforeCount - offers.length} offers by minRating (${minRating})`);
+            }
         }
         
         if (minSales !== undefined && minSales !== null) {
+            const beforeCount = offers.length;
             offers = offers.filter(offer => {
                 const sales = offer.sales || 0;
                 return sales >= minSales;
             });
+            if (offers.length < beforeCount) {
+                console.log(`[SEARCH] Filtered ${beforeCount - offers.length} offers by minSales (${minSales})`);
+            }
+        }
+        
+        // Log summary of filter results
+        if (offers.length < initialCount) {
+            console.log(`[SEARCH] Filter summary: ${initialCount} -> ${offers.length} offers after quality filters`);
         }
         
         return offers;
@@ -786,7 +804,21 @@ async function runAutomation() {
                 try {
                     // Use new searchOffersForGroup helper that handles both advanced and legacy search
                     const offers = await searchOffersForGroup(shopee, group);
+                    
+                    // Log API response count for debugging
+                    console.log(`[JOB] API returned ${offers.length} offers for group ${group.name}`);
+                    
+                    if (offers.length === 0) {
+                        console.log(`[JOB] No offers found from API for group ${group.name}. Check category ID or keywords configuration.`);
+                        continue;
+                    }
+                    
                     const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
+                    
+                    // Log duplicate filtering result
+                    if (validOffers.length < offers.length) {
+                        console.log(`[JOB] Filtered ${offers.length - validOffers.length} duplicate offers (already sent today) for group ${group.name}`);
+                    }
 
                     // Blacklist
                     const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
@@ -794,6 +826,14 @@ async function runAutomation() {
                         const title = o.productName.toLowerCase();
                         return !blacklist.some(bad => title.includes(bad));
                     });
+                    
+                    if (!safeOffer) {
+                        if (validOffers.length > 0) {
+                            console.log(`[JOB] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
+                        } else {
+                            console.log(`[JOB] No valid offers to send (all duplicates) for group ${group.name}`);
+                        }
+                    }
                     
                     if (safeOffer) {
                         const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
@@ -1302,7 +1342,21 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
             try {
                 // Use new searchOffersForGroup helper
                 const offers = await searchOffersForGroup(shopee, group);
+                
+                // Log API response count for debugging
+                console.log(`[RUN-ONCE] API returned ${offers.length} offers for group ${group.name}`);
+                
+                if (offers.length === 0) {
+                    console.log(`[RUN-ONCE] No offers found from API for group ${group.name}. Check category ID or keywords configuration.`);
+                    continue;
+                }
+                
                 const validOffers = offers.filter(o => !sentIds.has(String(o.itemId)));
+                
+                // Log duplicate filtering result
+                if (validOffers.length < offers.length) {
+                    console.log(`[RUN-ONCE] Filtered ${offers.length - validOffers.length} duplicate offers (already sent today) for group ${group.name}`);
+                }
 
                 // Blacklist
                 const blacklist = group.negativeKeywords ? group.negativeKeywords.split(',').map(s=>s.trim().toLowerCase()).filter(s=>s) : [];
@@ -1310,6 +1364,14 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     const title = o.productName.toLowerCase();
                     return !blacklist.some(bad => title.includes(bad));
                 });
+                
+                if (!safeOffer) {
+                    if (validOffers.length > 0) {
+                        console.log(`[RUN-ONCE] All ${validOffers.length} valid offers filtered by blacklist for group ${group.name}`);
+                    } else {
+                        console.log(`[RUN-ONCE] No valid offers to send (all duplicates) for group ${group.name}`);
+                    }
+                }
                 
                 if (safeOffer) {
                     const shortLink = await shopee.generateShortLink(safeOffer.offerLink);
