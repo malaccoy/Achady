@@ -38,6 +38,50 @@ const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled auto
 const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
 const INTERVAL_BUFFER_SECONDS = 5;    // Buffer for interval checks to account for timing variations
 
+// Shopee Rate Limit handling (2000 calls/hour = ~33/min)
+// Error code 10030 indicates rate limit exceeded
+const RATE_LIMIT_BACKOFF_MULTIPLIER = 2; // Exponential backoff multiplier
+const RATE_LIMIT_INITIAL_WAIT_MS = 60000; // 1 minute initial wait
+const RATE_LIMIT_MAX_WAIT_MS = 480000; // 8 minutes max wait
+
+// Rate limit state per user (in-memory, cleared on restart)
+const rateLimitState = new Map(); // userId -> { backoffMs, rateLimitedUntil }
+
+/**
+ * Handle rate limit for a user - implements exponential backoff
+ * @param {string} userId - User ID
+ * @returns {number} - Current backoff wait time in ms
+ */
+function handleRateLimit(userId) {
+    const state = rateLimitState.get(userId) || { backoffMs: RATE_LIMIT_INITIAL_WAIT_MS };
+    // Set rate limit until based on current backoff time
+    const currentWait = state.backoffMs;
+    state.rateLimitedUntil = Date.now() + currentWait;
+    // Increase backoff for next occurrence (exponential backoff)
+    state.backoffMs = Math.min(state.backoffMs * RATE_LIMIT_BACKOFF_MULTIPLIER, RATE_LIMIT_MAX_WAIT_MS);
+    rateLimitState.set(userId, state);
+    console.log(`[RATE LIMIT] User ${userId}: Backing off for ${currentWait / 1000}s until ${new Date(state.rateLimitedUntil).toISOString()}`);
+    return currentWait;
+}
+
+/**
+ * Check if user is currently rate limited
+ * @param {string} userId - User ID
+ * @returns {boolean} - True if rate limited
+ */
+function isRateLimited(userId) {
+    const state = rateLimitState.get(userId);
+    if (!state || !state.rateLimitedUntil) return false;
+    if (Date.now() > state.rateLimitedUntil) {
+        // Cooldown expired, reset backoff
+        state.backoffMs = RATE_LIMIT_INITIAL_WAIT_MS;
+        state.rateLimitedUntil = null;
+        rateLimitState.set(userId, state);
+        return false;
+    }
+    return true;
+}
+
 // Meta Business Login constants (Instagram via Facebook OAuth)
 // App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
 const META_FB_APP_ID = '1400700461730372';
@@ -437,15 +481,29 @@ class ShopeeClient {
             });
             if (data.errors && data.errors.length > 0) {
                 const errorMessage = data.errors[0]?.message || JSON.stringify(data.errors);
-                throw new Error(`Shopee API Error: ${errorMessage}`);
+                const errorCode = data.errors[0]?.extensions?.code;
+                // Create error with additional metadata for rate limit detection
+                const error = new Error(`Shopee API Error: ${errorMessage}`);
+                error.shopeeErrorCode = errorCode;
+                throw error;
             }
             return data.data;
         } catch (e) {
             // Preserve axios error details for better debugging
             if (e.response) {
-                throw new Error(`Shopee API HTTP Error ${e.response.status}: ${e.response.data?.message || e.message}`);
+                const error = new Error(`Shopee API HTTP Error ${e.response.status}: ${e.response.data?.message || e.message}`);
+                error.httpStatus = e.response.status;
+                // Check for rate limit (HTTP 429 or error code 10030)
+                if (e.response.status === 429) {
+                    error.isRateLimit = true;
+                }
+                throw error;
             }
-            throw new Error(e.message || 'Unknown Shopee API error');
+            // Preserve shopeeErrorCode if present (rate limit code 10030)
+            if (e.shopeeErrorCode === 10030 || e.shopeeErrorCode === '10030') {
+                e.isRateLimit = true;
+            }
+            throw e;
         }
     }
     
@@ -460,7 +518,7 @@ class ShopeeClient {
      * @param {number} [options.minDiscountPercent] - Filter: minimum discount percentage
      * @param {number} [options.minRating] - Filter: minimum rating
      * @param {number} [options.minSales] - Filter: minimum sales count
-     * @returns {Promise<Array>} Array of product offers
+     * @returns {Promise<{offers: Array, hasNextPage: boolean, pageInfo: Object}>} Object with offers array and pagination info
      */
     async searchOffersV2(options = {}) {
         const {
@@ -474,7 +532,7 @@ class ShopeeClient {
             minSales
         } = options;
         
-        // Build GraphQL query with all relevant fields
+        // Build GraphQL query with all relevant fields including pageInfo for pagination
         const q = `query($keyword: String, $productCatId: Int, $limit: Int, $sortType: Int, $page: Int) { 
             productOfferV2(keyword: $keyword, productCatId: $productCatId, limit: $limit, sortType: $sortType, page: $page) { 
                 nodes { 
@@ -489,7 +547,12 @@ class ShopeeClient {
                     priceDiscountRate
                     ratingStar
                     sales
-                } 
+                }
+                pageInfo {
+                    hasNextPage
+                    page
+                    limit
+                }
             } 
         }`;
         
@@ -499,6 +562,8 @@ class ShopeeClient {
         
         const res = await this.request(q, variables);
         let offers = res?.productOfferV2?.nodes || [];
+        const pageInfo = res?.productOfferV2?.pageInfo || { hasNextPage: false, page, limit };
+        const hasNextPage = pageInfo.hasNextPage || false;
         const initialCount = offers.length;
         
         // Apply server-side filters
@@ -540,7 +605,14 @@ class ShopeeClient {
             console.log(`[SEARCH] Filter summary: ${initialCount} -> ${offers.length} offers after quality filters`);
         }
         
-        return offers;
+        // Return structured response with pagination info
+        return {
+            offers,
+            hasNextPage,
+            pageInfo,
+            rawCount: initialCount,
+            filteredCount: offers.length
+        };
     }
     
     /**
@@ -656,8 +728,128 @@ function isWithinTimeWindow(startTime, endTime) {
 }
 
 /**
- * Helper function to search for offers based on group configuration
- * Uses productOfferV2 API with category, filters, and sorting if configured
+ * Constants for category rotation
+ */
+const ROTATION_SEEN_OFFERS_TTL_HOURS = 24; // TTL for seen offers dedupe
+const ROTATION_SEEN_OFFERS_MAX_SIZE = 500; // Max size for seen offers set per group
+const ROTATION_MAX_SWITCHES_PER_TICK = 5; // Max category switches per automation tick
+
+/**
+ * Get or create rotation state for a group
+ * @param {string} groupId - Group ID
+ * @returns {Promise<Object>} Rotation state
+ */
+async function getRotationState(groupId) {
+    let state = await prisma.categoryRotationState.findUnique({
+        where: { groupId }
+    });
+    
+    if (!state) {
+        state = await prisma.categoryRotationState.create({
+            data: {
+                groupId,
+                currentCategoryIndex: 0,
+                currentPageByCategory: '{}',
+                emptyStreakByCategory: '{}',
+                cooldownUntilByCategory: '{}',
+                seenOfferKeys: '[]',
+                seenOfferKeysUpdatedAt: new Date()
+            }
+        });
+    }
+    
+    return {
+        ...state,
+        currentPageByCategory: JSON.parse(state.currentPageByCategory || '{}'),
+        emptyStreakByCategory: JSON.parse(state.emptyStreakByCategory || '{}'),
+        cooldownUntilByCategory: JSON.parse(state.cooldownUntilByCategory || '{}'),
+        seenOfferKeys: JSON.parse(state.seenOfferKeys || '[]')
+    };
+}
+
+/**
+ * Update rotation state in the database
+ * @param {string} groupId - Group ID
+ * @param {Object} updates - State updates
+ */
+async function updateRotationState(groupId, updates) {
+    const data = {};
+    
+    if (updates.currentCategoryIndex !== undefined) {
+        data.currentCategoryIndex = updates.currentCategoryIndex;
+    }
+    if (updates.currentPageByCategory !== undefined) {
+        data.currentPageByCategory = JSON.stringify(updates.currentPageByCategory);
+    }
+    if (updates.emptyStreakByCategory !== undefined) {
+        data.emptyStreakByCategory = JSON.stringify(updates.emptyStreakByCategory);
+    }
+    if (updates.cooldownUntilByCategory !== undefined) {
+        data.cooldownUntilByCategory = JSON.stringify(updates.cooldownUntilByCategory);
+    }
+    if (updates.seenOfferKeys !== undefined) {
+        data.seenOfferKeys = JSON.stringify(updates.seenOfferKeys);
+        data.seenOfferKeysUpdatedAt = new Date();
+    }
+    
+    await prisma.categoryRotationState.upsert({
+        where: { groupId },
+        update: data,
+        create: {
+            groupId,
+            ...data
+        }
+    });
+}
+
+/**
+ * Clean up seen offer keys that are older than TTL
+ * @param {Array} seenOfferKeys - Array of seen offer keys
+ * @param {Date} lastUpdated - Last update timestamp
+ * @returns {Array} Cleaned array
+ */
+function cleanSeenOfferKeys(seenOfferKeys, lastUpdated) {
+    // If last updated is older than TTL, clear the set
+    const ttlMs = ROTATION_SEEN_OFFERS_TTL_HOURS * 60 * 60 * 1000;
+    if (lastUpdated && (Date.now() - new Date(lastUpdated).getTime()) > ttlMs) {
+        return [];
+    }
+    
+    // Trim to max size (keep newest)
+    if (seenOfferKeys.length > ROTATION_SEEN_OFFERS_MAX_SIZE) {
+        return seenOfferKeys.slice(-ROTATION_SEEN_OFFERS_MAX_SIZE);
+    }
+    
+    return seenOfferKeys;
+}
+
+/**
+ * Find the next eligible category index (not in cooldown)
+ * @param {Array} productCatIds - Array of category IDs
+ * @param {number} startIndex - Starting index
+ * @param {Object} cooldownUntilByCategory - Cooldown map
+ * @returns {{index: number, categoryId: number} | null} Next eligible category or null
+ */
+function findNextEligibleCategory(productCatIds, startIndex, cooldownUntilByCategory) {
+    const now = Date.now();
+    
+    for (let i = 0; i < productCatIds.length; i++) {
+        const index = (startIndex + i) % productCatIds.length;
+        const categoryId = productCatIds[index];
+        const cooldownUntil = cooldownUntilByCategory[String(categoryId)];
+        
+        // Check if category is not in cooldown
+        if (!cooldownUntil || new Date(cooldownUntil).getTime() < now) {
+            return { index, categoryId };
+        }
+    }
+    
+    return null; // All categories in cooldown
+}
+
+/**
+ * Helper function to search for offers based on group configuration with category rotation
+ * Uses productOfferV2 API with category, filters, sorting, and automatic rotation
  * Falls back to keyword-only search for backward compatibility
  * @param {Object} shopee - ShopeeClient instance
  * @param {Object} group - Group configuration from database
@@ -684,34 +876,143 @@ async function searchOffersForGroup(shopee, group) {
     const useAdvancedSearch = productCatIds && productCatIds.length > 0;
     
     if (useAdvancedSearch) {
-        // Use productOfferV2 with category ID and filters
-        const productCatId = productCatIds[0]; // Use first category ID
+        // Check if rotation is enabled for this group (default: true)
+        const rotationEnabled = group.rotationEnabled !== false;
+        const rotationEmptyThreshold = group.rotationEmptyThreshold || 3;
+        const rotationCooldownMinutes = group.rotationCooldownMinutes || 15;
         
-        // Get keyword if available (optional for category search)
-        let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : [];
-        const keyword = keywords.length > 0 ? keywords[Math.floor(Math.random() * keywords.length)] : undefined;
-        
-        const options = {
-            productCatId,
-            keyword,
-            sortType: group.sortType || 2, // Default to ITEM_SOLD_DESC
-            limit: 20,
-            page: 1
-        };
-        
-        // Add filters if configured
-        if (group.minDiscountPercent !== null && group.minDiscountPercent !== undefined) {
-            options.minDiscountPercent = group.minDiscountPercent;
-        }
-        if (group.minRating !== null && group.minRating !== undefined) {
-            options.minRating = group.minRating;
-        }
-        if (group.minSales !== null && group.minSales !== undefined) {
-            options.minSales = group.minSales;
+        // If only one category or rotation disabled, use simple search
+        if (productCatIds.length === 1 || !rotationEnabled) {
+            return await searchWithCategory(shopee, group, productCatIds[0], 1);
         }
         
-        console.log(`[SEARCH] Using productOfferV2 with category ${productCatId} for group ${group.name}`);
-        return await shopee.searchOffersV2(options);
+        // Get rotation state for this group
+        const state = await getRotationState(group.id);
+        
+        // Clean up seen offer keys if needed
+        const cleanedSeenOffers = cleanSeenOfferKeys(state.seenOfferKeys, state.seenOfferKeysUpdatedAt);
+        if (cleanedSeenOffers.length !== state.seenOfferKeys.length) {
+            state.seenOfferKeys = cleanedSeenOffers;
+        }
+        
+        let switchCount = 0;
+        let categoryIndex = state.currentCategoryIndex;
+        
+        // Try to find offers, rotating categories as needed
+        while (switchCount < ROTATION_MAX_SWITCHES_PER_TICK && switchCount < productCatIds.length) {
+            // Find next eligible category (not in cooldown)
+            const eligible = findNextEligibleCategory(productCatIds, categoryIndex, state.cooldownUntilByCategory);
+            
+            if (!eligible) {
+                console.log(`[ROTATION] Group ${group.name}: All ${productCatIds.length} categories are in cooldown. Waiting...`);
+                return [];
+            }
+            
+            const { index: catIndex, categoryId } = eligible;
+            const currentPage = state.currentPageByCategory[String(categoryId)] || 1;
+            
+            console.log(`[ROTATION] Group ${group.name}: Trying category ${categoryId} (index ${catIndex}), page ${currentPage}`);
+            
+            try {
+                // Fetch offers for this category
+                const result = await searchWithCategory(shopee, group, categoryId, currentPage);
+                const offers = result;
+                const hasNextPage = result._hasNextPage || false;
+                
+                // Filter out already-seen offers
+                const seenSet = new Set(state.seenOfferKeys);
+                const newOffers = offers.filter(o => !seenSet.has(String(o.itemId)));
+                
+                console.log(`[ROTATION] Group ${group.name}: Category ${categoryId} returned ${offers.length} offers, ${newOffers.length} new (page ${currentPage}, hasNextPage: ${hasNextPage})`);
+                
+                // Handle empty results or end of pagination
+                if (newOffers.length === 0 || !hasNextPage) {
+                    // Increment empty streak for this category
+                    const emptyStreak = (state.emptyStreakByCategory[String(categoryId)] || 0) + 1;
+                    state.emptyStreakByCategory[String(categoryId)] = emptyStreak;
+                    
+                    console.log(`[ROTATION] Group ${group.name}: Category ${categoryId} empty streak: ${emptyStreak}/${rotationEmptyThreshold}`);
+                    
+                    // Check if we should rotate to next category
+                    if (emptyStreak >= rotationEmptyThreshold || (!hasNextPage && newOffers.length === 0)) {
+                        // Put this category in cooldown
+                        state.cooldownUntilByCategory[String(categoryId)] = new Date(Date.now() + rotationCooldownMinutes * 60 * 1000).toISOString();
+                        // Reset page for this category
+                        state.currentPageByCategory[String(categoryId)] = 1;
+                        // Move to next category index
+                        categoryIndex = (catIndex + 1) % productCatIds.length;
+                        state.currentCategoryIndex = categoryIndex;
+                        
+                        console.log(`[ROTATION] Group ${group.name}: Category ${categoryId} put in cooldown for ${rotationCooldownMinutes} min. Rotating to index ${categoryIndex}`);
+                        
+                        // Persist state
+                        await updateRotationState(group.id, state);
+                        
+                        switchCount++;
+                        continue; // Try next category
+                    }
+                }
+                
+                // We have offers - success!
+                if (newOffers.length > 0) {
+                    // Reset empty streak for this category
+                    state.emptyStreakByCategory[String(categoryId)] = 0;
+                    
+                    // Advance page if there's more
+                    if (hasNextPage) {
+                        state.currentPageByCategory[String(categoryId)] = currentPage + 1;
+                    } else {
+                        // End of pagination - reset to page 1 for next time
+                        state.currentPageByCategory[String(categoryId)] = 1;
+                    }
+                    
+                    // Update current category index
+                    state.currentCategoryIndex = catIndex;
+                    
+                    // Persist state (page and category updates)
+                    await updateRotationState(group.id, state);
+                    
+                    console.log(`[ROTATION] Group ${group.name}: Returning ${newOffers.length} offers from category ${categoryId}`);
+                    return newOffers;
+                }
+                
+                // No new offers but there may be more pages
+                if (hasNextPage) {
+                    state.currentPageByCategory[String(categoryId)] = currentPage + 1;
+                    // Persist and continue
+                    await updateRotationState(group.id, state);
+                    switchCount++;
+                    continue;
+                }
+                
+            } catch (e) {
+                // Check for rate limit error
+                if (e.isRateLimit) {
+                    console.error(`[ROTATION] Group ${group.name}: Rate limit hit! Backing off...`);
+                    // Don't rotate on rate limit, just return empty
+                    throw e;
+                }
+                
+                console.error(`[ROTATION] Group ${group.name}: Error fetching category ${categoryId}:`, e.message);
+                
+                // Treat API errors as empty results for rotation purposes
+                const emptyStreak = (state.emptyStreakByCategory[String(categoryId)] || 0) + 1;
+                state.emptyStreakByCategory[String(categoryId)] = emptyStreak;
+                
+                if (emptyStreak >= rotationEmptyThreshold) {
+                    state.cooldownUntilByCategory[String(categoryId)] = new Date(Date.now() + rotationCooldownMinutes * 60 * 1000).toISOString();
+                    state.currentPageByCategory[String(categoryId)] = 1;
+                    categoryIndex = (catIndex + 1) % productCatIds.length;
+                    state.currentCategoryIndex = categoryIndex;
+                    await updateRotationState(group.id, state);
+                }
+                
+                switchCount++;
+            }
+        }
+        
+        console.log(`[ROTATION] Group ${group.name}: Exhausted ${switchCount} category switches without finding offers`);
+        return [];
     } else {
         // Fallback to keyword-only search (backward compatibility)
         let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : DEFAULT_KEYWORDS;
@@ -721,6 +1022,49 @@ async function searchOffersForGroup(shopee, group) {
         console.log(`[SEARCH] Using keyword-only search for group ${group.name}`);
         return await shopee.searchOffers(keyword);
     }
+}
+
+/**
+ * Search for offers with a specific category ID
+ * @param {Object} shopee - ShopeeClient instance
+ * @param {Object} group - Group configuration
+ * @param {number} productCatId - Category ID to search
+ * @param {number} page - Page number
+ * @returns {Promise<Array>} Array of offers with _hasNextPage metadata
+ */
+async function searchWithCategory(shopee, group, productCatId, page) {
+    // Get keyword if available (optional for category search)
+    let keywords = group.keywords ? group.keywords.split(',').filter(k=>k) : [];
+    const keyword = keywords.length > 0 ? keywords[Math.floor(Math.random() * keywords.length)] : undefined;
+    
+    const options = {
+        productCatId,
+        keyword,
+        sortType: group.sortType || 2, // Default to ITEM_SOLD_DESC
+        limit: 20,
+        page
+    };
+    
+    // Add filters if configured
+    if (group.minDiscountPercent !== null && group.minDiscountPercent !== undefined) {
+        options.minDiscountPercent = group.minDiscountPercent;
+    }
+    if (group.minRating !== null && group.minRating !== undefined) {
+        options.minRating = group.minRating;
+    }
+    if (group.minSales !== null && group.minSales !== undefined) {
+        options.minSales = group.minSales;
+    }
+    
+    console.log(`[SEARCH] Using productOfferV2 with category ${productCatId}, page ${page} for group ${group.name}`);
+    
+    const result = await shopee.searchOffersV2(options);
+    
+    // Attach hasNextPage to the result array for rotation logic
+    const offers = result.offers || [];
+    offers._hasNextPage = result.hasNextPage || false;
+    
+    return offers;
 }
 
 async function runAutomation() {
@@ -747,6 +1091,14 @@ async function runAutomation() {
             
             if (scheduleEnabled && !isWithinTimeWindow(startTime, endTime)) {
                 console.log(`[JOB] Skipping User ${user.id} - outside time window (${startTime}-${endTime})`);
+                continue;
+            }
+            
+            // Check rate limit status for this user
+            if (isRateLimited(user.id)) {
+                const state = rateLimitState.get(user.id);
+                const remainingMs = state.rateLimitedUntil - Date.now();
+                console.log(`[JOB] Skipping User ${user.id} - rate limited for ${Math.ceil(remainingMs / 1000)}s more`);
                 continue;
             }
             
@@ -778,9 +1130,16 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+            let userRateLimited = false; // Track if user hit rate limit in this run
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
+                
+                // Check if user hit rate limit during this run
+                if (userRateLimited) {
+                    console.log(`[JOB] Skipping remaining groups for User ${user.id} - rate limited`);
+                    break;
+                }
                 
                 // Check if this group was recently sent a message (within intervalMinutes)
                 // This prevents sending multiple different offers to the same group too frequently
@@ -881,6 +1240,30 @@ async function runAutomation() {
                         await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
                 } catch (e) {
+                    // Check for rate limit error
+                    if (e.isRateLimit) {
+                        console.error(`[JOB] Rate limit hit for User ${user.id} - initiating backoff`);
+                        handleRateLimit(user.id);
+                        userRateLimited = true;
+                        
+                        // Log rate limit to database
+                        try {
+                            await prisma.log.create({
+                                data: { 
+                                    userId: user.id, 
+                                    groupName: group.name, 
+                                    productTitle: 'Rate limit Shopee - aguardando cooldown',
+                                    price: '-', 
+                                    status: 'ERROR',
+                                    errorMessage: 'Shopee API rate limit (10030). Backoff aplicado.'
+                                }
+                            });
+                        } catch (logErr) {
+                            console.error(`[JOB] Failed to log rate limit:`, logErr.message);
+                        }
+                        continue; // Skip remaining processing for this group
+                    }
+                    
                     console.error(`[JOB Error User ${user.id} Group ${group.name}]`, e.message);
                     // Log the error to the database for visibility in the UI
                     try {
@@ -975,7 +1358,10 @@ ApiRouter.get('/system/diagnostics', async (req, res) => {
 });
 
 ApiRouter.get('/groups', async (req, res) => {
-    const groups = await prisma.group.findMany({ where: { userId: req.userId } });
+    const groups = await prisma.group.findMany({ 
+        where: { userId: req.userId },
+        include: { rotationState: true }
+    });
     res.json(groups.map(g => {
         // Parse productCatIds from JSON string
         let productCatIds = [];
@@ -987,6 +1373,23 @@ ApiRouter.get('/groups', async (req, res) => {
             }
         }
         
+        // Build rotation state for UI (simplified)
+        let rotationState = null;
+        if (g.rotationState && productCatIds.length > 0) {
+            // Ensure currentCategoryIndex is within bounds (categories may have been removed)
+            const rawIndex = g.rotationState.currentCategoryIndex || 0;
+            const currentCategoryIndex = rawIndex < productCatIds.length ? rawIndex : 0;
+            const currentCategoryId = productCatIds[currentCategoryIndex];
+            const pageByCategory = JSON.parse(g.rotationState.currentPageByCategory || '{}');
+            const currentPage = pageByCategory[String(currentCategoryId)] || 1;
+            
+            rotationState = {
+                currentCategoryIndex,
+                currentCategoryId,
+                currentPage
+            };
+        }
+        
         return {
             ...g, 
             keywords: g.keywords ? g.keywords.split(',') : [], 
@@ -996,7 +1399,12 @@ ApiRouter.get('/groups', async (req, res) => {
             sortType: g.sortType || 2, // Default to ITEM_SOLD_DESC
             minDiscountPercent: g.minDiscountPercent,
             minRating: g.minRating,
-            minSales: g.minSales
+            minSales: g.minSales,
+            // Rotation settings (with defaults)
+            rotationEnabled: g.rotationEnabled !== false, // Default true
+            rotationEmptyThreshold: g.rotationEmptyThreshold || 3,
+            rotationCooldownMinutes: g.rotationCooldownMinutes || 15,
+            rotationState
         };
     }));
 });
@@ -1018,7 +1426,11 @@ ApiRouter.put('/groups/:id', async (req, res) => {
         sortType, 
         minDiscountPercent, 
         minRating, 
-        minSales 
+        minSales,
+        // Rotation settings
+        rotationEnabled,
+        rotationEmptyThreshold,
+        rotationCooldownMinutes
     } = req.body;
     
     const group = await prisma.group.findUnique({ where: { id: req.params.id, userId: req.userId } });
@@ -1067,6 +1479,17 @@ ApiRouter.put('/groups/:id', async (req, res) => {
     }
     if (minSales !== undefined) {
         updateData.minSales = minSales;
+    }
+    
+    // Handle rotation settings
+    if (rotationEnabled !== undefined) {
+        updateData.rotationEnabled = rotationEnabled;
+    }
+    if (rotationEmptyThreshold !== undefined) {
+        updateData.rotationEmptyThreshold = rotationEmptyThreshold;
+    }
+    if (rotationCooldownMinutes !== undefined) {
+        updateData.rotationCooldownMinutes = rotationCooldownMinutes;
     }
 
     await prisma.group.update({
@@ -1420,6 +1843,30 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     await new Promise(r => setTimeout(r, MANUAL_RUN_DELAY_MS));
                 }
             } catch (e) {
+                // Check for rate limit error
+                if (e.isRateLimit) {
+                    console.error(`[RUN-ONCE] Rate limit hit for User ${user.id} - initiating backoff`);
+                    handleRateLimit(user.id);
+                    errorCount++;
+                    
+                    // Log rate limit to database
+                    try {
+                        await prisma.log.create({
+                            data: { 
+                                userId: user.id, 
+                                groupName: group.name, 
+                                productTitle: 'Rate limit Shopee - aguardando cooldown',
+                                price: '-', 
+                                status: 'ERROR',
+                                errorMessage: 'Shopee API rate limit (10030). Backoff aplicado.'
+                            }
+                        });
+                    } catch (logErr) {
+                        console.error(`[RUN-ONCE] Failed to log rate limit:`, logErr.message);
+                    }
+                    break; // Stop processing more groups for this user on rate limit
+                }
+                
                 console.error(`[RUN-ONCE Error User ${user.id} Group ${group.name}]`, e.message);
                 errorCount++;
                 // Log the error to the database for visibility in the UI

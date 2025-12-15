@@ -28,6 +28,18 @@ export interface Group {
   minDiscountPercent?: number | null; // Filter: minimum discount percentage (0-100)
   minRating?: number | null; // Filter: minimum rating (0.0-5.0)
   minSales?: number | null; // Filter: minimum sales count
+  // Category Rotation Settings
+  rotationEnabled?: boolean; // Enable automatic category rotation (default: true)
+  rotationEmptyThreshold?: number; // Rotate after X consecutive empty results (default: 3)
+  rotationCooldownMinutes?: number; // Cooldown per category in minutes (default: 15)
+  // Runtime rotation state (read-only, managed by backend)
+  rotationState?: CategoryRotationState;
+}
+
+export interface CategoryRotationState {
+  currentCategoryIndex: number;
+  currentPage?: number; // Current page for active category
+  currentCategoryId?: number | string; // Active category ID
 }
 
 export interface AutomationConfig {
