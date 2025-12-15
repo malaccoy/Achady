@@ -1451,7 +1451,7 @@ async function graphGet(url, accessToken) {
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   // Build Instagram OAuth URL with required parameters
   const clientId = '1502112714212333';
-  const redirectUri = (process.env.META_IG_REDIRECT_URI || '').trim();
+  const redirectUri = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
   const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
   // Create signed state parameter containing userId for callback verification
@@ -1471,7 +1471,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
 app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
-  const META_IG_REDIRECT_URI = (process.env.META_IG_REDIRECT_URI || '').trim();
+  const META_IG_REDIRECT_URI = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
   console.log('[INSTAGRAM OAUTH] EXCHANGE redirect_uri =', META_IG_REDIRECT_URI);
