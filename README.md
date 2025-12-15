@@ -121,7 +121,7 @@ Configure no `.env`:
 META_APP_ID="seu_app_id_do_meta"
 META_APP_SECRET="seu_app_secret_do_meta"
 META_IG_REDIRECT_URI="https://www.achady.com.br/api/meta/auth/instagram/callback"
-META_IG_SCOPES="instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata"
+META_IG_SCOPES="instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_manage_metadata"
 META_IG_STATE_COOKIE="achady_ig_oauth_state"
 ```
 
