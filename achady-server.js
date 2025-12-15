@@ -1465,36 +1465,25 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
   const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
-  const META_IG_STATE_COOKIE = process.env.META_IG_STATE_COOKIE || 'achady_ig_oauth_state';
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  const { code, state, error: oauthError, error_description } = req.query;
-  const storedState = req.cookies[META_IG_STATE_COOKIE];
+  const { code, error: oauthError, error_description } = req.query;
 
-  // Clear state cookie regardless of outcome
-  res.clearCookie(META_IG_STATE_COOKIE);
-
-  // Handle OAuth errors from Meta
+  // Handle OAuth errors from Instagram
   if (oauthError) {
-    console.error('[META OAUTH] OAuth error:', oauthError, error_description);
+    console.error('[INSTAGRAM OAUTH] OAuth error:', oauthError, error_description);
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(error_description || oauthError)}`);
-  }
-
-  // Validate state (CSRF protection)
-  if (!state || !storedState || state !== storedState) {
-    console.error('[META OAUTH] State mismatch - possible CSRF attack');
-    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=invalid_state`);
   }
 
   // Validate code presence
   if (!code) {
-    console.error('[META OAUTH] No code received');
+    console.error('[INSTAGRAM OAUTH] No code received');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_code`);
   }
 
   // Validate server configuration
   if (!META_APP_ID || !META_APP_SECRET || !META_IG_REDIRECT_URI) {
-    console.error('[META OAUTH] Missing server configuration');
+    console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
