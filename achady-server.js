@@ -1454,20 +1454,26 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const redirectUri = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
   const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
-  const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&force_reauth=true&scope=${encodeURIComponent(scope)}`;
+  // Create signed state parameter containing userId for callback verification
+  // This allows the callback to identify the user without requiring site auth token
+  const statePayload = { userId: req.userId };
+  const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
+
+  const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&force_reauth=true&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
 
   console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth');
   res.redirect(oauthUrl);
 });
 
 // GET: OAuth callback - receives code and exchanges for tokens
-app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (req, res) => {
+// NOTE: This route does NOT require site auth token - userId is extracted from signed state parameter
+app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
   const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  const { code, error: oauthError, error_description } = req.query;
+  const { code, error: oauthError, error_description, state } = req.query;
 
   // Handle OAuth errors from Instagram
   if (oauthError) {
@@ -1479,6 +1485,24 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
   if (!code) {
     console.error('[INSTAGRAM OAUTH] No code received');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_code`);
+  }
+
+  // Verify and extract userId from state parameter
+  if (!state) {
+    console.error('[INSTAGRAM OAUTH] Missing state parameter');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=invalid_state`);
+  }
+
+  let userId;
+  try {
+    const decoded = jwt.verify(state, JWT_SECRET);
+    userId = decoded.userId;
+    if (!userId) {
+      throw new Error('Invalid state payload');
+    }
+  } catch (stateError) {
+    console.error('[INSTAGRAM OAUTH] Invalid or expired state:', stateError.message);
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=invalid_state`);
   }
 
   // Validate server configuration
@@ -1549,7 +1573,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
     await prisma.socialAccount.upsert({
       where: {
         userId_provider: {
-          userId: req.userId,
+          userId: userId,
           provider: 'instagram'
         }
       },
@@ -1563,7 +1587,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
         updatedAt: new Date()
       },
       create: {
-        userId: req.userId,
+        userId: userId,
         provider: 'instagram',
         pageId,
         igBusinessId,
@@ -1574,7 +1598,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
       }
     });
 
-    console.log(`[META OAUTH] Successfully saved integration for user ${req.userId}`);
+    console.log(`[META OAUTH] Successfully saved integration for user ${userId}`);
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
 
   } catch (error) {
