@@ -803,7 +803,10 @@ export const GroupManager: React.FC = () => {
                             max="10"
                             className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
                             value={editRotationEmptyThreshold}
-                            onChange={(e) => setEditRotationEmptyThreshold(parseInt(e.target.value, 10) || 3)}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              setEditRotationEmptyThreshold(isNaN(val) || val < 1 ? 3 : val);
+                            }}
                           />
                         </div>
                         
@@ -818,7 +821,10 @@ export const GroupManager: React.FC = () => {
                             max="120"
                             className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
                             value={editRotationCooldownMinutes}
-                            onChange={(e) => setEditRotationCooldownMinutes(parseInt(e.target.value, 10) || 15)}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              setEditRotationCooldownMinutes(isNaN(val) || val < 1 ? 15 : val);
+                            }}
                           />
                         </div>
                       </div>

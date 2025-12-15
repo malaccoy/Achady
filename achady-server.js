@@ -38,6 +38,50 @@ const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled auto
 const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
 const INTERVAL_BUFFER_SECONDS = 5;    // Buffer for interval checks to account for timing variations
 
+// Shopee Rate Limit handling (2000 calls/hour = ~33/min)
+// Error code 10030 indicates rate limit exceeded
+const RATE_LIMIT_BACKOFF_MULTIPLIER = 2; // Exponential backoff multiplier
+const RATE_LIMIT_INITIAL_WAIT_MS = 60000; // 1 minute initial wait
+const RATE_LIMIT_MAX_WAIT_MS = 480000; // 8 minutes max wait
+
+// Rate limit state per user (in-memory, cleared on restart)
+const rateLimitState = new Map(); // userId -> { backoffMs, rateLimitedUntil }
+
+/**
+ * Handle rate limit for a user - implements exponential backoff
+ * @param {string} userId - User ID
+ * @returns {number} - Current backoff wait time in ms
+ */
+function handleRateLimit(userId) {
+    const state = rateLimitState.get(userId) || { backoffMs: RATE_LIMIT_INITIAL_WAIT_MS };
+    // Set rate limit until based on current backoff time
+    const currentWait = state.backoffMs;
+    state.rateLimitedUntil = Date.now() + currentWait;
+    // Increase backoff for next occurrence (exponential backoff)
+    state.backoffMs = Math.min(state.backoffMs * RATE_LIMIT_BACKOFF_MULTIPLIER, RATE_LIMIT_MAX_WAIT_MS);
+    rateLimitState.set(userId, state);
+    console.log(`[RATE LIMIT] User ${userId}: Backing off for ${currentWait / 1000}s until ${new Date(state.rateLimitedUntil).toISOString()}`);
+    return currentWait;
+}
+
+/**
+ * Check if user is currently rate limited
+ * @param {string} userId - User ID
+ * @returns {boolean} - True if rate limited
+ */
+function isRateLimited(userId) {
+    const state = rateLimitState.get(userId);
+    if (!state || !state.rateLimitedUntil) return false;
+    if (Date.now() > state.rateLimitedUntil) {
+        // Cooldown expired, reset backoff
+        state.backoffMs = RATE_LIMIT_INITIAL_WAIT_MS;
+        state.rateLimitedUntil = null;
+        rateLimitState.set(userId, state);
+        return false;
+    }
+    return true;
+}
+
 // Meta Business Login constants (Instagram via Facebook OAuth)
 // App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
 const META_FB_APP_ID = '1400700461730372';
@@ -925,10 +969,7 @@ async function searchOffersForGroup(shopee, group) {
                     // Update current category index
                     state.currentCategoryIndex = catIndex;
                     
-                    // Add returned offer IDs to seen set (will be updated after actual send)
-                    // Note: We add all offers to seen to avoid re-fetching, but SentOffer handles true dedupe
-                    
-                    // Persist state
+                    // Persist state (page and category updates)
                     await updateRotationState(group.id, state);
                     
                     console.log(`[ROTATION] Group ${group.name}: Returning ${newOffers.length} offers from category ${categoryId}`);
@@ -1053,6 +1094,14 @@ async function runAutomation() {
                 continue;
             }
             
+            // Check rate limit status for this user
+            if (isRateLimited(user.id)) {
+                const state = rateLimitState.get(user.id);
+                const remainingMs = state.rateLimitedUntil - Date.now();
+                console.log(`[JOB] Skipping User ${user.id} - rate limited for ${Math.ceil(remainingMs / 1000)}s more`);
+                continue;
+            }
+            
             // Check if enough time has passed since last automation run
             // Using a small buffer to account for timing variations (processing delays, clock drift)
             // This prevents race conditions when intervalMinutes matches the scheduler interval
@@ -1081,9 +1130,16 @@ async function runAutomation() {
             }
 
             const shopee = new ShopeeClient(user.settings.shopeeAppId, plainSecret);
+            let userRateLimited = false; // Track if user hit rate limit in this run
 
             for (const group of user.groups) {
                 if (!group.chatId) continue;
+                
+                // Check if user hit rate limit during this run
+                if (userRateLimited) {
+                    console.log(`[JOB] Skipping remaining groups for User ${user.id} - rate limited`);
+                    break;
+                }
                 
                 // Check if this group was recently sent a message (within intervalMinutes)
                 // This prevents sending multiple different offers to the same group too frequently
@@ -1184,6 +1240,30 @@ async function runAutomation() {
                         await new Promise(r => setTimeout(r, AUTOMATION_DELAY_MS));
                     }
                 } catch (e) {
+                    // Check for rate limit error
+                    if (e.isRateLimit) {
+                        console.error(`[JOB] Rate limit hit for User ${user.id} - initiating backoff`);
+                        handleRateLimit(user.id);
+                        userRateLimited = true;
+                        
+                        // Log rate limit to database
+                        try {
+                            await prisma.log.create({
+                                data: { 
+                                    userId: user.id, 
+                                    groupName: group.name, 
+                                    productTitle: 'Rate limit Shopee - aguardando cooldown',
+                                    price: '-', 
+                                    status: 'ERROR',
+                                    errorMessage: 'Shopee API rate limit (10030). Backoff aplicado.'
+                                }
+                            });
+                        } catch (logErr) {
+                            console.error(`[JOB] Failed to log rate limit:`, logErr.message);
+                        }
+                        continue; // Skip remaining processing for this group
+                    }
+                    
                     console.error(`[JOB Error User ${user.id} Group ${group.name}]`, e.message);
                     // Log the error to the database for visibility in the UI
                     try {
@@ -1296,8 +1376,10 @@ ApiRouter.get('/groups', async (req, res) => {
         // Build rotation state for UI (simplified)
         let rotationState = null;
         if (g.rotationState && productCatIds.length > 0) {
-            const currentCategoryIndex = g.rotationState.currentCategoryIndex || 0;
-            const currentCategoryId = productCatIds[currentCategoryIndex] || productCatIds[0];
+            // Ensure currentCategoryIndex is within bounds (categories may have been removed)
+            const rawIndex = g.rotationState.currentCategoryIndex || 0;
+            const currentCategoryIndex = rawIndex < productCatIds.length ? rawIndex : 0;
+            const currentCategoryId = productCatIds[currentCategoryIndex];
             const pageByCategory = JSON.parse(g.rotationState.currentPageByCategory || '{}');
             const currentPage = pageByCategory[String(currentCategoryId)] || 1;
             
@@ -1761,6 +1843,30 @@ ApiRouter.post('/automation/run-once', async (req, res) => {
                     await new Promise(r => setTimeout(r, MANUAL_RUN_DELAY_MS));
                 }
             } catch (e) {
+                // Check for rate limit error
+                if (e.isRateLimit) {
+                    console.error(`[RUN-ONCE] Rate limit hit for User ${user.id} - initiating backoff`);
+                    handleRateLimit(user.id);
+                    errorCount++;
+                    
+                    // Log rate limit to database
+                    try {
+                        await prisma.log.create({
+                            data: { 
+                                userId: user.id, 
+                                groupName: group.name, 
+                                productTitle: 'Rate limit Shopee - aguardando cooldown',
+                                price: '-', 
+                                status: 'ERROR',
+                                errorMessage: 'Shopee API rate limit (10030). Backoff aplicado.'
+                            }
+                        });
+                    } catch (logErr) {
+                        console.error(`[RUN-ONCE] Failed to log rate limit:`, logErr.message);
+                    }
+                    break; // Stop processing more groups for this user on rate limit
+                }
+                
                 console.error(`[RUN-ONCE Error User ${user.id} Group ${group.name}]`, e.message);
                 errorCount++;
                 // Log the error to the database for visibility in the UI
