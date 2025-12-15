@@ -52,6 +52,11 @@ export const GroupManager: React.FC = () => {
   const [editMinSales, setEditMinSales] = useState<number | null>(null);
   const [categoryIdInput, setCategoryIdInput] = useState('');
   
+  // Category rotation settings
+  const [editRotationEnabled, setEditRotationEnabled] = useState<boolean>(true);
+  const [editRotationEmptyThreshold, setEditRotationEmptyThreshold] = useState<number>(3);
+  const [editRotationCooldownMinutes, setEditRotationCooldownMinutes] = useState<number>(15);
+  
   // Actions
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -144,6 +149,11 @@ export const GroupManager: React.FC = () => {
     setEditMinRating(group.minRating || null);
     setEditMinSales(group.minSales || null);
     setCategoryIdInput('');
+    
+    // Set rotation fields
+    setEditRotationEnabled(group.rotationEnabled !== false); // Default true
+    setEditRotationEmptyThreshold(group.rotationEmptyThreshold || 3);
+    setEditRotationCooldownMinutes(group.rotationCooldownMinutes || 15);
   };
 
   const closeEditModal = () => {
@@ -159,6 +169,11 @@ export const GroupManager: React.FC = () => {
     setEditMinRating(null);
     setEditMinSales(null);
     setCategoryIdInput('');
+    
+    // Reset rotation fields
+    setEditRotationEnabled(true);
+    setEditRotationEmptyThreshold(3);
+    setEditRotationCooldownMinutes(15);
   };
 
   const addKeyword = () => {
@@ -228,7 +243,11 @@ export const GroupManager: React.FC = () => {
         sortType: editSortType,
         minDiscountPercent: editMinDiscountPercent,
         minRating: editMinRating,
-        minSales: editMinSales
+        minSales: editMinSales,
+        // Rotation settings
+        rotationEnabled: editRotationEnabled,
+        rotationEmptyThreshold: editRotationEmptyThreshold,
+        rotationCooldownMinutes: editRotationCooldownMinutes
       });
       
       // Update local state
@@ -243,7 +262,10 @@ export const GroupManager: React.FC = () => {
               sortType: editSortType,
               minDiscountPercent: editMinDiscountPercent,
               minRating: editMinRating,
-              minSales: editMinSales
+              minSales: editMinSales,
+              rotationEnabled: editRotationEnabled,
+              rotationEmptyThreshold: editRotationEmptyThreshold,
+              rotationCooldownMinutes: editRotationCooldownMinutes
             } 
           : g
       ));
@@ -731,6 +753,79 @@ export const GroupManager: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Rotação de Categorias */}
+              {editProductCatIds.length > 1 && (
+                <div>
+                  <label className="block text-sm font-medium text-green-300 mb-2">
+                    Rotação de Categorias
+                  </label>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Quando uma categoria não retorna ofertas, o sistema automaticamente tenta a próxima categoria configurada.
+                  </p>
+                  
+                  {/* Status atual da rotação */}
+                  {editingGroup?.rotationState && (
+                    <div className="mb-4 p-3 bg-slate-800/50 border border-slate-700 rounded-md">
+                      <p className="text-xs text-slate-300">
+                        <span className="font-medium text-green-400">Categoria atual:</span> {editingGroup.rotationState.currentCategoryId} 
+                        {' '}|{' '}
+                        <span className="font-medium text-green-400">Página:</span> {editingGroup.rotationState.currentPage || 1}
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-4">
+                    {/* Toggle rotação */}
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer"
+                          checked={editRotationEnabled}
+                          onChange={(e) => setEditRotationEnabled(e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                      </label>
+                      <span className="text-sm text-slate-300">Rotação automática de categorias</span>
+                    </div>
+                    
+                    {editRotationEnabled && (
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Threshold */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-2">
+                            Trocar categoria após X tentativas sem resultado
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
+                            value={editRotationEmptyThreshold}
+                            onChange={(e) => setEditRotationEmptyThreshold(parseInt(e.target.value, 10) || 3)}
+                          />
+                        </div>
+                        
+                        {/* Cooldown */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-300 mb-2">
+                            Cooldown por categoria (min)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition text-white"
+                            value={editRotationCooldownMinutes}
+                            onChange={(e) => setEditRotationCooldownMinutes(parseInt(e.target.value, 10) || 15)}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Blacklist */}
               <div>

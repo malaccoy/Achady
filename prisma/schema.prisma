@@ -73,12 +73,35 @@ model Group {
   minRating           Float?   // Minimum rating filter (0.0-5.0)
   minSales            Int?     // Minimum sales count filter
   
+  // Category Rotation Settings
+  rotationEnabled           Boolean  @default(true) // Enable automatic category rotation
+  rotationEmptyThreshold    Int      @default(3)    // Rotate after X consecutive empty/end results
+  rotationCooldownMinutes   Int      @default(15)   // Cooldown per category in minutes
+  
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rotationState CategoryRotationState?
 
   @@index([userId])
+}
+
+// Runtime state for category rotation per group
+model CategoryRotationState {
+  id                    String   @id @default(cuid())
+  groupId               String   @unique
+  currentCategoryIndex  Int      @default(0) // Index into productCatIds array
+  currentPageByCategory String   @default("{}") // JSON: { "categoryId": pageNumber }
+  emptyStreakByCategory String   @default("{}") // JSON: { "categoryId": emptyCount }
+  cooldownUntilByCategory String @default("{}") // JSON: { "categoryId": ISO timestamp }
+  seenOfferKeys         String   @default("[]") // JSON array of seen offer itemIds (limited size)
+  seenOfferKeysUpdatedAt DateTime @default(now()) // TTL tracking for seen offers
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 }
 
 model Session {
