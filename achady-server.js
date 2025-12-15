@@ -1451,7 +1451,7 @@ async function graphGet(url, accessToken) {
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   // Build Instagram OAuth URL with required parameters
   const clientId = '1502112714212333';
-  const redirectUri = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+  const redirectUri = (process.env.META_IG_REDIRECT_URI || '').trim();
   const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
   // Create signed state parameter containing userId for callback verification
@@ -1461,6 +1461,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
 
   const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&force_reauth=true&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
 
+  console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', redirectUri);
   console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth');
   res.redirect(oauthUrl);
 });
@@ -1470,8 +1471,10 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
 app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
-  const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
+  const META_IG_REDIRECT_URI = (process.env.META_IG_REDIRECT_URI || '').trim();
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
+
+  console.log('[INSTAGRAM OAUTH] EXCHANGE redirect_uri =', META_IG_REDIRECT_URI);
 
   const { code, error: oauthError, error_description, state } = req.query;
 
