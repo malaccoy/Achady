@@ -678,6 +678,21 @@ export const GroupManager: React.FC = () => {
                         />
                       ))}
                     </div>
+                    {/* Help section for Shopee category ID */}
+                    <div className="mt-3 p-3 bg-slate-800/50 border border-slate-700 rounded-md">
+                      <p className="text-xs font-medium text-slate-300 mb-1">Ajuda</p>
+                      <p className="text-xs text-slate-400">
+                        Não sabe onde encontrar o ID da categoria na Shopee? Veja o guia oficial:{' '}
+                        <a
+                          href="https://seller.shopee.com.br/edu/category-guide"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-orange-400 hover:text-orange-300 underline"
+                        >
+                          Abrir guia de categorias da Shopee
+                        </a>
+                      </p>
+                    </div>
                   </div>
 
                   {/* Grid for filters */}
