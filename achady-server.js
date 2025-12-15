@@ -1447,39 +1447,17 @@ async function graphGet(url, accessToken) {
   }
 }
 
-// GET: Start Instagram OAuth flow - redirects to Meta login
+// GET: Start Instagram OAuth flow - redirects to Instagram Login
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
-  const META_APP_ID = process.env.META_APP_ID;
-  const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
-  const META_IG_SCOPES = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_manage_comments,instagram_manage_messages,pages_show_list,pages_read_engagement,pages_manage_metadata';
-  const META_IG_STATE_COOKIE = process.env.META_IG_STATE_COOKIE || 'achady_ig_oauth_state';
+  // Build Instagram OAuth URL with required parameters
+  const clientId = '1502112714212333';
+  const redirectUri = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+  const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
 
-  if (!META_APP_ID || !META_IG_REDIRECT_URI) {
-    console.error('[META OAUTH] Missing META_APP_ID or META_IG_REDIRECT_URI');
-    return res.status(500).json({ error: 'Configuração do Meta não encontrada. Contate o suporte.' });
-  }
+  const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&force_reauth=true&scope=${encodeURIComponent(scope)}`;
 
-  // Generate secure state for CSRF protection
-  const state = crypto.randomBytes(32).toString('hex');
-
-  // Save state in httpOnly cookie (10 min expiration)
-  res.cookie(META_IG_STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 10 * 60 * 1000 // 10 minutes
-  });
-
-  // Build OAuth URL
-  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
-  oauthUrl.searchParams.set('client_id', META_APP_ID);
-  oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
-  oauthUrl.searchParams.set('state', state);
-  oauthUrl.searchParams.set('response_type', 'code');
-  oauthUrl.searchParams.set('scope', META_IG_SCOPES);
-
-  console.log('[META OAUTH] Redirecting user to Meta OAuth');
-  res.redirect(oauthUrl.toString());
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth');
+  res.redirect(oauthUrl);
 });
 
 // GET: OAuth callback - receives code and exchanges for tokens
@@ -1487,36 +1465,25 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, requireAuth, async (r
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
   const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
-  const META_IG_STATE_COOKIE = process.env.META_IG_STATE_COOKIE || 'achady_ig_oauth_state';
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  const { code, state, error: oauthError, error_description } = req.query;
-  const storedState = req.cookies[META_IG_STATE_COOKIE];
+  const { code, error: oauthError, error_description } = req.query;
 
-  // Clear state cookie regardless of outcome
-  res.clearCookie(META_IG_STATE_COOKIE);
-
-  // Handle OAuth errors from Meta
+  // Handle OAuth errors from Instagram
   if (oauthError) {
-    console.error('[META OAUTH] OAuth error:', oauthError, error_description);
+    console.error('[INSTAGRAM OAUTH] OAuth error:', oauthError, error_description);
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(error_description || oauthError)}`);
-  }
-
-  // Validate state (CSRF protection)
-  if (!state || !storedState || state !== storedState) {
-    console.error('[META OAUTH] State mismatch - possible CSRF attack');
-    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=invalid_state`);
   }
 
   // Validate code presence
   if (!code) {
-    console.error('[META OAUTH] No code received');
+    console.error('[INSTAGRAM OAUTH] No code received');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_code`);
   }
 
   // Validate server configuration
   if (!META_APP_ID || !META_APP_SECRET || !META_IG_REDIRECT_URI) {
-    console.error('[META OAUTH] Missing server configuration');
+    console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
