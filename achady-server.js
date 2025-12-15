@@ -1457,8 +1457,8 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   // Build Facebook OAuth URL for Meta Business Login (Instagram Business use case)
   const configId = process.env.META_IG_CONFIG_ID;
   
-  // Scopes required for Instagram Business via Graph API
-  const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments,instagram_business_content_publish,instagram_business_manage_insights';
+  // Scopes required for Instagram via Facebook Login (Graph API)
+  const scope = 'pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_comments,instagram_manage_messages';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
