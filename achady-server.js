@@ -732,11 +732,14 @@ async function runAutomation() {
             }
             
             // Check if enough time has passed since last automation run
+            // Using a small buffer (5 seconds = 5/60 minutes) to account for timing variations
+            // This prevents race conditions when intervalMinutes matches the scheduler interval
             const intervalMinutes = user.settings?.intervalMinutes || 5;
             const lastRun = user.settings?.lastAutomationRun;
             if (lastRun) {
                 const minutesSinceLastRun = (Date.now() - lastRun.getTime()) / (1000 * 60);
-                if (minutesSinceLastRun < intervalMinutes) {
+                const intervalWithBuffer = intervalMinutes - (5 / 60); // 5 second buffer
+                if (minutesSinceLastRun < intervalWithBuffer) {
                     console.log(`[JOB] Skipping User ${user.id} - interval not reached (${Math.floor(minutesSinceLastRun)}/${intervalMinutes} min)`);
                     continue;
                 }
