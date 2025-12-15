@@ -1512,32 +1512,42 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   try {
-    // Step 1: Exchange code for short-lived user access token
-    console.log('[META OAUTH] Exchanging code for access token');
-    const tokenUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
-    tokenUrl.searchParams.set('client_id', META_APP_ID);
-    tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
-    tokenUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
-    tokenUrl.searchParams.set('code', code);
+    // Step 1: Exchange code for short-lived user access token using Instagram token endpoint
+    console.log('[META OAUTH] Exchanging code for access token via Instagram API');
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('client_id', META_APP_ID);
+    tokenParams.append('client_secret', META_APP_SECRET);
+    tokenParams.append('grant_type', 'authorization_code');
+    tokenParams.append('redirect_uri', META_IG_REDIRECT_URI);
+    tokenParams.append('code', code);
 
-    const tokenResponse = await axios.get(tokenUrl.toString(), { timeout: 15000 });
+    const tokenResponse = await axios.post(
+      'https://api.instagram.com/oauth/access_token',
+      tokenParams,
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000
+      }
+    );
     const shortLivedToken = tokenResponse.data.access_token;
 
     if (!shortLivedToken) {
-      throw new Error('No access token received from Meta');
+      throw new Error('No access token received from Instagram');
     }
 
-    // Step 2: Exchange for long-lived token
-    console.log('[META OAUTH] Exchanging for long-lived token');
-    const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
-    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-    longLivedUrl.searchParams.set('client_id', META_APP_ID);
-    longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
-    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
-
-    const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
-    const longLivedToken = longLivedResponse.data.access_token;
-    const expiresIn = longLivedResponse.data.expires_in; // seconds (typically ~60 days)
+    // Step 2: Long-lived token exchange (temporarily disabled)
+    // TODO: Re-enable when Instagram long-lived token exchange endpoint is confirmed
+    // console.log('[META OAUTH] Exchanging for long-lived token');
+    // const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
+    // longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
+    // longLivedUrl.searchParams.set('client_id', META_APP_ID);
+    // longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
+    // longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
+    // const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
+    // const longLivedToken = longLivedResponse.data.access_token;
+    // const expiresIn = longLivedResponse.data.expires_in;
+    const longLivedToken = shortLivedToken;
+    const expiresIn = null;
 
     // Calculate expiration date with validation
     let expiresAt = null;
