@@ -1534,6 +1534,17 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   try {
+    // --- DIAGNÓSTICO SEGURO (não vaza segredo/código) ---
+    console.log(JSON.stringify({
+      tag: "META_OAUTH_DEBUG",
+      timestamp: new Date().toISOString(),
+      appIdLast4: META_FB_APP_ID ? META_FB_APP_ID.slice(-4) : null,
+      secretLength: META_APP_SECRET ? META_APP_SECRET.length : 0,
+      redirectUri: META_IG_REDIRECT_URI,
+      hasCode: Boolean(code),
+    }));
+    // --- fim diagnóstico seguro ---
+
     // Step 1: Exchange code for short-lived access token via Graph API (GET request)
     console.log('[META OAUTH] Exchanging code for access token via Graph API');
     const tokenUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
