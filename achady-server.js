@@ -36,6 +36,7 @@ const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
 const DEFAULT_KEYWORDS = ['promoção', 'oferta', 'casa', 'cozinha'];
 const AUTOMATION_DELAY_MS = 5000;      // Delay between groups in scheduled automation
 const MANUAL_RUN_DELAY_MS = 2000;      // Shorter delay for manual run
+const INTERVAL_BUFFER_SECONDS = 5;    // Buffer for interval checks to account for timing variations
 
 // Meta Business Login constants (Instagram via Facebook OAuth)
 // App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
@@ -732,15 +733,16 @@ async function runAutomation() {
             }
             
             // Check if enough time has passed since last automation run
-            // Using a small buffer (5 seconds = 5/60 minutes) to account for timing variations
+            // Using a small buffer to account for timing variations (processing delays, clock drift)
             // This prevents race conditions when intervalMinutes matches the scheduler interval
             const intervalMinutes = user.settings?.intervalMinutes || 5;
             const lastRun = user.settings?.lastAutomationRun;
             if (lastRun) {
                 const minutesSinceLastRun = (Date.now() - lastRun.getTime()) / (1000 * 60);
-                const intervalWithBuffer = intervalMinutes - (5 / 60); // 5 second buffer
+                const bufferMinutes = INTERVAL_BUFFER_SECONDS / 60;
+                const intervalWithBuffer = intervalMinutes - bufferMinutes;
                 if (minutesSinceLastRun < intervalWithBuffer) {
-                    console.log(`[JOB] Skipping User ${user.id} - interval not reached (${Math.floor(minutesSinceLastRun)}/${intervalMinutes} min)`);
+                    console.log(`[JOB] Skipping User ${user.id} - interval not reached (${minutesSinceLastRun.toFixed(1)}/${intervalMinutes} min, buffer: ${INTERVAL_BUFFER_SECONDS}s)`);
                     continue;
                 }
             }
