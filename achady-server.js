@@ -1982,13 +1982,30 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             continue;
           }
           
-          // Check idempotency - skip if already processed
-          const existing = await prisma.instagramAutomationEvent.findUnique({
-            where: { commentId }
-          });
-          
-          if (existing) {
-            console.log(`[META WEBHOOK] Skipping duplicate comment ${commentId}`);
+          // Try to create idempotency record early - this prevents race conditions
+          // If record already exists, skip processing (another request already handled it)
+          try {
+            const existingOrNew = await prisma.instagramAutomationEvent.upsert({
+              where: { commentId },
+              update: {}, // No update if exists - just return existing
+              create: {
+                igBusinessId,
+                commentId,
+                mediaId,
+                ruleId: null,
+                status: 'PROCESSED',
+                error: 'Processing started'
+              }
+            });
+            
+            // If record existed before (status not 'Processing started'), skip
+            if (existingOrNew.error !== 'Processing started') {
+              console.log(`[META WEBHOOK] Skipping duplicate comment ${commentId}`);
+              continue;
+            }
+          } catch (e) {
+            // Handle concurrent upsert race condition
+            console.log(`[META WEBHOOK] Skipping comment ${commentId} - concurrent processing`);
             continue;
           }
           
@@ -2157,9 +2174,15 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             }
           }
           
-          // Record event for idempotency
-          await prisma.instagramAutomationEvent.create({
-            data: {
+          // Update event record with final status (upsert to handle race conditions)
+          await prisma.instagramAutomationEvent.upsert({
+            where: { commentId },
+            update: {
+              ruleId: matchedRule.id,
+              status: eventStatus,
+              error: eventError
+            },
+            create: {
               igBusinessId,
               commentId,
               mediaId,
@@ -2998,7 +3021,7 @@ app.get('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) =
     }
     
     const rules = await prisma.instagramRule.findMany({
-      where: mediaId ? { userId: req.userId, igBusinessId: integration.igBusinessId, OR: [{ mediaId }, { mediaId: null }] } : where,
+      where,
       orderBy: { createdAt: 'desc' }
     });
     

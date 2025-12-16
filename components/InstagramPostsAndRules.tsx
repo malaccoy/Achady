@@ -9,7 +9,7 @@ import {
   deleteInstagramRule,
   testInstagramRules
 } from '../services/api';
-import { InstagramStatus, InstagramPost, InstagramRule, InstagramRulePayload, InstagramMatchType } from '../types';
+import { InstagramStatus, InstagramPost, InstagramRule, InstagramRulePayload, InstagramMatchType, InstagramRuleTestResponse, InstagramRuleTestMatch } from '../types';
 import { 
   Loader2, 
   RefreshCw, 
@@ -73,7 +73,7 @@ export const InstagramPostsAndRules: React.FC = () => {
   // Test state
   const [showTestModal, setShowTestModal] = useState(false);
   const [testText, setTestText] = useState('');
-  const [testResult, setTestResult] = useState<any>(null);
+  const [testResult, setTestResult] = useState<InstagramRuleTestResponse | null>(null);
   const [testing, setTesting] = useState(false);
   
   // Expanded posts
@@ -686,7 +686,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                       <p className="text-slate-500 text-sm">Nenhuma regra correspondeu ao texto</p>
                     ) : (
                       <div className="space-y-3">
-                        {testResult.matches.map((match: any, idx: number) => (
+                        {testResult.matches.map((match: InstagramRuleTestMatch, idx: number) => (
                           <div key={idx} className="p-2 bg-slate-800 rounded">
                             <div className="flex items-center gap-2 mb-1">
                               <CheckCircle2 className="w-4 h-4 text-green-400" />
