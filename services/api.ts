@@ -252,6 +252,25 @@ export const disconnectInstagram = async (): Promise<void> => {
   await request('/meta/instagram/disconnect', { method: 'DELETE' });
 };
 
+// --- Instagram Auto-Reply (Simplified MVP) ---
+
+export interface InstagramAutoReplyConfig {
+  connected: boolean;
+  enabled: boolean;
+  messageTemplate: string;
+}
+
+export const getInstagramAutoReply = async (): Promise<InstagramAutoReplyConfig> => {
+  return request<InstagramAutoReplyConfig>('/meta/instagram/auto-reply');
+};
+
+export const saveInstagramAutoReply = async (enabled: boolean, messageTemplate: string): Promise<{ ok: boolean; enabled: boolean; messageTemplate: string }> => {
+  return request<{ ok: boolean; enabled: boolean; messageTemplate: string }>('/meta/instagram/auto-reply', {
+    method: 'POST',
+    body: JSON.stringify({ enabled, messageTemplate })
+  });
+};
+
 // --- Instagram Posts ---
 
 export const getInstagramPosts = async (limit: number = 25): Promise<InstagramPostsResponse> => {

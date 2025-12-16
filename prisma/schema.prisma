@@ -8,20 +8,20 @@ datasource db {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  email          String    @unique
-  passwordHash   String?   // null se for conta apenas OAuth
-  emailVerified  Boolean   @default(false)
-  verificationToken String?        // token de verificação de email (opcional)
-  resetToken        String?        // token de reset de senha (opcional)
-  resetTokenExpiry  DateTime?      // expiração do reset de senha
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String? // null se for conta apenas OAuth
+  emailVerified     Boolean   @default(false)
+  verificationToken String? // token de verificação de email (opcional)
+  resetToken        String? // token de reset de senha (opcional)
+  resetTokenExpiry  DateTime? // expiração do reset de senha
 
-  lastLoginAt    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // 1:1
-  settings       UserSettings?
+  settings UserSettings?
 
   // 1:N
   groups                  Group[]
@@ -33,55 +33,55 @@ model User {
   socialAccounts          SocialAccount[]
 
   // opcional p/ SaaS multi-tenant (time/empresa)
-  memberships     Membership[]
+  memberships Membership[]
 }
 
 model UserSettings {
-  id                 String    @id @default(cuid())
-  userId             String    @unique
-  shopeeAppId        String?
-  shopeeSecret       String?
-  template           String?
-  automationActive   Boolean   @default(false)
-  intervalMinutes    Int       @default(5)
-  startTime          String    @default("07:00")
-  endTime            String    @default("23:00")
-  scheduleEnabled    Boolean   @default(true)
-  lastAutomationRun  DateTime? // Track when automation last ran for this user
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  shopeeAppId       String?
+  shopeeSecret      String?
+  template          String?
+  automationActive  Boolean   @default(false)
+  intervalMinutes   Int       @default(5)
+  startTime         String    @default("07:00")
+  endTime           String    @default("23:00")
+  scheduleEnabled   Boolean   @default(true)
+  lastAutomationRun DateTime? // Track when automation last ran for this user
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Group {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   userId           String
   name             String
   link             String?
   chatId           String?
-  active           Boolean  @default(true)
-  keywords         String   @default("") // CSV ou texto livre
-  negativeKeywords String   @default("")
-  category         String?  // Categoria do grupo (ex: "Casa & Decoração", "Beleza", etc)
+  active           Boolean   @default(true)
+  keywords         String    @default("") // CSV ou texto livre
+  negativeKeywords String    @default("")
+  category         String? // Categoria do grupo (ex: "Casa & Decoração", "Beleza", etc)
   lastMessageSent  DateTime? // Data/hora da última mensagem enviada
-  
-  // Shopee productOfferV2 API parameters
-  productCatIds       String?  // JSON array of category IDs, e.g. "[12345, 67890]"
-  sortType            Int      @default(2) // Shopee sort type: 1=RELEVANCE, 2=ITEM_SOLD, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION
-  minDiscountPercent  Int?     // Minimum discount percentage filter (0-100)
-  minRating           Float?   // Minimum rating filter (0.0-5.0)
-  minSales            Int?     // Minimum sales count filter
-  
-  // Category Rotation Settings
-  rotationEnabled           Boolean  @default(true) // Enable automatic category rotation
-  rotationEmptyThreshold    Int      @default(3)    // Rotate after X consecutive empty/end results
-  rotationCooldownMinutes   Int      @default(15)   // Cooldown per category in minutes
-  
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Shopee productOfferV2 API parameters
+  productCatIds      String? // JSON array of category IDs, e.g. "[12345, 67890]"
+  sortType           Int     @default(2) // Shopee sort type: 1=RELEVANCE, 2=ITEM_SOLD, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION
+  minDiscountPercent Int? // Minimum discount percentage filter (0-100)
+  minRating          Float? // Minimum rating filter (0.0-5.0)
+  minSales           Int? // Minimum sales count filter
+
+  // Category Rotation Settings
+  rotationEnabled         Boolean @default(true) // Enable automatic category rotation
+  rotationEmptyThreshold  Int     @default(3) // Rotate after X consecutive empty/end results
+  rotationCooldownMinutes Int     @default(15) // Cooldown per category in minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   rotationState CategoryRotationState?
 
   @@index([userId])
@@ -89,15 +89,15 @@ model Group {
 
 // Runtime state for category rotation per group
 model CategoryRotationState {
-  id                    String   @id @default(cuid())
-  groupId               String   @unique
-  currentCategoryIndex  Int      @default(0) // Index into productCatIds array
-  currentPageByCategory String   @default("{}") // JSON: { "categoryId": pageNumber }
-  emptyStreakByCategory String   @default("{}") // JSON: { "categoryId": emptyCount }
-  cooldownUntilByCategory String @default("{}") // JSON: { "categoryId": ISO timestamp }
-  seenOfferKeys         String   @default("[]") // JSON array of seen offer itemIds (limited size)
-  seenOfferKeysUpdatedAt DateTime @default(now()) // TTL tracking for seen offers
-  
+  id                      String   @id @default(cuid())
+  groupId                 String   @unique
+  currentCategoryIndex    Int      @default(0) // Index into productCatIds array
+  currentPageByCategory   String   @default("{}") // JSON: { "categoryId": pageNumber }
+  emptyStreakByCategory   String   @default("{}") // JSON: { "categoryId": emptyCount }
+  cooldownUntilByCategory String   @default("{}") // JSON: { "categoryId": ISO timestamp }
+  seenOfferKeys           String   @default("[]") // JSON array of seen offer itemIds (limited size)
+  seenOfferKeysUpdatedAt  DateTime @default(now()) // TTL tracking for seen offers
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -119,17 +119,17 @@ model Session {
 }
 
 model OAuthAccount {
-  id               String   @id @default(cuid())
-  userId           String
-  provider         String   // "google", "github", etc.
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String // "google", "github", etc.
   providerAccountId String
-  accessToken      String?
-  refreshToken     String?
-  expiresAt        Int?
-  tokenType        String?
-  scope            String?
-  idToken          String?
-  createdAt        DateTime @default(now())
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+  createdAt         DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -138,12 +138,12 @@ model OAuthAccount {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -151,12 +151,12 @@ model RefreshToken {
 }
 
 model EmailVerificationToken {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -164,12 +164,12 @@ model EmailVerificationToken {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -210,7 +210,7 @@ model Log {
   groupName    String
   productTitle String
   price        String
-  status       String   // "SENT", "PENDING", "ERROR"
+  status       String // "SENT", "PENDING", "ERROR"
   errorMessage String?
   timestamp    DateTime @default(now())
 
@@ -218,12 +218,12 @@ model Log {
 }
 
 model SentOffer {
-  id       String   @id @default(cuid())
-  userId   String
-  groupId  String
-  itemId   String   // Shopee item ID
-  keyword  String?
-  sentAt   DateTime @default(now())
+  id      String   @id @default(cuid())
+  userId  String
+  groupId String
+  itemId  String // Shopee item ID
+  keyword String?
+  sentAt  DateTime @default(now())
 
   @@unique([userId, groupId, itemId])
   @@index([userId])
@@ -233,17 +233,17 @@ model SentOffer {
 
 // Social account integrations (Instagram Business, etc.)
 model SocialAccount {
-  id               String    @id @default(cuid())
-  userId           String
-  provider         String    // 'instagram', 'facebook', etc.
-  pageId           String?   // Facebook Page ID
-  igBusinessId     String?   // Instagram Business Account ID
-  igUsername       String?   // Instagram username
-  pageAccessToken  String?   // Encrypted Page Access Token
-  userAccessToken  String?   // Encrypted User Access Token (long-lived)
-  expiresAt        DateTime? // Token expiration date
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  provider        String // 'instagram', 'facebook', etc.
+  pageId          String? // Facebook Page ID
+  igBusinessId    String? // Instagram Business Account ID
+  igUsername      String? // Instagram username
+  pageAccessToken String? // Encrypted Page Access Token
+  userAccessToken String? // Encrypted User Access Token (long-lived)
+  expiresAt       DateTime? // Token expiration date
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -254,18 +254,18 @@ model SocialAccount {
 
 // Instagram Post Cache - stores recent posts for display in the dashboard
 model InstagramPostCache {
-  id            String    @id @default(cuid())
-  userId        String
-  igBusinessId  String
-  mediaId       String    // Instagram media ID
-  caption       String?
-  mediaType     String    // IMAGE, VIDEO, CAROUSEL_ALBUM
-  mediaUrl      String?
-  permalink     String?
-  timestamp     DateTime?
-  raw           String?   // JSON string for optional raw data
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  igBusinessId String
+  mediaId      String // Instagram media ID
+  caption      String?
+  mediaType    String // IMAGE, VIDEO, CAROUSEL_ALBUM
+  mediaUrl     String?
+  permalink    String?
+  timestamp    DateTime?
+  raw          String? // JSON string for optional raw data
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([igBusinessId, mediaId])
   @@index([userId])
@@ -280,11 +280,11 @@ model InstagramRule {
   enabled              Boolean  @default(true)
   matchType            String   @default("CONTAINS") // CONTAINS, EQUALS, REGEX
   keyword              String
-  mediaId              String?  // null = applies to all posts
+  mediaId              String? // null = applies to all posts
   actionSendDM         Boolean  @default(true)
   actionReplyComment   Boolean  @default(false)
-  replyTemplateDM      String   // DM template with placeholders
-  replyTemplateComment String?  // Comment reply template (optional)
+  replyTemplateDM      String // DM template with placeholders
+  replyTemplateComment String? // Comment reply template (optional)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -295,15 +295,28 @@ model InstagramRule {
 
 // Instagram automation event log - for idempotency and tracking
 model InstagramAutomationEvent {
-  id            String   @id @default(cuid())
-  igBusinessId  String
-  commentId     String   @unique // Unique per comment to prevent duplicate processing
-  mediaId       String?
-  ruleId        String?
-  status        String   // PROCESSED, FAILED
-  error         String?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  igBusinessId String
+  commentId    String   @unique // Unique per comment to prevent duplicate processing
+  mediaId      String?
+  ruleId       String?
+  status       String // PROCESSED, FAILED
+  error        String?
+  createdAt    DateTime @default(now())
 
   @@index([igBusinessId])
   @@index([commentId])
+}
+
+// Instagram Auto-Reply configuration - simplified MVP model
+// One rule per account: comment received → send DM via Private Reply
+model InstagramAutoReply {
+  id              String   @id @default(cuid())
+  igUserId        String   @unique // Instagram User ID (same as igBusinessId from SocialAccount)
+  enabled         Boolean  @default(false)
+  messageTemplate String   @default("Olá! Obrigado pelo seu comentário. 😊")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([igUserId])
 }

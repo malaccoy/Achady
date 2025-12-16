@@ -2030,6 +2030,60 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             continue;
           }
           
+          // ============================================================
+          // SIMPLIFIED MVP: Check InstagramAutoReply first (single rule)
+          // ============================================================
+          const autoReply = await prisma.instagramAutoReply.findUnique({
+            where: { igUserId: igBusinessId }
+          });
+          
+          if (autoReply && autoReply.enabled) {
+            console.log(`[META WEBHOOK] Auto-reply enabled for @${socialAccount.igUsername}`);
+            console.log(`[META WEBHOOK] Comment received: "${text}" from @${username}`);
+            
+            let eventStatus = 'PROCESSED';
+            let eventError = null;
+            
+            try {
+              // Send DM via Private Reply API
+              const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
+              await graphPost(url, pageAccessToken, {
+                recipient: { comment_id: commentId },
+                message: { text: autoReply.messageTemplate }
+              });
+              
+              console.log(`[META WEBHOOK] DM sent to @${username}`);
+            } catch (e) {
+              console.error('[META WEBHOOK] Auto-reply DM failed:', e.message);
+              eventStatus = 'FAILED';
+              eventError = `DM failed: ${e.message}`;
+            }
+            
+            // Update event record
+            await prisma.instagramAutomationEvent.upsert({
+              where: { commentId },
+              update: {
+                ruleId: null,
+                status: eventStatus,
+                error: eventError || 'Auto-reply sent'
+              },
+              create: {
+                igBusinessId,
+                commentId,
+                mediaId,
+                ruleId: null,
+                status: eventStatus,
+                error: eventError || 'Auto-reply sent'
+              }
+            });
+            
+            console.log(`[META WEBHOOK] Auto-reply event recorded: ${eventStatus}`);
+            continue; // Skip legacy rule-based processing
+          }
+          // ============================================================
+          // END SIMPLIFIED MVP - Fall through to legacy rule-based system
+          // ============================================================
+          
           // Get post info for permalink
           let permalink = '';
           try {
@@ -2046,7 +2100,7 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             // Ignore cache miss
           }
           
-          // Find enabled rules
+          // Find enabled rules (LEGACY - keyword-based)
           const rules = await prisma.instagramRule.findMany({
             where: {
               userId,
@@ -2059,7 +2113,7 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             }
           });
           
-          console.log(`[META WEBHOOK] Found ${rules.length} rules for user ${userId}`);
+          console.log(`[META WEBHOOK] Found ${rules.length} legacy rules for user ${userId}`);
           
           // Find matching rule
           let matchedRule = null;
@@ -2710,6 +2764,112 @@ app.delete('/api/meta/instagram/disconnect', oauthLimiter, requireAuth, async (r
   } catch (error) {
     console.error('[META DISCONNECT] Error:', error.message);
     res.status(500).json({ error: 'Erro ao desconectar integração' });
+  }
+});
+
+// =======================
+// INSTAGRAM AUTO-REPLY (SIMPLIFIED MVP)
+// =======================
+// Simple model: Comment received → Send DM (Private Reply)
+// Single rule per account, no keyword matching
+
+// GET: Get Instagram auto-reply settings
+app.get('/api/meta/instagram/auto-reply', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      select: {
+        igBusinessId: true
+      }
+    });
+
+    if (!integration || !integration.igBusinessId) {
+      return res.json({ 
+        connected: false, 
+        enabled: false, 
+        messageTemplate: 'Olá! Obrigado pelo seu comentário. 😊' 
+      });
+    }
+
+    // Get auto-reply settings
+    const autoReply = await prisma.instagramAutoReply.findUnique({
+      where: { igUserId: integration.igBusinessId }
+    });
+
+    res.json({
+      connected: true,
+      enabled: autoReply?.enabled || false,
+      messageTemplate: autoReply?.messageTemplate || 'Olá! Obrigado pelo seu comentário. 😊'
+    });
+  } catch (error) {
+    console.error('[INSTAGRAM AUTO-REPLY GET] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar configurações' });
+  }
+});
+
+// POST: Save Instagram auto-reply settings
+app.post('/api/meta/instagram/auto-reply', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { enabled, messageTemplate } = req.body;
+
+    // Validate
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Campo "enabled" deve ser booleano' });
+    }
+    if (typeof messageTemplate !== 'string' || messageTemplate.trim().length === 0) {
+      return res.status(400).json({ error: 'Mensagem automática é obrigatória' });
+    }
+    if (messageTemplate.length > 1000) {
+      return res.status(400).json({ error: 'Mensagem muito longa (máximo 1000 caracteres)' });
+    }
+
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      select: {
+        igBusinessId: true,
+        igUsername: true
+      }
+    });
+
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado. Conecte primeiro na página de conexão.' });
+    }
+
+    // Upsert auto-reply settings
+    const autoReply = await prisma.instagramAutoReply.upsert({
+      where: { igUserId: integration.igBusinessId },
+      update: {
+        enabled,
+        messageTemplate: messageTemplate.trim()
+      },
+      create: {
+        igUserId: integration.igBusinessId,
+        enabled,
+        messageTemplate: messageTemplate.trim()
+      }
+    });
+
+    console.log(`[INSTAGRAM AUTO-REPLY] Settings saved for @${integration.igUsername}: enabled=${enabled}`);
+    res.json({ 
+      ok: true, 
+      enabled: autoReply.enabled,
+      messageTemplate: autoReply.messageTemplate
+    });
+  } catch (error) {
+    console.error('[INSTAGRAM AUTO-REPLY POST] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao salvar configurações' });
   }
 });
 

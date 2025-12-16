@@ -11,6 +11,7 @@ export type MenuItemId =
   | "template"
   | "logs"
   | "instagram"
+  | "instagram-auto-reply"
   | "instagram-rules";
 
 interface LayoutProps {
@@ -29,7 +30,8 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "template", label: "Modelo de Mensagem" },
   { id: "logs", label: "Logs de Envio" },
   { id: "instagram", label: "Instagram" },
-  { id: "instagram-rules", label: "Instagram Posts & Regras" },
+  { id: "instagram-auto-reply", label: "Resposta Automática IG" },
+  { id: "instagram-rules", label: "Posts & Regras (Avançado)" },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({
