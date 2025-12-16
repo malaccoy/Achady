@@ -83,6 +83,11 @@ export const InstagramPostsAndRules: React.FC = () => {
     loadData();
   }, []);
 
+  // Debug: monitor showRuleForm state changes
+  useEffect(() => {
+    console.log('[DEBUG] showRuleForm changed to:', showRuleForm);
+  }, [showRuleForm]);
+
   async function loadData() {
     try {
       setLoading(true);
@@ -202,11 +207,13 @@ export const InstagramPostsAndRules: React.FC = () => {
   }
 
   function handleNewRule(postId?: string) {
+    console.log('[DEBUG] handleNewRule called', { postId });
     setEditingRule(null);
     setRuleForm({
       ...defaultRuleForm,
       mediaId: postId || null
     });
+    console.log('[DEBUG] Setting showRuleForm to true');
     setShowRuleForm(true);
   }
 
@@ -245,6 +252,17 @@ export const InstagramPostsAndRules: React.FC = () => {
         return <Grid className="w-4 h-4" />;
       default:
         return <Image className="w-4 h-4" />;
+    }
+  }
+
+  function getMediaTypeLabel(mediaType: string): string | null {
+    switch (mediaType) {
+      case 'VIDEO':
+        return 'VIDEO';
+      case 'CAROUSEL_ALBUM':
+        return 'CAROUSEL';
+      default:
+        return null;
     }
   }
 
@@ -385,7 +403,7 @@ export const InstagramPostsAndRules: React.FC = () => {
           )}
         </div>
 
-        {/* Posts List */}
+        {/* Posts Grid */}
         <div className="app-card">
           <h2 className="app-card__title flex items-center gap-2">
             <Image className="w-5 h-5 text-orange-500" />
@@ -395,119 +413,174 @@ export const InstagramPostsAndRules: React.FC = () => {
           {posts.length === 0 ? (
             <p className="text-slate-400 text-sm">Nenhum post encontrado. Clique em "Sincronizar" para buscar.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {posts.map(post => {
                 const postRules = getPostRules(post.id);
-                const isExpanded = expandedPosts.has(post.id);
+                const postSpecificRulesCount = postRules.filter(r => r.mediaId === post.id).length;
+                const mediaLabel = getMediaTypeLabel(post.mediaType);
                 
                 return (
-                  <div key={post.id} className="border border-slate-700 rounded-lg overflow-hidden">
-                    {/* Post Header */}
-                    <div 
-                      className="p-3 bg-slate-800/50 flex items-center gap-3 cursor-pointer hover:bg-slate-800"
-                      onClick={() => togglePostExpand(post.id)}
-                    >
-                      {/* Thumbnail */}
+                  <div 
+                    key={post.id} 
+                    className="group relative rounded-lg overflow-hidden border border-slate-700 hover:border-orange-500/50 transition-all cursor-pointer bg-slate-800/30"
+                    onClick={() => setSelectedPost(post)}
+                  >
+                    {/* Thumbnail */}
+                    <div className="aspect-square relative">
                       {post.mediaUrl ? (
                         <img 
                           src={post.mediaUrl} 
                           alt="" 
-                          className="w-16 h-16 object-cover rounded"
+                          className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
                         />
                       ) : (
-                        <div className="w-16 h-16 bg-slate-700 rounded flex items-center justify-center">
+                        <div className="w-full h-full bg-slate-700 flex items-center justify-center">
                           {getMediaIcon(post.mediaType)}
                         </div>
                       )}
                       
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-200 truncate">
-                          {post.caption ? post.caption.substring(0, 100) + (post.caption.length > 100 ? '...' : '') : '(sem legenda)'}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-slate-500">
-                            {post.timestamp ? new Date(post.timestamp).toLocaleDateString('pt-BR') : ''}
-                          </span>
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">
-                            {post.mediaType}
-                          </span>
-                          {postRules.filter(r => r.mediaId === post.id).length > 0 && (
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-900/30 text-orange-300">
-                              {postRules.filter(r => r.mediaId === post.id).length} regras
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      {/* Media Type Label */}
+                      {mediaLabel && (
+                        <span className="absolute top-2 left-2 text-[10px] px-1.5 py-0.5 rounded bg-black/70 text-white font-medium">
+                          {mediaLabel}
+                        </span>
+                      )}
                       
-                      {/* Expand */}
-                      <div className="flex items-center gap-2">
+                      {/* Rules count badge */}
+                      {postSpecificRulesCount > 0 && (
+                        <span className="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded bg-orange-500 text-white font-medium">
+                          {postSpecificRulesCount}
+                        </span>
+                      )}
+                      
+                      {/* Add rule button overlay */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleNewRule(post.id); }}
-                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded"
+                          className="p-2 bg-orange-500 text-white rounded-full hover:bg-orange-600 transition-colors"
                           title="Adicionar regra para este post"
                         >
                           <Plus className="w-4 h-4" />
                         </button>
-                        {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
                       </div>
                     </div>
                     
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div className="p-3 border-t border-slate-700 bg-slate-900/50">
-                        <div className="flex items-center gap-2 mb-3">
-                          {post.permalink && (
-                            <a 
-                              href={post.permalink} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs text-orange-400 hover:underline"
-                            >
-                              Ver no Instagram →
-                            </a>
-                          )}
-                        </div>
-                        
-                        {/* Post-specific rules */}
-                        <h4 className="text-sm font-medium text-slate-300 mb-2">Regras específicas deste post:</h4>
-                        {postRules.filter(r => r.mediaId === post.id).length === 0 ? (
-                          <p className="text-slate-500 text-sm">Nenhuma regra específica</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {postRules.filter(r => r.mediaId === post.id).map(rule => (
-                              <div 
-                                key={rule.id}
-                                className={`p-2 rounded border ${rule.enabled ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300">
-                                      {rule.matchType}
-                                    </span>
-                                    <span className="text-sm text-slate-200">"{rule.keyword}"</span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <button onClick={() => handleEditRule(rule)} className="p-1 text-slate-400 hover:text-white">
-                                      <Edit2 className="w-3 h-3" />
-                                    </button>
-                                    <button onClick={() => handleDeleteRule(rule.id)} className="p-1 text-slate-400 hover:text-red-400">
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Caption/date info (compact) */}
+                    <div className="p-2">
+                      <p className="text-xs text-slate-300 truncate">
+                        {post.caption ? post.caption.substring(0, 40) + (post.caption.length > 40 ? '...' : '') : '(sem legenda)'}
+                      </p>
+                      <span className="text-[10px] text-slate-500">
+                        {post.timestamp ? new Date(post.timestamp).toLocaleDateString('pt-BR') : ''}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+
+        {/* Post Detail Modal */}
+        {selectedPost && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setSelectedPost(null)}>
+            <div className="bg-slate-800 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-100">Detalhes do Post</h3>
+                <button onClick={() => setSelectedPost(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-4 space-y-4">
+                {/* Post Image */}
+                <div className="flex justify-center">
+                  {selectedPost.mediaUrl ? (
+                    <img 
+                      src={selectedPost.mediaUrl} 
+                      alt="" 
+                      className="max-w-full max-h-80 object-contain rounded"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 bg-slate-700 rounded flex items-center justify-center">
+                      {getMediaIcon(selectedPost.mediaType)}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Post Info */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">
+                      {selectedPost.mediaType}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {selectedPost.timestamp ? new Date(selectedPost.timestamp).toLocaleDateString('pt-BR') : ''}
+                    </span>
+                    {selectedPost.permalink && (
+                      <a 
+                        href={selectedPost.permalink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs text-orange-400 hover:underline"
+                      >
+                        Ver no Instagram →
+                      </a>
+                    )}
+                  </div>
+                  
+                  {selectedPost.caption && (
+                    <p className="text-sm text-slate-300 whitespace-pre-wrap">
+                      {selectedPost.caption}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Post-specific rules */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-slate-300">Regras específicas deste post:</h4>
+                    <button 
+                      onClick={() => { handleNewRule(selectedPost.id); setSelectedPost(null); }}
+                      className="text-xs px-2 py-1 bg-orange-500 text-white rounded hover:bg-orange-600"
+                    >
+                      <Plus className="w-3 h-3 inline mr-1" />Adicionar Regra
+                    </button>
+                  </div>
+                  {getPostRules(selectedPost.id).filter(r => r.mediaId === selectedPost.id).length === 0 ? (
+                    <p className="text-slate-500 text-sm">Nenhuma regra específica</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {getPostRules(selectedPost.id).filter(r => r.mediaId === selectedPost.id).map(rule => (
+                        <div 
+                          key={rule.id}
+                          className={`p-2 rounded border ${rule.enabled ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300">
+                                {rule.matchType}
+                              </span>
+                              <span className="text-sm text-slate-200">"{rule.keyword}"</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => { handleEditRule(rule); setSelectedPost(null); }} className="p-1 text-slate-400 hover:text-white">
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              <button onClick={() => handleDeleteRule(rule.id)} className="p-1 text-slate-400 hover:text-red-400">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Rule Form Modal */}
         {showRuleForm && (
