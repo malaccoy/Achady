@@ -21,7 +21,8 @@ export const InstagramConnection: React.FC = () => {
     const username = urlParams.get('username');
     
     if (status === 'connected') {
-      setSuccessMessage(`Instagram @${username || ''} conectado com sucesso.`);
+      const displayUsername = username ? `@${username} ` : '';
+      setSuccessMessage(`Instagram ${displayUsername}conectado com sucesso.`);
       // Reload status to get fresh data
       loadStatus();
     } else if (status === 'error') {

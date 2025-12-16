@@ -2114,6 +2114,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
 
     // Step 3: Get user's Facebook Pages with Instagram Professional Account (Business or Creator)
     // The Graph API field instagram_business_account covers both Business and Creator account types
+    // Note: connected_instagram_account does not support account_type field, so we only request it for instagram_business_account
     console.log('[META OAUTH] Fetching Pages with Instagram Professional Account (Business or Creator)');
     const pagesData = await graphGet(
       'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,account_type},connected_instagram_account{id,username}',
@@ -2272,24 +2273,31 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     const igAccount = pageWithIG.instagram_business_account || pageWithIG.connected_instagram_account;
     const igBusinessId = igAccount.id;
     const igUsername = igAccount.username;
-    const igAccountType = igAccount.account_type || 'BUSINESS'; // account_type: BUSINESS or MEDIA_CREATOR
+    // account_type is only available for instagram_business_account, not connected_instagram_account
+    // If not available, we mark it as PROFESSIONAL (covers both Business and Creator)
+    const igAccountType = igAccount.account_type || 'PROFESSIONAL';
     
-    console.log(`[META OAUTH] Conta Instagram selecionada: @${igUsername} (ID: ${igBusinessId}, Tipo: ${igAccountType})`);
-    console.log(`[META OAUTH] Página do Facebook associada: "${pageName}" (ID: ${pageId})`);
+    console.log(`[META OAUTH] Conta Instagram selecionada: @${igUsername} (Tipo: ${igAccountType})`);
+    console.log(`[META OAUTH] Página do Facebook associada: "${pageName}"`);
 
     // Step 4: Save to database (encrypted tokens)
     // Persisting: page_id, ig_business_id, username, and long-lived token
-    console.log('[META OAUTH] Persistindo dados no banco de dados...');
-    console.log('[META OAUTH] Dados a persistir:', JSON.stringify({
-      userId,
-      provider: 'instagram',
-      pageId,
-      igBusinessId,
-      igUsername,
-      hasPageAccessToken: !!pageAccessToken,
-      hasLongLivedToken: !!longLivedToken,
-      expiresAt: expiresAt ? expiresAt.toISOString() : null
-    }));
+    if (process.env.NODE_ENV !== 'production') {
+      // Only log detailed data in development
+      console.log('[META OAUTH] Persistindo dados no banco de dados...');
+      console.log('[META OAUTH] Dados a persistir:', JSON.stringify({
+        userId: userId.substring(0, 8) + '...', // Mask userId
+        provider: 'instagram',
+        pageId: pageId.substring(0, 8) + '...',
+        igBusinessId: igBusinessId.substring(0, 8) + '...',
+        igUsername,
+        hasPageAccessToken: !!pageAccessToken,
+        hasLongLivedToken: !!longLivedToken,
+        expiresAt: expiresAt ? expiresAt.toISOString() : null
+      }));
+    } else {
+      console.log('[META OAUTH] Persistindo integração Instagram...');
+    }
     
     await prisma.socialAccount.upsert({
       where: {
@@ -2320,9 +2328,9 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     });
 
     console.log('[META OAUTH] ========== SUCESSO ==========');
-    console.log(`[META OAUTH] Integração Instagram salva com sucesso para user ${userId}`);
-    console.log(`[META OAUTH] Instagram: @${igUsername} (${igBusinessId})`);
-    console.log(`[META OAUTH] Página: ${pageName} (${pageId})`);
+    console.log(`[META OAUTH] Integração Instagram salva com sucesso`);
+    console.log(`[META OAUTH] Instagram: @${igUsername}`);
+    console.log(`[META OAUTH] Página: ${pageName}`);
     console.log(`[META OAUTH] Token expira em: ${expiresAt ? expiresAt.toISOString() : 'N/A'}`);
     
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
