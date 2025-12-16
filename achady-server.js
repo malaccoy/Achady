@@ -83,9 +83,10 @@ function isRateLimited(userId) {
 }
 
 // Meta Business Login constants (Instagram via Facebook OAuth)
-// App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
-const META_FB_APP_ID = '1400700461730372';
-const META_IG_REDIRECT_URI = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+// Load from environment variables with fallback to legacy hardcoded values
+// IMPORTANT: META_APP_ID and META_APP_SECRET must match the same Facebook App
+const META_FB_APP_ID = process.env.META_APP_ID || '1400700461730372';
+const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI || 'https://www.achady.com.br/api/meta/auth/instagram/callback';
 
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
