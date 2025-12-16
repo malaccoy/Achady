@@ -251,3 +251,59 @@ model SocialAccount {
   @@index([userId])
   @@index([provider])
 }
+
+// Instagram Post Cache - stores recent posts for display in the dashboard
+model InstagramPostCache {
+  id            String    @id @default(cuid())
+  userId        String
+  igBusinessId  String
+  mediaId       String    // Instagram media ID
+  caption       String?
+  mediaType     String    // IMAGE, VIDEO, CAROUSEL_ALBUM
+  mediaUrl      String?
+  permalink     String?
+  timestamp     DateTime?
+  raw           String?   // JSON string for optional raw data
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([igBusinessId, mediaId])
+  @@index([userId])
+  @@index([igBusinessId])
+}
+
+// Instagram automation rules - keyword-based triggers for DM/comment replies
+model InstagramRule {
+  id                   String   @id @default(cuid())
+  userId               String
+  igBusinessId         String
+  enabled              Boolean  @default(true)
+  matchType            String   @default("CONTAINS") // CONTAINS, EQUALS, REGEX
+  keyword              String
+  mediaId              String?  // null = applies to all posts
+  actionSendDM         Boolean  @default(true)
+  actionReplyComment   Boolean  @default(false)
+  replyTemplateDM      String   // DM template with placeholders
+  replyTemplateComment String?  // Comment reply template (optional)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId])
+  @@index([igBusinessId])
+  @@index([mediaId])
+}
+
+// Instagram automation event log - for idempotency and tracking
+model InstagramAutomationEvent {
+  id            String   @id @default(cuid())
+  igBusinessId  String
+  commentId     String   @unique // Unique per comment to prevent duplicate processing
+  mediaId       String?
+  ruleId        String?
+  status        String   // PROCESSED, FAILED
+  error         String?
+  createdAt     DateTime @default(now())
+
+  @@index([igBusinessId])
+  @@index([commentId])
+}
