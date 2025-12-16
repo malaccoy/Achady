@@ -7,6 +7,7 @@ import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
 import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 import { InstagramConnection } from './components/InstagramConnection';
+import { InstagramPostsAndRules } from './components/InstagramPostsAndRules';
 import { Auth } from './components/Auth';
 import { getMe, logout } from './services/api';
 import { Loader2 } from 'lucide-react';
@@ -45,6 +46,7 @@ function App() {
       case "template": return <TemplateEditor />;
       case "logs": return <LogsTable />;
       case "instagram": return <InstagramConnection />;
+      case "instagram-rules": return <InstagramPostsAndRules />;
       default: return <StatusConnection />;
     }
   };

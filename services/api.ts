@@ -1,5 +1,17 @@
 import { API_BASE_URL } from '../constants';
-import { Group, LogEntry, AutomationConfig, ShopeeConfigResponse, SystemDiagnostics, InstagramStatus } from '../types';
+import { 
+  Group, 
+  LogEntry, 
+  AutomationConfig, 
+  ShopeeConfigResponse, 
+  SystemDiagnostics, 
+  InstagramStatus,
+  InstagramPost,
+  InstagramPostsResponse,
+  InstagramRule,
+  InstagramRulePayload,
+  InstagramRuleTestResponse
+} from '../types';
 
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -238,4 +250,46 @@ export const getInstagramStatus = async (): Promise<InstagramStatus> => {
 
 export const disconnectInstagram = async (): Promise<void> => {
   await request('/meta/instagram/disconnect', { method: 'DELETE' });
+};
+
+// --- Instagram Posts ---
+
+export const getInstagramPosts = async (limit: number = 25): Promise<InstagramPostsResponse> => {
+  return request<InstagramPostsResponse>(`/meta/instagram/posts?limit=${limit}`);
+};
+
+export const syncInstagramPosts = async (): Promise<{ ok: boolean; synced: number }> => {
+  return request<{ ok: boolean; synced: number }>('/meta/instagram/posts/sync', { method: 'POST' });
+};
+
+// --- Instagram Rules ---
+
+export const getInstagramRules = async (mediaId?: string): Promise<InstagramRule[]> => {
+  const query = mediaId ? `?mediaId=${encodeURIComponent(mediaId)}` : '';
+  return request<InstagramRule[]>(`/meta/instagram/rules${query}`);
+};
+
+export const createInstagramRule = async (payload: InstagramRulePayload): Promise<InstagramRule> => {
+  return request<InstagramRule>('/meta/instagram/rules', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+};
+
+export const updateInstagramRule = async (id: string, payload: InstagramRulePayload): Promise<InstagramRule> => {
+  return request<InstagramRule>(`/meta/instagram/rules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+};
+
+export const deleteInstagramRule = async (id: string): Promise<void> => {
+  await request(`/meta/instagram/rules/${id}`, { method: 'DELETE' });
+};
+
+export const testInstagramRules = async (text: string, mediaId?: string): Promise<InstagramRuleTestResponse> => {
+  return request<InstagramRuleTestResponse>('/meta/instagram/rules/test', {
+    method: 'POST',
+    body: JSON.stringify({ text, mediaId })
+  });
 };

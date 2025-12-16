@@ -1939,19 +1939,249 @@ app.get('/api/meta/webhook/instagram', (req, res) => {
   return res.sendStatus(403);
 });
 
-// POST: Meta webhook event receiver (acknowledge immediately)
-app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), (req, res) => {
-  // Log only non-sensitive metadata
-  const eventType = req.body?.object || 'unknown';
-  console.log('[META WEBHOOK] Received event type:', eventType);
-  // Acknowledge quickly - process async if needed in the future
-  return res.status(200).json({ ok: true });
+// POST: Meta webhook event receiver (acknowledge immediately, process async)
+app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (req, res) => {
+  // Acknowledge quickly per Meta requirements
+  res.status(200).json({ ok: true });
+  
+  // Process webhook async
+  try {
+    const eventType = req.body?.object || 'unknown';
+    console.log('[META WEBHOOK] Received event type:', eventType);
+    
+    if (eventType !== 'instagram') {
+      console.log('[META WEBHOOK] Ignoring non-Instagram event');
+      return;
+    }
+    
+    // Log payload structure for debugging (no sensitive data)
+    console.log('[META WEBHOOK] Payload keys:', Object.keys(req.body || {}));
+    
+    const entries = req.body?.entry || [];
+    console.log(`[META WEBHOOK] Processing ${entries.length} entries`);
+    
+    for (const entry of entries) {
+      const igBusinessId = entry.id;
+      const changes = entry.changes || [];
+      
+      console.log(`[META WEBHOOK] Entry for igBusinessId: ${igBusinessId}, changes: ${changes.length}`);
+      
+      for (const change of changes) {
+        // Handle comment events
+        if (change.field === 'comments') {
+          const value = change.value || {};
+          const commentId = value.id;
+          const mediaId = value.media?.id;
+          const text = value.text;
+          const username = value.from?.username;
+          
+          console.log(`[META WEBHOOK] Comment event: commentId=${commentId}, mediaId=${mediaId}, username=${username}`);
+          
+          if (!commentId || !text) {
+            console.log('[META WEBHOOK] Skipping: missing commentId or text');
+            continue;
+          }
+          
+          // Check idempotency - skip if already processed
+          const existing = await prisma.instagramAutomationEvent.findUnique({
+            where: { commentId }
+          });
+          
+          if (existing) {
+            console.log(`[META WEBHOOK] Skipping duplicate comment ${commentId}`);
+            continue;
+          }
+          
+          // Find account owner
+          const socialAccount = await prisma.socialAccount.findFirst({
+            where: {
+              igBusinessId,
+              provider: 'instagram'
+            }
+          });
+          
+          if (!socialAccount) {
+            console.log(`[META WEBHOOK] No account found for igBusinessId ${igBusinessId}`);
+            continue;
+          }
+          
+          const userId = socialAccount.userId;
+          const pageAccessToken = decrypt(socialAccount.pageAccessToken);
+          
+          if (!pageAccessToken) {
+            console.log(`[META WEBHOOK] Invalid token for user ${userId}`);
+            continue;
+          }
+          
+          // Get post info for permalink
+          let permalink = '';
+          try {
+            const postCache = await prisma.instagramPostCache.findUnique({
+              where: {
+                igBusinessId_mediaId: {
+                  igBusinessId,
+                  mediaId
+                }
+              }
+            });
+            permalink = postCache?.permalink || '';
+          } catch (e) {
+            // Ignore cache miss
+          }
+          
+          // Find enabled rules
+          const rules = await prisma.instagramRule.findMany({
+            where: {
+              userId,
+              igBusinessId,
+              enabled: true,
+              OR: [
+                { mediaId: mediaId },
+                { mediaId: null }
+              ]
+            }
+          });
+          
+          console.log(`[META WEBHOOK] Found ${rules.length} rules for user ${userId}`);
+          
+          // Find matching rule
+          let matchedRule = null;
+          for (const rule of rules) {
+            // Helper function defined below, need to use inline check here
+            const lowerText = text.toLowerCase();
+            const lowerKeyword = rule.keyword.toLowerCase();
+            let isMatch = false;
+            
+            try {
+              switch (rule.matchType) {
+                case 'CONTAINS':
+                  isMatch = lowerText.includes(lowerKeyword);
+                  break;
+                case 'EQUALS':
+                  isMatch = lowerText.trim() === lowerKeyword.trim();
+                  break;
+                case 'REGEX':
+                  const regex = new RegExp(rule.keyword, 'i');
+                  isMatch = regex.test(text);
+                  break;
+                default:
+                  isMatch = lowerText.includes(lowerKeyword);
+              }
+            } catch (e) {
+              console.error('[META WEBHOOK] Regex error:', e.message);
+            }
+            
+            if (isMatch) {
+              matchedRule = rule;
+              console.log(`[META WEBHOOK] Rule ${rule.id} matched keyword "${rule.keyword}"`);
+              break;
+            }
+          }
+          
+          if (!matchedRule) {
+            console.log('[META WEBHOOK] No rules matched');
+            // Record as processed but no action
+            await prisma.instagramAutomationEvent.create({
+              data: {
+                igBusinessId,
+                commentId,
+                mediaId,
+                ruleId: null,
+                status: 'PROCESSED',
+                error: 'No matching rules'
+              }
+            });
+            continue;
+          }
+          
+          // Prepare template context
+          const ctx = {
+            comment: text,
+            username: username || '',
+            permalink,
+            mediaId: mediaId || '',
+            igUsername: socialAccount.igUsername || '',
+            whatsappLink: 'https://wa.me/' // Can be customized per user
+          };
+          
+          let eventStatus = 'PROCESSED';
+          let eventError = null;
+          
+          // Execute actions
+          if (matchedRule.actionSendDM) {
+            const dmMessage = matchedRule.replyTemplateDM
+              .replace(/\{comment\}/gi, ctx.comment)
+              .replace(/\{username\}/gi, ctx.username)
+              .replace(/\{permalink\}/gi, ctx.permalink)
+              .replace(/\{mediaId\}/gi, ctx.mediaId)
+              .replace(/\{igUsername\}/gi, ctx.igUsername)
+              .replace(/\{whatsappLink\}/gi, ctx.whatsappLink);
+            
+            try {
+              const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
+              await graphPost(url, pageAccessToken, {
+                recipient: { comment_id: commentId },
+                message: { text: dmMessage }
+              });
+              console.log('[META WEBHOOK] DM sent successfully');
+            } catch (e) {
+              console.error('[META WEBHOOK] DM failed:', e.message);
+              eventStatus = 'FAILED';
+              eventError = `DM failed: ${e.message}`;
+            }
+          }
+          
+          if (matchedRule.actionReplyComment && matchedRule.replyTemplateComment) {
+            const commentMessage = matchedRule.replyTemplateComment
+              .replace(/\{comment\}/gi, ctx.comment)
+              .replace(/\{username\}/gi, ctx.username)
+              .replace(/\{permalink\}/gi, ctx.permalink)
+              .replace(/\{mediaId\}/gi, ctx.mediaId)
+              .replace(/\{igUsername\}/gi, ctx.igUsername)
+              .replace(/\{whatsappLink\}/gi, ctx.whatsappLink);
+            
+            try {
+              const url = `https://graph.facebook.com/v24.0/${commentId}/replies`;
+              await graphPost(url, pageAccessToken, {
+                message: commentMessage
+              });
+              console.log('[META WEBHOOK] Comment reply sent successfully');
+            } catch (e) {
+              console.error('[META WEBHOOK] Comment reply failed:', e.message);
+              if (eventStatus !== 'FAILED') {
+                eventStatus = 'FAILED';
+                eventError = `Comment reply failed: ${e.message}`;
+              } else {
+                eventError += `; Comment reply failed: ${e.message}`;
+              }
+            }
+          }
+          
+          // Record event for idempotency
+          await prisma.instagramAutomationEvent.create({
+            data: {
+              igBusinessId,
+              commentId,
+              mediaId,
+              ruleId: matchedRule.id,
+              status: eventStatus,
+              error: eventError
+            }
+          });
+          
+          console.log(`[META WEBHOOK] Event recorded: ${eventStatus}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[META WEBHOOK] Processing error:', error.message);
+  }
 });
 
 // =======================
 // META INSTAGRAM OAUTH (requires authentication)
 // =======================
-// Helper function for Graph API requests
+// Helper function for Graph API GET requests
 async function graphGet(url, accessToken) {
   try {
     const separator = url.includes('?') ? '&' : '?';
@@ -1961,7 +2191,26 @@ async function graphGet(url, accessToken) {
   } catch (error) {
     // Log error without exposing tokens
     const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error('[GRAPH API] Error:', errorMsg);
+    const errorCode = error.response?.data?.error?.code;
+    const fbtraceId = error.response?.data?.error?.fbtrace_id;
+    console.error('[GRAPH API GET] Error:', errorMsg, errorCode ? `(code: ${errorCode})` : '', fbtraceId ? `(fbtrace: ${fbtraceId})` : '');
+    throw new Error(`Graph API Error: ${errorMsg}`);
+  }
+}
+
+// Helper function for Graph API POST requests
+async function graphPost(url, accessToken, data = {}) {
+  try {
+    const separator = url.includes('?') ? '&' : '?';
+    const fullUrl = `${url}${separator}access_token=${accessToken}`;
+    const response = await axios.post(fullUrl, data, { timeout: 15000 });
+    return response.data;
+  } catch (error) {
+    // Log error without exposing tokens
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    const errorCode = error.response?.data?.error?.code;
+    const fbtraceId = error.response?.data?.error?.fbtrace_id;
+    console.error('[GRAPH API POST] Error:', errorMsg, errorCode ? `(code: ${errorCode})` : '', fbtraceId ? `(fbtrace: ${fbtraceId})` : '');
     throw new Error(`Graph API Error: ${errorMsg}`);
   }
 }
@@ -2438,6 +2687,513 @@ app.delete('/api/meta/instagram/disconnect', oauthLimiter, requireAuth, async (r
   } catch (error) {
     console.error('[META DISCONNECT] Error:', error.message);
     res.status(500).json({ error: 'Erro ao desconectar integração' });
+  }
+});
+
+// =======================
+// INSTAGRAM POSTS & RULES AUTOMATION
+// =======================
+
+// Helper: Match rule against text
+function matchRule(rule, text) {
+  if (!text || !rule.keyword) return false;
+  
+  const lowerText = text.toLowerCase();
+  const lowerKeyword = rule.keyword.toLowerCase();
+  
+  try {
+    switch (rule.matchType) {
+      case 'CONTAINS':
+        return lowerText.includes(lowerKeyword);
+      case 'EQUALS':
+        return lowerText.trim() === lowerKeyword.trim();
+      case 'REGEX':
+        const regex = new RegExp(rule.keyword, 'i');
+        return regex.test(text);
+      default:
+        return lowerText.includes(lowerKeyword);
+    }
+  } catch (e) {
+    console.error('[MATCH RULE] Regex error:', e.message);
+    return false;
+  }
+}
+
+// Helper: Render template with placeholders
+function renderInstagramTemplate(template, ctx) {
+  if (!template) return '';
+  
+  return template
+    .replace(/\{comment\}/gi, ctx.comment || '')
+    .replace(/\{username\}/gi, ctx.username || '')
+    .replace(/\{permalink\}/gi, ctx.permalink || '')
+    .replace(/\{mediaId\}/gi, ctx.mediaId || '')
+    .replace(/\{igUsername\}/gi, ctx.igUsername || '')
+    .replace(/\{whatsappLink\}/gi, ctx.whatsappLink || '');
+}
+
+// Helper: Send Private Reply DM (comment -> DM)
+async function sendPrivateReplyDM({ igBusinessId, commentId, token, message }) {
+  try {
+    // Use the Private Replies API: POST /{ig-user-id}/messages
+    // with recipient: {comment_id: "COMMENT_ID"}
+    const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
+    const result = await graphPost(url, token, {
+      recipient: { comment_id: commentId },
+      message: { text: message }
+    });
+    console.log('[INSTAGRAM DM] Private reply sent successfully');
+    return { success: true, result };
+  } catch (error) {
+    console.error('[INSTAGRAM DM] Failed to send private reply:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// Helper: Reply to comment publicly
+async function replyToComment({ commentId, token, message }) {
+  try {
+    // POST /{comment-id}/replies
+    const url = `https://graph.facebook.com/v24.0/${commentId}/replies`;
+    const result = await graphPost(url, token, {
+      message: message
+    });
+    console.log('[INSTAGRAM COMMENT] Reply posted successfully');
+    return { success: true, result };
+  } catch (error) {
+    console.error('[INSTAGRAM COMMENT] Failed to reply:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// Helper: Normalize Instagram webhook payload
+function normalizeInstagramWebhook(payload) {
+  // Instagram webhook structure varies - extract key data
+  const result = {
+    events: []
+  };
+  
+  if (payload?.object !== 'instagram') return result;
+  
+  const entries = payload?.entry || [];
+  for (const entry of entries) {
+    const igBusinessId = entry.id;
+    const changes = entry.changes || [];
+    
+    for (const change of changes) {
+      // Handle comment events
+      if (change.field === 'comments') {
+        const value = change.value || {};
+        result.events.push({
+          type: 'comment',
+          igBusinessId,
+          commentId: value.id,
+          mediaId: value.media?.id,
+          text: value.text,
+          username: value.from?.username
+        });
+      }
+    }
+    
+    // Also check messaging (for direct references)
+    const messaging = entry.messaging || [];
+    for (const msg of messaging) {
+      // Future: handle message events if needed
+    }
+  }
+  
+  return result;
+}
+
+// Zod schema for rule validation
+const InstagramRuleSchema = z.object({
+  keyword: z.string().min(1, 'Keyword é obrigatória'),
+  matchType: z.enum(['CONTAINS', 'EQUALS', 'REGEX']).default('CONTAINS'),
+  mediaId: z.string().optional().nullable(),
+  actionSendDM: z.boolean().default(true),
+  actionReplyComment: z.boolean().default(false),
+  replyTemplateDM: z.string().min(1, 'Template de DM é obrigatório'),
+  replyTemplateComment: z.string().optional().nullable(),
+  enabled: z.boolean().default(true)
+});
+
+// GET: Fetch Instagram posts
+app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 25, 50);
+    
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      }
+    });
+    
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+    
+    const pageAccessToken = decrypt(integration.pageAccessToken);
+    if (!pageAccessToken) {
+      return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
+    }
+    
+    // Fetch media from Instagram Graph API
+    const fields = 'id,caption,media_type,media_url,permalink,timestamp';
+    const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
+    
+    const data = await graphGet(url, pageAccessToken);
+    const posts = data.data || [];
+    
+    // Cache posts in database
+    for (const post of posts) {
+      await prisma.instagramPostCache.upsert({
+        where: {
+          igBusinessId_mediaId: {
+            igBusinessId: integration.igBusinessId,
+            mediaId: post.id
+          }
+        },
+        update: {
+          caption: post.caption || null,
+          mediaType: post.media_type,
+          mediaUrl: post.media_url || null,
+          permalink: post.permalink || null,
+          timestamp: post.timestamp ? new Date(post.timestamp) : null,
+          updatedAt: new Date()
+        },
+        create: {
+          userId: req.userId,
+          igBusinessId: integration.igBusinessId,
+          mediaId: post.id,
+          caption: post.caption || null,
+          mediaType: post.media_type,
+          mediaUrl: post.media_url || null,
+          permalink: post.permalink || null,
+          timestamp: post.timestamp ? new Date(post.timestamp) : null
+        }
+      });
+    }
+    
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        caption: p.caption,
+        mediaType: p.media_type,
+        mediaUrl: p.media_url,
+        permalink: p.permalink,
+        timestamp: p.timestamp
+      })),
+      total: posts.length
+    });
+  } catch (error) {
+    console.error('[INSTAGRAM POSTS] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar posts' });
+  }
+});
+
+// POST: Force sync Instagram posts
+app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      }
+    });
+    
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+    
+    const pageAccessToken = decrypt(integration.pageAccessToken);
+    if (!pageAccessToken) {
+      return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
+    }
+    
+    // Fetch media from Instagram Graph API
+    const fields = 'id,caption,media_type,media_url,permalink,timestamp';
+    const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=50`;
+    
+    const data = await graphGet(url, pageAccessToken);
+    const posts = data.data || [];
+    
+    // Update cache
+    let synced = 0;
+    for (const post of posts) {
+      await prisma.instagramPostCache.upsert({
+        where: {
+          igBusinessId_mediaId: {
+            igBusinessId: integration.igBusinessId,
+            mediaId: post.id
+          }
+        },
+        update: {
+          caption: post.caption || null,
+          mediaType: post.media_type,
+          mediaUrl: post.media_url || null,
+          permalink: post.permalink || null,
+          timestamp: post.timestamp ? new Date(post.timestamp) : null,
+          updatedAt: new Date()
+        },
+        create: {
+          userId: req.userId,
+          igBusinessId: integration.igBusinessId,
+          mediaId: post.id,
+          caption: post.caption || null,
+          mediaType: post.media_type,
+          mediaUrl: post.media_url || null,
+          permalink: post.permalink || null,
+          timestamp: post.timestamp ? new Date(post.timestamp) : null
+        }
+      });
+      synced++;
+    }
+    
+    console.log(`[INSTAGRAM SYNC] Synced ${synced} posts for user ${req.userId}`);
+    res.json({ ok: true, synced });
+  } catch (error) {
+    console.error('[INSTAGRAM SYNC] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao sincronizar posts' });
+  }
+});
+
+// GET: List Instagram rules
+app.get('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const mediaId = req.query.mediaId || null;
+    
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      }
+    });
+    
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+    
+    // Build filter
+    const where = {
+      userId: req.userId,
+      igBusinessId: integration.igBusinessId
+    };
+    
+    // If mediaId provided, show rules for that post OR global rules
+    if (mediaId) {
+      where.OR = [
+        { mediaId: mediaId },
+        { mediaId: null }
+      ];
+    }
+    
+    const rules = await prisma.instagramRule.findMany({
+      where: mediaId ? { userId: req.userId, igBusinessId: integration.igBusinessId, OR: [{ mediaId }, { mediaId: null }] } : where,
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    res.json(rules);
+  } catch (error) {
+    console.error('[INSTAGRAM RULES] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao listar regras' });
+  }
+});
+
+// POST: Create Instagram rule
+app.post('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      }
+    });
+    
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+    
+    // Validate payload
+    const parsed = InstagramRuleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    
+    const data = parsed.data;
+    
+    // Create rule
+    const rule = await prisma.instagramRule.create({
+      data: {
+        userId: req.userId,
+        igBusinessId: integration.igBusinessId,
+        keyword: data.keyword,
+        matchType: data.matchType,
+        mediaId: data.mediaId || null,
+        actionSendDM: data.actionSendDM,
+        actionReplyComment: data.actionReplyComment,
+        replyTemplateDM: data.replyTemplateDM,
+        replyTemplateComment: data.replyTemplateComment || null,
+        enabled: data.enabled
+      }
+    });
+    
+    console.log(`[INSTAGRAM RULE] Created rule ${rule.id} for user ${req.userId}`);
+    res.json(rule);
+  } catch (error) {
+    console.error('[INSTAGRAM RULES CREATE] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao criar regra' });
+  }
+});
+
+// PUT: Update Instagram rule
+app.put('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const ruleId = req.params.id;
+    
+    // Verify ownership
+    const existing = await prisma.instagramRule.findUnique({
+      where: { id: ruleId }
+    });
+    
+    if (!existing || existing.userId !== req.userId) {
+      return res.status(404).json({ error: 'Regra não encontrada' });
+    }
+    
+    // Validate payload
+    const parsed = InstagramRuleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+    
+    const data = parsed.data;
+    
+    // Update rule
+    const rule = await prisma.instagramRule.update({
+      where: { id: ruleId },
+      data: {
+        keyword: data.keyword,
+        matchType: data.matchType,
+        mediaId: data.mediaId || null,
+        actionSendDM: data.actionSendDM,
+        actionReplyComment: data.actionReplyComment,
+        replyTemplateDM: data.replyTemplateDM,
+        replyTemplateComment: data.replyTemplateComment || null,
+        enabled: data.enabled
+      }
+    });
+    
+    console.log(`[INSTAGRAM RULE] Updated rule ${rule.id}`);
+    res.json(rule);
+  } catch (error) {
+    console.error('[INSTAGRAM RULES UPDATE] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao atualizar regra' });
+  }
+});
+
+// DELETE: Delete Instagram rule
+app.delete('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const ruleId = req.params.id;
+    
+    // Verify ownership
+    const existing = await prisma.instagramRule.findUnique({
+      where: { id: ruleId }
+    });
+    
+    if (!existing || existing.userId !== req.userId) {
+      return res.status(404).json({ error: 'Regra não encontrada' });
+    }
+    
+    await prisma.instagramRule.delete({
+      where: { id: ruleId }
+    });
+    
+    console.log(`[INSTAGRAM RULE] Deleted rule ${ruleId}`);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[INSTAGRAM RULES DELETE] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao deletar regra' });
+  }
+});
+
+// POST: Test rules (dev mode)
+app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { mediaId, text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ error: 'Texto do comentário é obrigatório' });
+    }
+    
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      }
+    });
+    
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+    
+    // Find matching rules
+    const rules = await prisma.instagramRule.findMany({
+      where: {
+        userId: req.userId,
+        igBusinessId: integration.igBusinessId,
+        enabled: true,
+        OR: mediaId ? [{ mediaId }, { mediaId: null }] : [{ mediaId: null }]
+      }
+    });
+    
+    const matches = [];
+    const ctx = {
+      comment: text,
+      username: 'test_user',
+      permalink: 'https://instagram.com/p/test',
+      mediaId: mediaId || 'test_media',
+      igUsername: integration.igUsername || '',
+      whatsappLink: 'https://wa.me/5511999999999'
+    };
+    
+    for (const rule of rules) {
+      if (matchRule(rule, text)) {
+        matches.push({
+          ruleId: rule.id,
+          keyword: rule.keyword,
+          matchType: rule.matchType,
+          actionSendDM: rule.actionSendDM,
+          actionReplyComment: rule.actionReplyComment,
+          renderedDM: rule.actionSendDM ? renderInstagramTemplate(rule.replyTemplateDM, ctx) : null,
+          renderedComment: rule.actionReplyComment ? renderInstagramTemplate(rule.replyTemplateComment, ctx) : null
+        });
+      }
+    }
+    
+    res.json({
+      text,
+      rulesChecked: rules.length,
+      matches
+    });
+  } catch (error) {
+    console.error('[INSTAGRAM RULES TEST] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao testar regras' });
   }
 });
 

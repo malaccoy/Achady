@@ -97,3 +97,66 @@ export interface InstagramStatus {
   igBusinessId?: string;
   expiresAt?: string;
 }
+
+// Instagram Post from cache
+export interface InstagramPost {
+  id: string;
+  caption?: string;
+  mediaType: string;
+  mediaUrl?: string;
+  permalink?: string;
+  timestamp?: string;
+}
+
+// Instagram automation rule match types
+export type InstagramMatchType = 'CONTAINS' | 'EQUALS' | 'REGEX';
+
+// Instagram automation rule
+export interface InstagramRule {
+  id: string;
+  enabled: boolean;
+  matchType: InstagramMatchType;
+  keyword: string;
+  mediaId?: string | null;
+  actionSendDM: boolean;
+  actionReplyComment: boolean;
+  replyTemplateDM: string;
+  replyTemplateComment?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Instagram rule create/update payload
+export interface InstagramRulePayload {
+  keyword: string;
+  matchType: InstagramMatchType;
+  mediaId?: string | null;
+  actionSendDM: boolean;
+  actionReplyComment: boolean;
+  replyTemplateDM: string;
+  replyTemplateComment?: string | null;
+  enabled?: boolean;
+}
+
+// Instagram posts response
+export interface InstagramPostsResponse {
+  posts: InstagramPost[];
+  total: number;
+}
+
+// Instagram rule test response
+export interface InstagramRuleTestMatch {
+  ruleId: string;
+  keyword: string;
+  matchType: InstagramMatchType;
+  actionSendDM: boolean;
+  actionReplyComment: boolean;
+  renderedDM?: string | null;
+  renderedComment?: string | null;
+}
+
+export interface InstagramRuleTestResponse {
+  text: string;
+  rulesChecked: number;
+  matches: InstagramRuleTestMatch[];
+}

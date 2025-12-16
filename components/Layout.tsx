@@ -10,7 +10,8 @@ export type MenuItemId =
   | "shopee"
   | "template"
   | "logs"
-  | "instagram";
+  | "instagram"
+  | "instagram-rules";
 
 interface LayoutProps {
   activeSection: MenuItemId;
@@ -28,6 +29,7 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "template", label: "Modelo de Mensagem" },
   { id: "logs", label: "Logs de Envio" },
   { id: "instagram", label: "Instagram" },
+  { id: "instagram-rules", label: "Instagram Posts & Regras" },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({
