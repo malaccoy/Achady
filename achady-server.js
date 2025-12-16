@@ -1973,7 +1973,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   
   // Scopes required for Instagram via Facebook Login (Graph API)
   // Removido: pages_read_engagement (estava causando invalid scope no OAuth)
-  const scope = 'pages_show_list,instagram_basic,instagram_manage_comments,instagram_manage_messages';
+  const scope = 'business_management,pages_show_list,instagram_basic,instagram_manage_comments,instagram_manage_messages';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
