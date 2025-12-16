@@ -14,11 +14,36 @@ export const InstagramConnection: React.FC = () => {
   useEffect(() => {
     loadStatus();
     
-    // Check for OAuth callback success
+    // Check for OAuth callback success or error
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('instagram_connected') === 'true') {
-      setSuccessMessage('Instagram conectado com sucesso.');
-      // Clean URL
+    const status = urlParams.get('status');
+    const reason = urlParams.get('reason');
+    const username = urlParams.get('username');
+    
+    if (status === 'connected') {
+      const displayUsername = username ? `@${username} ` : '';
+      setSuccessMessage(`Instagram ${displayUsername}conectado com sucesso.`);
+      // Reload status to get fresh data
+      loadStatus();
+    } else if (status === 'error') {
+      // Map error reasons to user-friendly messages
+      const errorMessages: Record<string, string> = {
+        'no_pages_found': 'Nenhuma Página do Facebook encontrada. Você precisa ser administrador de pelo menos uma Página do Facebook.',
+        'pages_without_instagram': 'Suas Páginas do Facebook não têm Instagram Profissional conectado. Conecte uma conta Instagram Business ou Creator à sua Página.',
+        'no_instagram_business': 'Nenhuma conta Instagram Profissional encontrada. Verifique se sua conta é Business ou Creator e está conectada a uma Página.',
+        'missing_permissions': 'Permissões insuficientes. Por favor, aceite todas as permissões solicitadas durante a autorização.',
+        'invalid_token': 'Token inválido ou expirado. Por favor, tente conectar novamente.',
+        'token_exchange_failed': 'Erro ao processar autorização. Por favor, tente novamente.',
+        'invalid_state': 'Sessão expirada. Por favor, tente conectar novamente.',
+        'server_config': 'Erro de configuração do servidor. Entre em contato com o suporte.',
+        'no_code': 'Autorização não recebida. Por favor, tente novamente.'
+      };
+      
+      setError(errorMessages[reason || ''] || `Erro na conexão: ${reason || 'desconhecido'}`);
+    }
+    
+    // Clean URL parameters
+    if (status) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
