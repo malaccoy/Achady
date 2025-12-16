@@ -2090,6 +2090,21 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       throw new Error('No long-lived access token received from Graph API');
     }
 
+    // Diagnostic: debug_token to inspect token validity and scopes (safe, does not log token)
+    try {
+      const appAccessToken = `${META_FB_APP_ID}|${META_APP_SECRET}`;
+      const dbgUrl = new URL('https://graph.facebook.com/debug_token');
+      dbgUrl.searchParams.set('input_token', longLivedToken);
+      dbgUrl.searchParams.set('access_token', appAccessToken);
+
+      const dbg = await axios.get(dbgUrl.toString(), { timeout: 15000 });
+      console.log('[META OAUTH] debug_token is_valid=', dbg.data?.data?.is_valid);
+      console.log('[META OAUTH] debug_token scopes=', dbg.data?.data?.scopes);
+      console.log('[META OAUTH] debug_token user_id=', dbg.data?.data?.user_id);
+    } catch (e) {
+      console.log('[META OAUTH] debug_token failed:', e?.response?.data || e.message);
+    }
+
     // Calculate expiration date with validation
     let expiresAt = null;
     if (typeof expiresIn === 'number' && expiresIn > 0 && expiresIn < 365 * 24 * 60 * 60) {
@@ -2103,6 +2118,15 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username},connected_instagram_account{id,username}',
       longLivedToken
     );
+
+    // Diagnostic: pages returned (safe, does not log access_token)
+    console.log('[META OAUTH] pages returned =', Array.isArray(pagesData?.data) ? pagesData.data.length : null);
+    console.log('[META OAUTH] pages names =', (pagesData?.data || []).map(p => p.name));
+    console.log('[META OAUTH] pages has ig =', (pagesData?.data || []).map(p => ({
+      name: p.name,
+      has_iba: !!p.instagram_business_account,
+      has_cia: !!p.connected_instagram_account
+    })));
 
     // Find first page with Instagram Professional Account (Business or Creator)
     const pageWithIG = pagesData.data?.find(page => page.instagram_business_account || page.connected_instagram_account);
