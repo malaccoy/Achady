@@ -2097,28 +2097,29 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       expiresAt = new Date(Date.now() + expiresIn * 1000);
     }
 
-    // Step 3: Get user's Facebook Pages with Instagram Business Account
-    console.log('[META OAUTH] Fetching Pages with Instagram Business Account');
+    // Step 3: Get user's Facebook Pages with Instagram Business Account or Creator Account
+    console.log('[META OAUTH] Fetching Pages with Instagram Professional Account (Business or Creator)');
     const pagesData = await graphGet(
-      'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}',
+      'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username},connected_instagram_account{id,username}',
       longLivedToken
     );
 
-    // Find first page with Instagram Business Account
-    const pageWithIG = pagesData.data?.find(page => page.instagram_business_account);
+    // Find first page with Instagram Professional Account (Business or Creator)
+    const pageWithIG = pagesData.data?.find(page => page.instagram_business_account || page.connected_instagram_account);
 
     if (!pageWithIG) {
-      console.error('[META OAUTH] No Page with Instagram Business Account found');
+      console.error('[META OAUTH] No Page with Instagram Professional Account (Business or Creator) found');
       return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=no_instagram_business`);
     }
 
     const pageId = pageWithIG.id;
     const pageName = pageWithIG.name;
     const pageAccessToken = pageWithIG.access_token;
-    const igBusinessId = pageWithIG.instagram_business_account?.id;
-    const igUsername = pageWithIG.instagram_business_account?.username;
+    const igAccount = pageWithIG.instagram_business_account || pageWithIG.connected_instagram_account;
+    const igBusinessId = igAccount.id;
+    const igUsername = igAccount.username;
 
-    console.log(`[META OAUTH] Found IG Business: @${igUsername} (Page: ${pageName})`);
+    console.log(`[META OAUTH] Found IG Professional: @${igUsername} (Page: ${pageName})`);
 
     // Step 4: Save to database (encrypted tokens)
     await prisma.socialAccount.upsert({
