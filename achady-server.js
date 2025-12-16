@@ -2128,8 +2128,83 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       has_cia: !!p.connected_instagram_account
     })));
 
+    // Use pagesData.data as the initial pages list
+    let allPages = pagesData.data || [];
+
+    // Step 3b: Fallback - If /me/accounts returned empty, try fetching pages via businesses
+    if (allPages.length === 0) {
+      console.log('[META OAUTH] /me/accounts returned empty, trying fallback via /me/businesses');
+      
+      try {
+        // Fetch businesses associated with the user
+        const businessesData = await graphGet(
+          'https://graph.facebook.com/v24.0/me/businesses?fields=id,name',
+          longLivedToken
+        );
+        
+        const businesses = businessesData?.data || [];
+        console.log('[META OAUTH] businesses returned =', businesses.length);
+        console.log('[META OAUTH] businesses names =', businesses.map(b => b.name || 'unnamed'));
+        
+        // Track seen page IDs to avoid duplicates efficiently
+        const seenPageIds = new Set(allPages.map(p => p.id));
+        
+        // For each business, fetch owned_pages (with fallback to client_pages)
+        for (const business of businesses) {
+          const businessName = business.name || 'unnamed';
+          let businessPages = [];
+          
+          // Try owned_pages first
+          try {
+            const ownedPagesData = await graphGet(
+              `https://graph.facebook.com/v24.0/${business.id}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username},connected_instagram_account{id,username}`,
+              longLivedToken
+            );
+            businessPages = ownedPagesData?.data || [];
+            console.log(`[META OAUTH] owned_pages returned = ${businessPages.length} for business ${businessName}`);
+          } catch (ownedErr) {
+            console.log(`[META OAUTH] owned_pages failed for business ${businessName}: ${ownedErr.message}`);
+            
+            // Fallback to client_pages
+            try {
+              const clientPagesData = await graphGet(
+                `https://graph.facebook.com/v24.0/${business.id}/client_pages?fields=id,name,access_token,instagram_business_account{id,username},connected_instagram_account{id,username}`,
+                longLivedToken
+              );
+              businessPages = clientPagesData?.data || [];
+              console.log(`[META OAUTH] client_pages returned = ${businessPages.length} for business ${businessName}`);
+            } catch (clientErr) {
+              console.log(`[META OAUTH] client_pages also failed for business ${businessName}: ${clientErr.message}`);
+            }
+          }
+          
+          // Log pages found (safe, no access_token)
+          if (businessPages.length > 0) {
+            console.log(`[META OAUTH] pages from business ${businessName} names =`, businessPages.map(p => p.name || 'unnamed'));
+            console.log(`[META OAUTH] pages from business ${businessName} has ig =`, businessPages.map(p => ({
+              name: p.name || 'unnamed',
+              has_iba: !!p.instagram_business_account,
+              has_cia: !!p.connected_instagram_account
+            })));
+          }
+          
+          // Add to allPages (avoid duplicates using Set for O(1) lookup)
+          for (const page of businessPages) {
+            if (!seenPageIds.has(page.id)) {
+              seenPageIds.add(page.id);
+              allPages.push(page);
+            }
+          }
+        }
+        
+        console.log('[META OAUTH] total pages after fallback =', allPages.length);
+      } catch (businessErr) {
+        console.error('[META OAUTH] Failed to fetch businesses:', businessErr.message);
+      }
+    }
+
     // Find first page with Instagram Professional Account (Business or Creator)
-    const pageWithIG = pagesData.data?.find(page => page.instagram_business_account || page.connected_instagram_account);
+    const pageWithIG = allPages.find(page => page.instagram_business_account || page.connected_instagram_account);
 
     if (!pageWithIG) {
       console.error('[META OAUTH] No Page with Instagram Professional Account (Business or Creator) found');
