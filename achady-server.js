@@ -83,9 +83,9 @@ function isRateLimited(userId) {
 }
 
 // Instagram Login constants (Instagram-only OAuth, no Facebook Pages)
-// App ID 1400700461730372 - uses Instagram Login API for DM automation
-const META_IG_APP_ID = process.env.META_IG_APP_ID || '1400700461730372';
-const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI || 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+// These should be set via environment variables for production
+const META_IG_APP_ID = process.env.META_IG_APP_ID;
+const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
 
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -2314,8 +2314,18 @@ async function graphPost(url, accessToken, data = {}) {
 
 // GET: Start Instagram OAuth flow - redirects to Instagram Login API (no Facebook Pages)
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
-  // Scopes required for Instagram Login API (DM automation)
-  // Using Instagram-only scopes: instagram_business_basic, instagram_business_manage_messages, instagram_business_manage_comments
+  const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
+
+  // Validate required configuration
+  if (!META_IG_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[INSTAGRAM OAUTH] Missing required configuration: META_IG_APP_ID or META_IG_REDIRECT_URI');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
+  }
+
+  // Instagram Business API scopes for professional accounts
+  // - instagram_business_basic: Read profile info and media
+  // - instagram_business_manage_messages: Send and receive DMs
+  // - instagram_business_manage_comments: Read and reply to comments
   const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments';
 
   // Create signed state parameter containing userId for callback verification
@@ -2377,8 +2387,8 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   // Validate server configuration
-  if (!META_APP_SECRET) {
-    console.error('[INSTAGRAM OAUTH] Missing server configuration (META_APP_SECRET)');
+  if (!META_APP_SECRET || !META_IG_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
@@ -2443,8 +2453,11 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     }
 
     // Step 3: Get Instagram user profile information
+    // We use instagramUserId from token exchange as the initial ID, but the /me endpoint
+    // may return a different ID format, so we prefer the profile response when available
     console.log('[INSTAGRAM OAUTH] Fetching Instagram user profile');
     let igUsername = null;
+    // Initial ID from token exchange response (numeric user_id)
     let igBusinessId = instagramUserId ? String(instagramUserId) : null;
 
     try {
@@ -2454,11 +2467,14 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
 
       const profileResponse = await axios.get(profileUrl.toString(), { timeout: 15000 });
       igUsername = profileResponse.data.username || null;
-      igBusinessId = profileResponse.data.id || igBusinessId;
+      // Prefer the ID from profile endpoint if available (should match token exchange user_id)
+      if (profileResponse.data.id) {
+        igBusinessId = profileResponse.data.id;
+      }
       console.log('[INSTAGRAM OAUTH] Profile fetched: @' + igUsername + ' (id: ' + igBusinessId + ')');
     } catch (profileErr) {
-      console.warn('[INSTAGRAM OAUTH] Could not fetch profile:', profileErr.message);
-      // Continue with the user_id from token exchange
+      // Profile fetch failed - use the user_id from token exchange as fallback
+      console.warn('[INSTAGRAM OAUTH] Could not fetch profile, using token user_id:', profileErr.message);
     }
 
     // Instagram Login flow - no Facebook Pages involved
@@ -2526,18 +2542,21 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     console.error('[INSTAGRAM OAUTH] HTTP Status:', error?.response?.status || 'N/A');
     console.error('[INSTAGRAM OAUTH] Error message:', error.message);
 
-    // Check for specific error types from Instagram API
+    // Instagram API returns errors in different formats:
+    // - OAuth errors: { error_type, code, error_message }
+    // - Graph API errors: { error: { message, type, code } }
     const errorData = error?.response?.data?.error || error?.response?.data;
     if (errorData) {
       console.error('[INSTAGRAM OAUTH] API Error:', JSON.stringify(errorData));
 
-      // Instagram API error codes
-      if (errorData.code === 190 || errorData.error_type === 'OAuthException') {
-        console.error('[INSTAGRAM OAUTH] Invalid or expired token');
-      } else if (errorData.code === 10 || errorData.code === 200) {
+      // Instagram/Graph API error types
+      const errorType = errorData.error_type || errorData.type;
+      const errorMessage = errorData.error_message || errorData.message;
+      
+      if (errorType === 'OAuthException' || errorMessage?.includes('Invalid')) {
+        console.error('[INSTAGRAM OAUTH] Invalid or expired token/code');
+      } else if (errorMessage?.includes('permission')) {
         console.error('[INSTAGRAM OAUTH] Insufficient permissions');
-      } else if (errorData.code === 4) {
-        console.error('[INSTAGRAM OAUTH] Rate limit reached');
       }
     }
 
@@ -2547,17 +2566,20 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         error: 'OAuth failed',
         details: error?.response?.data || error.message,
         errorCode: errorData?.code,
-        errorType: errorData?.error_type
+        errorType: errorData?.error_type || errorData?.type
       });
     }
 
-    // Determine error reason for redirect
+    // Determine error reason for redirect based on error content
     let errorReason = 'token_exchange_failed';
-    if (errorData?.code === 10 || errorData?.code === 200) {
-      errorReason = 'missing_permissions';
-    } else if (errorData?.code === 190 || errorData?.error_type === 'OAuthException') {
+    const errorType = errorData?.error_type || errorData?.type;
+    const errorMessage = errorData?.error_message || errorData?.message || '';
+    
+    if (errorType === 'OAuthException' || errorMessage.includes('Invalid')) {
       errorReason = 'invalid_token';
-    } else if (errorData?.code === 4) {
+    } else if (errorMessage.includes('permission')) {
+      errorReason = 'missing_permissions';
+    } else if (error?.response?.status === 429) {
       errorReason = 'rate_limit';
     }
 
