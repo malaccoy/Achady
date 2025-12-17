@@ -34,7 +34,7 @@ export const InstagramConnection: React.FC = () => {
       // Map error reasons to user-friendly Portuguese messages (no Facebook Pages references)
       const errorMessages: Record<string, string> = {
         'no_instagram_business': 'Nenhuma conta Instagram Profissional encontrada. Verifique se sua conta é Business ou Creator.',
-        'missing_permissions': 'Permissões insuficientes. Por favor, aceite todas as permissões solicitadas durante a autorização.',
+        'missing_permissions': 'Permissão de mensagens não concedida. Para automação de DM, aceite a permissão "instagram_manage_messages" durante a autorização.',
         'permissao_insuficiente': 'Permissão insuficiente para acessar os dados do Instagram. Verifique se sua conta é Profissional (Business ou Criador).',
         'invalid_token': 'Token inválido ou expirado. Por favor, tente conectar novamente.',
         'token_exchange_failed': 'Erro ao processar autorização. Por favor, tente novamente.',
