@@ -10,7 +10,8 @@ import {
   InstagramPostsResponse,
   InstagramRule,
   InstagramRulePayload,
-  InstagramRuleTestResponse
+  InstagramRuleTestResponse,
+  InstagramAutoReplyConfig
 } from '../types';
 
 // Helper for making HTTP requests with common config
@@ -291,5 +292,18 @@ export const testInstagramRules = async (text: string, mediaId?: string): Promis
   return request<InstagramRuleTestResponse>('/meta/instagram/rules/test', {
     method: 'POST',
     body: JSON.stringify({ text, mediaId })
+  });
+};
+
+// --- Instagram Auto-Reply MVP ---
+
+export const getInstagramAutoReply = async (): Promise<InstagramAutoReplyConfig> => {
+  return request<InstagramAutoReplyConfig>('/meta/instagram/auto-reply');
+};
+
+export const saveInstagramAutoReply = async (enabled: boolean, messageTemplate: string): Promise<{ ok: boolean; enabled: boolean; messageTemplate: string }> => {
+  return request<{ ok: boolean; enabled: boolean; messageTemplate: string }>('/meta/instagram/auto-reply', {
+    method: 'PUT',
+    body: JSON.stringify({ enabled, messageTemplate })
   });
 };
