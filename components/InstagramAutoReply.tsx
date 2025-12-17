@@ -50,6 +50,9 @@ export const InstagramAutoReply: React.FC = () => {
     }
   }
 
+  // Instagram DM message limits
+  const MAX_MESSAGE_LENGTH = 1000;
+
   async function handleSave() {
     try {
       setSaving(true);
@@ -58,6 +61,13 @@ export const InstagramAutoReply: React.FC = () => {
       
       if (enabled && !messageTemplate.trim()) {
         setError('Por favor, insira uma mensagem automática.');
+        setSaving(false);
+        return;
+      }
+      
+      if (enabled && messageTemplate.length > MAX_MESSAGE_LENGTH) {
+        setError(`A mensagem é muito longa. Máximo de ${MAX_MESSAGE_LENGTH} caracteres.`);
+        setSaving(false);
         return;
       }
       
@@ -187,12 +197,20 @@ export const InstagramAutoReply: React.FC = () => {
                 onChange={(e) => setMessageTemplate(e.target.value)}
                 placeholder="Olá! Obrigado pelo seu comentário. 🙂"
                 rows={4}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 resize-none"
+                maxLength={MAX_MESSAGE_LENGTH}
+                className={`w-full px-4 py-3 bg-slate-900 border rounded-lg text-slate-200 placeholder-slate-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 resize-none ${
+                  messageTemplate.length > MAX_MESSAGE_LENGTH ? 'border-red-500' : 'border-slate-700'
+                }`}
               />
-              <p className="text-xs text-slate-500 mt-2">
-                <Info className="w-3 h-3 inline mr-1" />
-                Dica: você pode colocar um link (ex.: grupo do WhatsApp, formulário, ou link de produto).
-              </p>
+              <div className="flex justify-between mt-2">
+                <p className="text-xs text-slate-500">
+                  <Info className="w-3 h-3 inline mr-1" />
+                  Dica: você pode colocar um link (ex.: grupo do WhatsApp, formulário, ou link de produto).
+                </p>
+                <span className={`text-xs ${messageTemplate.length > MAX_MESSAGE_LENGTH ? 'text-red-400' : 'text-slate-500'}`}>
+                  {messageTemplate.length}/{MAX_MESSAGE_LENGTH}
+                </span>
+              </div>
             </div>
 
             {/* Save Button */}

@@ -7,6 +7,7 @@ import { TemplateEditor } from './components/TemplateEditor';
 import { LogsTable } from './components/LogsTable';
 import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 import { InstagramConnection } from './components/InstagramConnection';
+import { InstagramAutoReply } from './components/InstagramAutoReply';
 import { InstagramPostsAndRules } from './components/InstagramPostsAndRules';
 import { Auth } from './components/Auth';
 import { getMe, logout } from './services/api';
@@ -46,6 +47,7 @@ function App() {
       case "template": return <TemplateEditor />;
       case "logs": return <LogsTable />;
       case "instagram": return <InstagramConnection />;
+      case "instagram-auto-reply": return <InstagramAutoReply />;
       case "instagram-rules": return <InstagramPostsAndRules />;
       default: return <StatusConnection />;
     }

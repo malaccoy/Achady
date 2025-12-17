@@ -2050,12 +2050,13 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
               continue; // Skip - already sent DM for this comment
             }
             
-            // Create record before sending to prevent duplicates
+            // Create record before sending to prevent race conditions with duplicate webhooks
+            // Status 'PENDING' indicates DM send is in progress
             const processedRecord = await prisma.instagramProcessedComment.create({
               data: {
                 igBusinessId,
                 commentId,
-                status: 'PROCESSING',
+                status: 'PENDING',
                 dmSent: false
               }
             });
@@ -2653,10 +2654,12 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         }
         
         // If still no IG identity, use FB user id as a fallback identifier
+        // Prefix with 'fallback:fb:' to clearly distinguish from real IG IDs
+        // Real IG IDs are numeric strings, so this prefix pattern avoids collisions
         if (!igBusinessId && meData?.id) {
           // Store FB user id - can be used for limited functionality
           // The user's token is still valid for potential future use
-          igBusinessId = `fb_${meData.id}`;
+          igBusinessId = `fallback:fb:${meData.id}`;
           igUsername = meData.name || null;
           console.log('[META OAUTH] Using FB identity as fallback:', igBusinessId);
         }
@@ -2664,8 +2667,9 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       } catch (meErr) {
         console.error('[META OAUTH] Failed to get /me data:', meErr.message);
         // Even if /me fails, we still persist what we have (the token)
+        // Use a UUID-like identifier with clear prefix to avoid collisions with real IG IDs
         connectionStatus = 'connected_limited';
-        igBusinessId = `unknown_${Date.now()}`;
+        igBusinessId = `fallback:unknown:${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
       }
       
       // Use the long-lived user token as the access token for limited connections
