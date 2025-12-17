@@ -180,6 +180,33 @@ A tabela `SocialAccount` armazena:
 - `userAccessToken` - Token do usuário long-lived (criptografado)
 - `expiresAt` - Data de expiração do token
 
+## Instagram: Requisitos para o Usuário
+
+Para utilizar a integração Instagram no Achady, o usuário precisa atender aos seguintes requisitos:
+
+### Requisitos Obrigatórios
+
+1. **Conta Instagram Profissional**: A conta Instagram deve ser do tipo Business ou Criador (Creator). Contas pessoais não têm acesso às APIs necessárias.
+
+2. **Página do Facebook vinculada**: O Instagram Profissional deve estar conectado a uma Página do Facebook onde o usuário seja administrador.
+
+3. **Permissões OAuth**: Durante a conexão, o usuário deve autorizar todas as permissões solicitadas para que o Achady possa gerenciar comentários e enviar DMs.
+
+### Como verificar se sua conta está correta
+
+1. Abra o app do Instagram
+2. Vá em Configurações → Conta
+3. Verifique se aparece "Mudar para conta profissional" ou se já mostra "Conta profissional"
+4. Se for profissional, verifique em "Ferramentas para negócios" → "Página do Facebook conectada"
+
+### Solução de problemas comuns
+
+| Problema | Solução |
+|----------|---------|
+| Posts não aparecem | Verifique se a conta é Profissional e clique em "Sincronizar" |
+| Conexão limitada | Sua conta pode não estar corretamente vinculada a uma Página |
+| Permissão insuficiente | Aceite todas as permissões durante a autorização OAuth |
+
 ## Desenvolvimento
 
 ```bash
