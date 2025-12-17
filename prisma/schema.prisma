@@ -242,6 +242,7 @@ model SocialAccount {
   pageAccessToken  String?   // Encrypted Page Access Token
   userAccessToken  String?   // Encrypted User Access Token (long-lived)
   expiresAt        DateTime? // Token expiration date
+  status           String    @default("connected") // 'connected', 'connected_limited' (no pages but token valid)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -301,6 +302,35 @@ model InstagramAutomationEvent {
   mediaId       String?
   ruleId        String?
   status        String   // PROCESSED, FAILED
+  error         String?
+  createdAt     DateTime @default(now())
+
+  @@index([igBusinessId])
+  @@index([commentId])
+}
+
+// Instagram Auto-Reply Configuration for MVP (comment → DM)
+// One global config per connected IG account
+model InstagramAutoReply {
+  id              String   @id @default(cuid())
+  userId          String
+  igBusinessId    String   @unique // One config per IG account
+  enabled         Boolean  @default(true)
+  messageTemplate String   @default("Olá! Obrigado pelo seu comentário. 🙂") // Default message
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([igBusinessId])
+}
+
+// Instagram Processed Comments for idempotency (prevent duplicate DMs)
+model InstagramProcessedComment {
+  id            String   @id @default(cuid())
+  igBusinessId  String
+  commentId     String   @unique // Unique per comment ID
+  status        String   @default("PROCESSED") // PROCESSED, FAILED
+  dmSent        Boolean  @default(false)
   error         String?
   createdAt     DateTime @default(now())
 

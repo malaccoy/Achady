@@ -92,6 +92,9 @@ export enum Tab {
 
 export interface InstagramStatus {
   connected: boolean;
+  expired?: boolean;
+  limited?: boolean;
+  status?: string; // 'connected', 'connected_limited'
   igUsername?: string;
   pageId?: string;
   igBusinessId?: string;
@@ -159,4 +162,11 @@ export interface InstagramRuleTestResponse {
   text: string;
   rulesChecked: number;
   matches: InstagramRuleTestMatch[];
+}
+
+// Instagram Auto-Reply MVP Configuration
+export interface InstagramAutoReplyConfig {
+  enabled: boolean;
+  messageTemplate: string;
+  igUsername?: string;
 }

@@ -25,6 +25,11 @@ export const InstagramConnection: React.FC = () => {
       setSuccessMessage(`Instagram ${displayUsername}conectado com sucesso.`);
       // Reload status to get fresh data
       loadStatus();
+    } else if (status === 'connected_limited') {
+      const displayUsername = username ? `@${username} ` : '';
+      setSuccessMessage(`Instagram ${displayUsername}conectado com recursos limitados. Algumas funcionalidades podem não estar disponíveis.`);
+      // Reload status to get fresh data
+      loadStatus();
     } else if (status === 'error') {
       // Map error reasons to user-friendly messages
       const errorMessages: Record<string, string> = {
@@ -137,14 +142,22 @@ export const InstagramConnection: React.FC = () => {
           ) : (
             <>
               {/* Status Badge */}
-              <div className={`status-summary ${status?.connected ? 'status-summary--ok' : 'status-summary--warning'}`}>
+              <div className={`status-summary ${status?.connected ? (status?.limited ? 'status-summary--warning' : 'status-summary--ok') : 'status-summary--warning'}`}>
                 <span className="status-summary__icon">
                   {status?.connected ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                 </span>
                 <span className="status-summary__text">
-                  Status: {status?.connected ? 'Conectado' : 'Não conectado'}
+                  Status: {status?.connected ? (status?.limited ? 'Conectado (limitado)' : 'Conectado') : 'Não conectado'}
                 </span>
               </div>
+
+              {/* Limited Connection Warning */}
+              {status?.connected && status?.limited && (
+                <div className="mt-4 p-3 rounded-md bg-yellow-900/20 border border-yellow-900/30 text-yellow-200 text-sm">
+                  <AlertTriangle className="w-4 h-4 inline mr-2" />
+                  Conexão com recursos limitados. Algumas funcionalidades podem não estar disponíveis.
+                </div>
+              )}
 
               {/* Connection Details */}
               {status?.connected && (

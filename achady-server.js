@@ -2030,6 +2030,73 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             continue;
           }
           
+          // ========================================
+          // MVP AUTO-REPLY: Check InstagramAutoReply config first
+          // ========================================
+          const autoReplyConfig = await prisma.instagramAutoReply.findUnique({
+            where: { igBusinessId }
+          });
+          
+          if (autoReplyConfig && autoReplyConfig.enabled && autoReplyConfig.messageTemplate) {
+            console.log(`[META WEBHOOK] MVP Auto-reply enabled for igBusinessId ${igBusinessId}`);
+            
+            // Check idempotency using InstagramProcessedComment table
+            const existingProcessed = await prisma.instagramProcessedComment.findUnique({
+              where: { commentId }
+            });
+            
+            if (existingProcessed) {
+              console.log(`[META WEBHOOK] Comment ${commentId} already processed (MVP auto-reply)`);
+              continue; // Skip - already sent DM for this comment
+            }
+            
+            // Create record before sending to prevent race conditions with duplicate webhooks
+            // Status 'PENDING' indicates DM send is in progress
+            const processedRecord = await prisma.instagramProcessedComment.create({
+              data: {
+                igBusinessId,
+                commentId,
+                status: 'PENDING',
+                dmSent: false
+              }
+            });
+            
+            // Send the auto-reply DM
+            let dmSuccess = false;
+            let dmError = null;
+            
+            try {
+              const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
+              await graphPost(url, pageAccessToken, {
+                recipient: { comment_id: commentId },
+                message: { text: autoReplyConfig.messageTemplate }
+              });
+              dmSuccess = true;
+              console.log(`[META WEBHOOK] MVP Auto-reply DM sent for comment ${commentId}`);
+            } catch (dmErr) {
+              dmError = dmErr.message;
+              console.error(`[META WEBHOOK] MVP Auto-reply DM failed for comment ${commentId}:`, dmErr.message);
+            }
+            
+            // Update processed record
+            await prisma.instagramProcessedComment.update({
+              where: { commentId },
+              data: {
+                status: dmSuccess ? 'PROCESSED' : 'FAILED',
+                dmSent: dmSuccess,
+                error: dmError
+              }
+            });
+            
+            // MVP auto-reply is complete - continue to next comment
+            // (Don't fall through to keyword-based rules for MVP simplicity)
+            continue;
+          }
+          
+          // ========================================
+          // KEYWORD-BASED RULES (existing logic)
+          // ========================================
+          
           // Get post info for permalink
           let permalink = '';
           try {
@@ -2098,8 +2165,14 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
           if (!matchedRule) {
             console.log('[META WEBHOOK] No rules matched');
             // Record as processed but no action
-            await prisma.instagramAutomationEvent.create({
-              data: {
+            await prisma.instagramAutomationEvent.upsert({
+              where: { commentId },
+              update: {
+                ruleId: null,
+                status: 'PROCESSED',
+                error: 'No matching rules'
+              },
+              create: {
                 igBusinessId,
                 commentId,
                 mediaId,
@@ -2521,36 +2594,89 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     // Find first page with Instagram Professional Account (Business or Creator)
     const pageWithIG = allPages.find(page => page.instagram_business_account || page.connected_instagram_account);
 
-    if (!pageWithIG) {
-      // Determine specific error reason for better user feedback
-      let errorReason = 'no_instagram_business';
+    // MVP: Do NOT hard-fail if no pages are found - allow "connected_limited" status
+    // The user's OAuth token is valid, we just can't get Pages/IG via the standard flow
+    
+    let pageId = null;
+    let pageName = null;
+    let pageAccessToken = null;
+    let igBusinessId = null;
+    let igUsername = null;
+    let connectionStatus = 'connected';
+    
+    if (pageWithIG) {
+      // Standard flow: we have a page with Instagram connected
+      pageId = pageWithIG.id;
+      pageName = pageWithIG.name;
+      pageAccessToken = pageWithIG.access_token;
+      const igAccount = pageWithIG.instagram_business_account || pageWithIG.connected_instagram_account;
+      igBusinessId = igAccount.id;
+      igUsername = igAccount.username;
+      // account_type is only available for instagram_business_account, not connected_instagram_account
+      // If not available, we mark it as PROFESSIONAL (covers both Business and Creator)
+      const igAccountType = igAccount.account_type || 'PROFESSIONAL';
       
-      if (allPages.length === 0) {
-        console.error('[META OAUTH] ERRO: Nenhuma página do Facebook encontrada');
-        console.error('[META OAUTH] O usuário precisa ser administrador de pelo menos uma Página do Facebook');
-        errorReason = 'no_pages_found';
-      } else {
-        console.error('[META OAUTH] ERRO: Páginas encontradas, mas nenhuma tem Instagram Profissional conectado');
-        console.error(`[META OAUTH] Páginas sem Instagram: ${allPages.map(p => `"${p.name}"`).join(', ')}`);
-        console.error('[META OAUTH] O usuário precisa conectar uma conta Instagram Business ou Creator à Página do Facebook');
-        errorReason = 'pages_without_instagram';
+      console.log(`[META OAUTH] Conta Instagram selecionada: @${igUsername} (Tipo: ${igAccountType})`);
+      console.log(`[META OAUTH] Página do Facebook associada: "${pageName}"`);
+    } else {
+      // Fallback: No pages with IG found - try to get IG identity via /me endpoint
+      console.log('[META OAUTH] Nenhuma página com Instagram encontrada. Tentando obter identidade via /me...');
+      
+      try {
+        // Try /me?fields=id,name to get basic user identity
+        const meData = await graphGet(
+          'https://graph.facebook.com/v24.0/me?fields=id,name',
+          longLivedToken
+        );
+        console.log('[META OAUTH] /me response: id =', meData?.id, 'name =', meData?.name);
+        
+        // For MVP without pages, we store what we can
+        // The user can still use the token for messaging if they have the right permissions
+        connectionStatus = 'connected_limited';
+        
+        // Try to get Instagram account via Instagram Basic Display API or other endpoints
+        // Note: This may not work without pages, but we try anyway
+        try {
+          // Instagram accounts endpoint (may require additional permissions)
+          const igAccountsData = await graphGet(
+            'https://graph.facebook.com/v24.0/me/instagram_accounts?fields=id,username',
+            longLivedToken
+          );
+          if (igAccountsData?.data && igAccountsData.data.length > 0) {
+            const igAccount = igAccountsData.data[0];
+            igBusinessId = igAccount.id;
+            igUsername = igAccount.username;
+            connectionStatus = 'connected';
+            console.log(`[META OAUTH] Found IG account via /me/instagram_accounts: @${igUsername}`);
+          }
+        } catch (igAccountsErr) {
+          console.log('[META OAUTH] /me/instagram_accounts not available:', igAccountsErr.message);
+        }
+        
+        // If still no IG identity, use FB user id as a fallback identifier
+        // Prefix with 'fallback:fb:' to clearly distinguish from real IG IDs
+        // Real IG IDs are numeric strings, so this prefix pattern avoids collisions
+        if (!igBusinessId && meData?.id) {
+          // Store FB user id - can be used for limited functionality
+          // The user's token is still valid for potential future use
+          igBusinessId = `fallback:fb:${meData.id}`;
+          igUsername = meData.name || null;
+          console.log('[META OAUTH] Using FB identity as fallback:', igBusinessId);
+        }
+        
+      } catch (meErr) {
+        console.error('[META OAUTH] Failed to get /me data:', meErr.message);
+        // Even if /me fails, we still persist what we have (the token)
+        // Use a UUID-like identifier with clear prefix to avoid collisions with real IG IDs
+        connectionStatus = 'connected_limited';
+        igBusinessId = `fallback:unknown:${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
       }
       
-      return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${errorReason}`);
+      // Use the long-lived user token as the access token for limited connections
+      pageAccessToken = longLivedToken;
+      
+      console.log('[META OAUTH] Conexão limitada: sem página do Facebook, mas token válido');
     }
-
-    const pageId = pageWithIG.id;
-    const pageName = pageWithIG.name;
-    const pageAccessToken = pageWithIG.access_token;
-    const igAccount = pageWithIG.instagram_business_account || pageWithIG.connected_instagram_account;
-    const igBusinessId = igAccount.id;
-    const igUsername = igAccount.username;
-    // account_type is only available for instagram_business_account, not connected_instagram_account
-    // If not available, we mark it as PROFESSIONAL (covers both Business and Creator)
-    const igAccountType = igAccount.account_type || 'PROFESSIONAL';
-    
-    console.log(`[META OAUTH] Conta Instagram selecionada: @${igUsername} (Tipo: ${igAccountType})`);
-    console.log(`[META OAUTH] Página do Facebook associada: "${pageName}"`);
 
     // Step 4: Save to database (encrypted tokens)
     // Persisting: page_id, ig_business_id, username, and long-lived token
@@ -2560,9 +2686,10 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       console.log('[META OAUTH] Dados a persistir:', JSON.stringify({
         userId: userId.substring(0, 8) + '...', // Mask userId
         provider: 'instagram',
-        pageId: pageId.substring(0, 8) + '...',
-        igBusinessId: igBusinessId.substring(0, 8) + '...',
+        pageId: pageId ? pageId.substring(0, 8) + '...' : null,
+        igBusinessId: igBusinessId ? igBusinessId.substring(0, 8) + '...' : null,
         igUsername,
+        status: connectionStatus,
         hasPageAccessToken: !!pageAccessToken,
         hasLongLivedToken: !!longLivedToken,
         expiresAt: expiresAt ? expiresAt.toISOString() : null
@@ -2585,6 +2712,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         pageAccessToken: encrypt(pageAccessToken),
         userAccessToken: encrypt(longLivedToken),
         expiresAt,
+        status: connectionStatus,
         updatedAt: new Date()
       },
       create: {
@@ -2595,17 +2723,21 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         igUsername,
         pageAccessToken: encrypt(pageAccessToken),
         userAccessToken: encrypt(longLivedToken),
-        expiresAt
+        expiresAt,
+        status: connectionStatus
       }
     });
 
     console.log('[META OAUTH] ========== SUCESSO ==========');
     console.log(`[META OAUTH] Integração Instagram salva com sucesso`);
-    console.log(`[META OAUTH] Instagram: @${igUsername}`);
-    console.log(`[META OAUTH] Página: ${pageName}`);
+    console.log(`[META OAUTH] Status: ${connectionStatus}`);
+    console.log(`[META OAUTH] Instagram: ${igUsername ? '@' + igUsername : 'N/A'}`);
+    console.log(`[META OAUTH] Página: ${pageName || 'N/A'}`);
     console.log(`[META OAUTH] Token expira em: ${expiresAt ? expiresAt.toISOString() : 'N/A'}`);
     
-    return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
+    // Return success with status indicator
+    const statusParam = connectionStatus === 'connected_limited' ? 'connected_limited' : 'connected';
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=${statusParam}&username=${encodeURIComponent(igUsername || '')}`);
 
   } catch (error) {
     // Log detailed error information
@@ -2668,6 +2800,7 @@ app.get('/api/meta/instagram/status', oauthLimiter, requireAuth, async (req, res
         igBusinessId: true,
         pageId: true,
         expiresAt: true,
+        status: true,
         createdAt: true,
         updatedAt: true
       }
@@ -2678,10 +2811,13 @@ app.get('/api/meta/instagram/status', oauthLimiter, requireAuth, async (req, res
     }
 
     const isExpired = integration.expiresAt && new Date() > integration.expiresAt;
+    const isLimited = integration.status === 'connected_limited';
 
     res.json({
       connected: true,
       expired: isExpired,
+      limited: isLimited,
+      status: integration.status,
       igUsername: integration.igUsername,
       igBusinessId: integration.igBusinessId,
       pageId: integration.pageId,
@@ -2710,6 +2846,118 @@ app.delete('/api/meta/instagram/disconnect', oauthLimiter, requireAuth, async (r
   } catch (error) {
     console.error('[META DISCONNECT] Error:', error.message);
     res.status(500).json({ error: 'Erro ao desconectar integração' });
+  }
+});
+
+// =======================
+// INSTAGRAM AUTO-REPLY MVP (Comment → DM)
+// =======================
+
+// GET: Get auto-reply configuration
+app.get('/api/meta/instagram/auto-reply', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    // Get user's Instagram integration first
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      select: {
+        igBusinessId: true,
+        igUsername: true
+      }
+    });
+
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+
+    // Get or create auto-reply config
+    let autoReply = await prisma.instagramAutoReply.findUnique({
+      where: { igBusinessId: integration.igBusinessId }
+    });
+
+    if (!autoReply) {
+      // Create default config
+      autoReply = await prisma.instagramAutoReply.create({
+        data: {
+          userId: req.userId,
+          igBusinessId: integration.igBusinessId,
+          enabled: false,
+          messageTemplate: 'Olá! Obrigado pelo seu comentário. 🙂'
+        }
+      });
+    }
+
+    res.json({
+      enabled: autoReply.enabled,
+      messageTemplate: autoReply.messageTemplate,
+      igUsername: integration.igUsername
+    });
+  } catch (error) {
+    console.error('[AUTO-REPLY GET] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar configuração de auto-resposta' });
+  }
+});
+
+// PUT: Update auto-reply configuration
+app.put('/api/meta/instagram/auto-reply', apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { enabled, messageTemplate } = req.body;
+
+    // Validate payload
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Campo "enabled" é obrigatório (boolean)' });
+    }
+
+    if (enabled && (!messageTemplate || messageTemplate.trim().length === 0)) {
+      return res.status(400).json({ error: 'Mensagem de auto-resposta é obrigatória quando ativado' });
+    }
+
+    // Get user's Instagram integration
+    const integration = await prisma.socialAccount.findUnique({
+      where: {
+        userId_provider: {
+          userId: req.userId,
+          provider: 'instagram'
+        }
+      },
+      select: {
+        igBusinessId: true
+      }
+    });
+
+    if (!integration || !integration.igBusinessId) {
+      return res.status(400).json({ error: 'Instagram não conectado' });
+    }
+
+    // Upsert auto-reply config
+    const autoReply = await prisma.instagramAutoReply.upsert({
+      where: { igBusinessId: integration.igBusinessId },
+      update: {
+        enabled,
+        messageTemplate: messageTemplate || 'Olá! Obrigado pelo seu comentário. 🙂',
+        updatedAt: new Date()
+      },
+      create: {
+        userId: req.userId,
+        igBusinessId: integration.igBusinessId,
+        enabled,
+        messageTemplate: messageTemplate || 'Olá! Obrigado pelo seu comentário. 🙂'
+      }
+    });
+
+    console.log(`[AUTO-REPLY] Updated config for user ${req.userId}: enabled=${enabled}`);
+    res.json({
+      ok: true,
+      enabled: autoReply.enabled,
+      messageTemplate: autoReply.messageTemplate
+    });
+  } catch (error) {
+    console.error('[AUTO-REPLY PUT] Error:', error.message);
+    res.status(500).json({ error: 'Erro ao salvar configuração de auto-resposta' });
   }
 });
 

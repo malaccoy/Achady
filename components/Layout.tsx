@@ -11,6 +11,7 @@ export type MenuItemId =
   | "template"
   | "logs"
   | "instagram"
+  | "instagram-auto-reply"
   | "instagram-rules";
 
 interface LayoutProps {
@@ -28,8 +29,9 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "shopee", label: "Config API Shopee" },
   { id: "template", label: "Modelo de Mensagem" },
   { id: "logs", label: "Logs de Envio" },
-  { id: "instagram", label: "Instagram" },
-  { id: "instagram-rules", label: "Instagram Posts & Regras" },
+  { id: "instagram", label: "Instagram — Conexão" },
+  { id: "instagram-auto-reply", label: "Instagram — Automação" },
+  { id: "instagram-rules", label: "Instagram — Posts & Regras" },
 ];
 
 export const Layout: React.FC<LayoutProps> = ({
