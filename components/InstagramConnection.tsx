@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getInstagramStatus, disconnectInstagram } from '../services/api';
 import { InstagramStatus } from '../types';
-import { Loader2, CheckCircle2, XCircle, Info, Clock, AlertTriangle, LogOut, Instagram } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Info, Clock, AlertTriangle, LogOut, Instagram, HelpCircle } from 'lucide-react';
 
 export const InstagramConnection: React.FC = () => {
   const [status, setStatus] = useState<InstagramStatus | null>(null);
@@ -31,17 +31,19 @@ export const InstagramConnection: React.FC = () => {
       // Reload status to get fresh data
       loadStatus();
     } else if (status === 'error') {
-      // Map error reasons to user-friendly messages
+      // Map error reasons to user-friendly Portuguese messages
       const errorMessages: Record<string, string> = {
         'no_pages_found': 'Nenhuma Página do Facebook encontrada. Você precisa ser administrador de pelo menos uma Página do Facebook.',
         'pages_without_instagram': 'Suas Páginas do Facebook não têm Instagram Profissional conectado. Conecte uma conta Instagram Business ou Creator à sua Página.',
         'no_instagram_business': 'Nenhuma conta Instagram Profissional encontrada. Verifique se sua conta é Business ou Creator e está conectada a uma Página.',
         'missing_permissions': 'Permissões insuficientes. Por favor, aceite todas as permissões solicitadas durante a autorização.',
+        'permissao_insuficiente': 'Permissão insuficiente para acessar os dados do Instagram. Verifique se sua conta é Profissional (Business ou Criador) e está vinculada a uma Página do Facebook.',
         'invalid_token': 'Token inválido ou expirado. Por favor, tente conectar novamente.',
         'token_exchange_failed': 'Erro ao processar autorização. Por favor, tente novamente.',
         'invalid_state': 'Sessão expirada. Por favor, tente conectar novamente.',
         'server_config': 'Erro de configuração do servidor. Entre em contato com o suporte.',
-        'no_code': 'Autorização não recebida. Por favor, tente novamente.'
+        'no_code': 'Autorização não recebida. Por favor, tente novamente.',
+        'rate_limit': 'Muitas tentativas. Aguarde alguns minutos e tente novamente.'
       };
       
       setError(errorMessages[reason || ''] || `Erro na conexão: ${reason || 'desconhecido'}`);
@@ -230,10 +232,39 @@ export const InstagramConnection: React.FC = () => {
           )}
         </div>
 
-        {/* Card 2: Informações */}
+        {/* Card 2: Como Conectar - Help Section */}
         <div className="app-card">
           <h2 className="app-card__title flex items-center gap-2">
-            <Info className="w-5 h-5 text-blue-400" />
+            <HelpCircle className="w-5 h-5 text-blue-400" />
+            Como conectar seu Instagram
+          </h2>
+          <div className="text-sm text-slate-300 space-y-4">
+            <ul className="space-y-3">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+                <span>Sua conta precisa ser <strong>Profissional</strong> (Business ou Criador).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
+                <span>Clique em "<strong>Conectar Instagram</strong>" e autorize as permissões solicitadas.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
+                <span>Se seus posts não aparecerem, verifique se o Instagram está em uma <strong>Conta Profissional</strong> e tente sincronizar novamente.</span>
+              </li>
+            </ul>
+            <div className="pt-2 border-t border-slate-700/50">
+              <p className="text-slate-400 text-xs">
+                O Achady funciona com a ideia simples: <strong>alguém comentou no post → recebe uma DM automática</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Informações Adicionais */}
+        <div className="app-card">
+          <h2 className="app-card__title flex items-center gap-2">
+            <Info className="w-5 h-5 text-slate-400" />
             Informações
           </h2>
           <div className="text-sm text-slate-300 space-y-3">
@@ -241,7 +272,7 @@ export const InstagramConnection: React.FC = () => {
               Ao conectar, você autoriza o Achady a gerenciar comentários e mensagens conforme as permissões do app.
             </p>
             <p className="text-slate-400">
-              A conexão é feita via Meta OAuth e requer uma conta Instagram Business vinculada a uma página do Facebook.
+              A conexão é feita via Meta OAuth e requer uma conta Instagram Profissional vinculada a uma página do Facebook.
             </p>
           </div>
         </div>

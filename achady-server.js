@@ -2752,12 +2752,16 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       console.error('[META OAUTH] Graph API Error Code:', errorData.code);
       console.error('[META OAUTH] Graph API Error Type:', errorData.type);
       console.error('[META OAUTH] Graph API Error Message:', errorData.message);
+      console.error('[META OAUTH] Graph API Error Subcode:', errorData.error_subcode || 'N/A');
       
-      // Log specific permission-related errors
+      // Log specific permission-related errors with Portuguese messages
       if (errorData.code === 190) {
         console.error('[META OAUTH] Token inválido ou expirado');
       } else if (errorData.code === 10 || errorData.code === 200) {
         console.error('[META OAUTH] Permissões insuficientes - verifique se o app tem as permissões necessárias');
+      } else if (errorData.code === 100) {
+        // Error #100 often means missing permissions for business endpoints
+        console.error('[META OAUTH] Permissão insuficiente para acessar endpoints de negócios - conta pode não ser Profissional');
       } else if (errorData.code === 4) {
         console.error('[META OAUTH] Rate limit atingido - aguarde antes de tentar novamente');
       }
@@ -2773,12 +2777,17 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       });
     }
     
-    // Determine error reason for redirect
+    // Determine error reason for redirect with improved mapping
     let errorReason = 'token_exchange_failed';
     if (errorData?.code === 10 || errorData?.code === 200) {
       errorReason = 'missing_permissions';
+    } else if (errorData?.code === 100) {
+      // #100 typically indicates insufficient permissions for business endpoints
+      errorReason = 'permissao_insuficiente';
     } else if (errorData?.code === 190) {
       errorReason = 'invalid_token';
+    } else if (errorData?.code === 4) {
+      errorReason = 'rate_limit';
     }
     
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(errorReason)}`);
