@@ -2317,9 +2317,23 @@ async function graphPost(url, accessToken, data = {}) {
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
+  // Use META_FB_APP_ID with fallback to META_APP_ID
+  const clientId = process.env.META_FB_APP_ID || process.env.META_APP_ID;
+  const redirectUri = process.env.META_IG_REDIRECT_URI;
+
+  // Log client_id and redirect_uri (do not log secrets)
+  console.log('[INSTAGRAM OAUTH] client_id =', clientId);
+  console.log('[INSTAGRAM OAUTH] redirect_uri =', redirectUri);
+
   // Validate required configuration
-  if (!META_APP_ID || !META_IG_REDIRECT_URI) {
-    console.error('[INSTAGRAM OAUTH] Missing required configuration: META_APP_ID or META_IG_REDIRECT_URI');
+  if (!clientId || !redirectUri) {
+    console.error('[INSTAGRAM OAUTH] Missing required configuration: client_id or redirect_uri');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
+  }
+
+  // Validate client_id is a numeric string
+  if (!/^\d+$/.test(clientId)) {
+    console.error('[INSTAGRAM OAUTH] client_id must be a numeric string');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
@@ -2336,13 +2350,12 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
 
   // Build the Facebook OAuth dialog URL (Facebook dialog for Meta app)
   const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
-  oauthUrl.searchParams.set('client_id', META_APP_ID);
-  oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
+  oauthUrl.searchParams.set('client_id', clientId);
+  oauthUrl.searchParams.set('redirect_uri', redirectUri);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
 
-  console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', META_IG_REDIRECT_URI);
   console.log('[INSTAGRAM OAUTH] Redirecting user to Facebook OAuth dialog');
   res.redirect(oauthUrl.toString());
 });
