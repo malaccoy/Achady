@@ -85,6 +85,7 @@ function isRateLimited(userId) {
 // Instagram Login constants (Instagram-only OAuth, no Facebook Pages)
 // These should be set via environment variables for production
 const META_IG_APP_ID = process.env.META_IG_APP_ID;
+const META_APP_ID = process.env.META_APP_ID;
 const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
 
 // Ensure directories
@@ -2312,37 +2313,37 @@ async function graphPost(url, accessToken, data = {}) {
   }
 }
 
-// GET: Start Instagram OAuth flow - redirects to Instagram Login API (no Facebook Pages)
+// GET: Start Instagram OAuth flow - redirects to Facebook OAuth dialog for Meta app
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
   // Validate required configuration
-  if (!META_IG_APP_ID || !META_IG_REDIRECT_URI) {
-    console.error('[INSTAGRAM OAUTH] Missing required configuration: META_IG_APP_ID or META_IG_REDIRECT_URI');
+  if (!META_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[INSTAGRAM OAUTH] Missing required configuration: META_APP_ID or META_IG_REDIRECT_URI');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
-  // Official Meta Instagram API scopes for DM automation
-  // - instagram_basic: Read profile info and media
-  // - instagram_manage_messages: Send and receive DMs (required for automation)
+  // Instagram Business API scopes (via Facebook OAuth dialog)
+  // - instagram_business_basic: Read profile info and media
   // - instagram_manage_comments: Read and reply to comments
-  const scope = 'instagram_basic,instagram_manage_messages,instagram_manage_comments';
+  // - instagram_business_manage_messages: Send and receive DMs (required for automation)
+  const scope = 'instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  // Build the Instagram Login OAuth URL (Instagram API, not Facebook dialog)
-  const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
-  oauthUrl.searchParams.set('client_id', META_IG_APP_ID);
+  // Build the Facebook OAuth dialog URL (Facebook dialog for Meta app)
+  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
+  oauthUrl.searchParams.set('client_id', META_APP_ID);
   oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
 
   console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', META_IG_REDIRECT_URI);
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram Login OAuth');
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Facebook OAuth dialog');
   res.redirect(oauthUrl.toString());
 });
 
