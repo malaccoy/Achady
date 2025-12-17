@@ -2322,11 +2322,11 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
-  // Instagram Business API scopes for professional accounts
-  // - instagram_business_basic: Read profile info and media
-  // - instagram_business_manage_messages: Send and receive DMs
-  // - instagram_business_manage_comments: Read and reply to comments
-  const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments';
+  // Official Meta Instagram API scopes for DM automation
+  // - instagram_basic: Read profile info and media
+  // - instagram_manage_messages: Send and receive DMs (required for automation)
+  // - instagram_manage_comments: Read and reply to comments
+  const scope = 'instagram_basic,instagram_manage_messages,instagram_manage_comments';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
@@ -2452,7 +2452,52 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       expiresAt = new Date(Date.now() + expiresIn * 1000);
     }
 
-    // Step 3: Get Instagram user profile information
+    // Step 3: Verify granted scopes via debug_token endpoint
+    // This logs which permissions were actually granted (does not log the token itself)
+    console.log('[INSTAGRAM OAUTH] Verifying granted permissions...');
+    let grantedScopes = [];
+    try {
+      // Use app access token (app_id|app_secret) to debug the user token
+      const appAccessToken = `${META_IG_APP_ID}|${META_APP_SECRET}`;
+      const debugUrl = new URL('https://graph.facebook.com/debug_token');
+      debugUrl.searchParams.set('input_token', longLivedToken);
+      debugUrl.searchParams.set('access_token', appAccessToken);
+
+      const debugResponse = await axios.get(debugUrl.toString(), { timeout: 15000 });
+      const debugData = debugResponse.data?.data;
+      
+      if (debugData) {
+        grantedScopes = debugData.scopes || [];
+        console.log('[INSTAGRAM OAUTH] Token verification successful');
+        console.log('[INSTAGRAM OAUTH] Granted scopes:', grantedScopes.join(', '));
+        console.log('[INSTAGRAM OAUTH] Token is valid:', debugData.is_valid);
+        console.log('[INSTAGRAM OAUTH] App ID:', debugData.app_id);
+        // Note: We intentionally do NOT log the token itself for security
+      }
+    } catch (debugErr) {
+      // Debug endpoint failed - log warning but continue
+      // Some Instagram tokens may not be debuggable via this endpoint
+      console.warn('[INSTAGRAM OAUTH] Could not verify token scopes:', debugErr.message);
+      // Continue without blocking - we'll verify functionality when actually using the token
+    }
+
+    // Check if instagram_manage_messages permission was granted (required for DM automation)
+    // Note: If debug_token failed and grantedScopes is empty, we allow the user to proceed
+    // because the debug endpoint may not work for all Instagram tokens. Actual permissions
+    // will be verified when the user attempts to use DM features.
+    const hasMessagesPermission = grantedScopes.includes('instagram_manage_messages');
+    if (grantedScopes.length > 0 && !hasMessagesPermission) {
+      // User did not grant the required messaging permission
+      console.error('[INSTAGRAM OAUTH] Missing required permission: instagram_manage_messages');
+      console.error('[INSTAGRAM OAUTH] User must grant messaging permission for DM automation');
+      return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=missing_permissions`);
+    } else if (grantedScopes.length === 0) {
+      console.log('[INSTAGRAM OAUTH] Skipping permission check - debug_token did not return scopes');
+    } else {
+      console.log('[INSTAGRAM OAUTH] Required permission instagram_manage_messages: granted');
+    }
+
+    // Step 4: Get Instagram user profile information
     // We use instagramUserId from token exchange as the initial ID, but the /me endpoint
     // may return a different ID format, so we prefer the profile response when available
     console.log('[INSTAGRAM OAUTH] Fetching Instagram user profile');
@@ -2480,7 +2525,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     // Instagram Login flow - no Facebook Pages involved
     const connectionStatus = 'connected';
 
-    // Step 4: Save to database (encrypted tokens)
+    // Step 5: Save to database (encrypted tokens)
     // For Instagram Login, we only store userAccessToken (no pageAccessToken needed)
     if (process.env.NODE_ENV !== 'production') {
       console.log('[INSTAGRAM OAUTH] Persisting data to database...');
