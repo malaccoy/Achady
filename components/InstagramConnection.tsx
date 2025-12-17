@@ -277,7 +277,7 @@ export const InstagramConnection: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 3: Diagnóstico */}
+        {/* Card 4: Diagnóstico */}
         <div className="app-card">
           <h2 className="app-card__title flex items-center gap-2">
             <Clock className="w-5 h-5 text-orange-500" />
