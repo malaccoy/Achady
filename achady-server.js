@@ -82,10 +82,10 @@ function isRateLimited(userId) {
     return true;
 }
 
-// Meta Business Login constants (Instagram via Facebook OAuth)
-// App ID 1400700461730372 has redirect URIs configured in Facebook Login settings
-const META_FB_APP_ID = '1400700461730372';
-const META_IG_REDIRECT_URI = 'https://www.achady.com.br/api/meta/auth/instagram/callback';
+// Instagram Login constants (Instagram-only OAuth, no Facebook Pages)
+// These should be set via environment variables for production
+const META_IG_APP_ID = process.env.META_IG_APP_ID;
+const META_IG_REDIRECT_URI = process.env.META_IG_REDIRECT_URI;
 
 // Ensure directories
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -2023,9 +2023,10 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
           }
           
           const userId = socialAccount.userId;
-          const pageAccessToken = decrypt(socialAccount.pageAccessToken);
+          // Use userAccessToken (Instagram Login token) - no Facebook Page token needed
+          const accessToken = decrypt(socialAccount.userAccessToken);
           
-          if (!pageAccessToken) {
+          if (!accessToken) {
             console.log(`[META WEBHOOK] Invalid token for user ${userId}`);
             continue;
           }
@@ -2067,7 +2068,7 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             
             try {
               const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
-              await graphPost(url, pageAccessToken, {
+              await graphPost(url, accessToken, {
                 recipient: { comment_id: commentId },
                 message: { text: autoReplyConfig.messageTemplate }
               });
@@ -2209,7 +2210,7 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             
             try {
               const url = `https://graph.facebook.com/v24.0/${igBusinessId}/messages`;
-              await graphPost(url, pageAccessToken, {
+              await graphPost(url, accessToken, {
                 recipient: { comment_id: commentId },
                 message: { text: dmMessage }
               });
@@ -2232,7 +2233,7 @@ app.post('/api/meta/webhook/instagram', express.json({ type: '*/*' }), async (re
             
             try {
               const url = `https://graph.facebook.com/v24.0/${commentId}/replies`;
-              await graphPost(url, pageAccessToken, {
+              await graphPost(url, accessToken, {
                 message: commentMessage
               });
               console.log('[META WEBHOOK] Comment reply sent successfully');
@@ -2311,42 +2312,41 @@ async function graphPost(url, accessToken, data = {}) {
   }
 }
 
-// GET: Start Instagram OAuth flow - redirects to Meta Business Login via Facebook OAuth dialog
+// GET: Start Instagram OAuth flow - redirects to Instagram Login API (no Facebook Pages)
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
-  // Build Facebook OAuth URL for Meta Business Login (Instagram Business use case)
-  const configId = process.env.META_IG_CONFIG_ID;
-  
-  // Scopes required for Instagram via Facebook Login (Graph API)
-  // Removido: pages_read_engagement (estava causando invalid scope no OAuth)
-  const scope = 'business_management,pages_show_list,instagram_basic,instagram_manage_comments,instagram_manage_messages';
+  const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
+
+  // Validate required configuration
+  if (!META_IG_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[INSTAGRAM OAUTH] Missing required configuration: META_IG_APP_ID or META_IG_REDIRECT_URI');
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
+  }
+
+  // Instagram Business API scopes for professional accounts
+  // - instagram_business_basic: Read profile info and media
+  // - instagram_business_manage_messages: Send and receive DMs
+  // - instagram_business_manage_comments: Read and reply to comments
+  const scope = 'instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  // Build the Facebook OAuth dialog URL
-  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
-  oauthUrl.searchParams.set('client_id', META_FB_APP_ID);
+  // Build the Instagram Login OAuth URL (Instagram API, not Facebook dialog)
+  const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
+  oauthUrl.searchParams.set('client_id', META_IG_APP_ID);
   oauthUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
-  
-  // Include config_id if provided (required for Meta Business Login)
-  if (configId) {
-    oauthUrl.searchParams.set('config_id', configId);
-  }
-  
-  // Force re-authentication for security
-  oauthUrl.searchParams.set('auth_type', 'rerequest');
 
   console.log('[INSTAGRAM OAUTH] AUTHORIZE redirect_uri =', META_IG_REDIRECT_URI);
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Facebook OAuth dialog for Meta Business Login');
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram Login OAuth');
   res.redirect(oauthUrl.toString());
 });
 
-// GET: OAuth callback - receives code and exchanges for tokens via Graph API
+// GET: OAuth callback - receives code and exchanges for tokens via Instagram Login API
 // NOTE: This route does NOT require site auth token - userId is extracted from signed state parameter
 app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   const META_APP_SECRET = process.env.META_APP_SECRET;
@@ -2356,7 +2356,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
 
   const { code, error: oauthError, error_description, state } = req.query;
 
-  // Handle OAuth errors from Facebook
+  // Handle OAuth errors from Instagram
   if (oauthError) {
     console.error('[INSTAGRAM OAUTH] OAuth error:', oauthError, error_description);
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(error_description || oauthError)}`);
@@ -2387,68 +2387,63 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   // Validate server configuration
-  if (!META_APP_SECRET) {
-    console.error('[INSTAGRAM OAUTH] Missing server configuration (META_APP_SECRET)');
+  if (!META_APP_SECRET || !META_IG_APP_ID || !META_IG_REDIRECT_URI) {
+    console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
   try {
-    // --- DIAGNÓSTICO SEGURO (não vaza segredo/código) ---
+    // --- Safe diagnostic log (does not expose secrets/code) ---
     console.log(JSON.stringify({
-      tag: "META_OAUTH_DEBUG",
+      tag: "INSTAGRAM_OAUTH_DEBUG",
       timestamp: new Date().toISOString(),
-      appIdLast4: META_FB_APP_ID ? META_FB_APP_ID.slice(-4) : null,
+      appIdLast4: META_IG_APP_ID ? META_IG_APP_ID.slice(-4) : null,
       secretLength: META_APP_SECRET ? META_APP_SECRET.length : 0,
       redirectUri: META_IG_REDIRECT_URI,
       hasCode: Boolean(code),
     }));
-    // --- fim diagnóstico seguro ---
 
-    // Step 1: Exchange code for short-lived access token via Graph API (GET request)
-    console.log('[META OAUTH] Exchanging code for access token via Graph API');
-    const tokenUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
-    tokenUrl.searchParams.set('client_id', META_FB_APP_ID);
-    tokenUrl.searchParams.set('client_secret', META_APP_SECRET);
-    tokenUrl.searchParams.set('redirect_uri', META_IG_REDIRECT_URI);
-    tokenUrl.searchParams.set('code', code);
+    // Step 1: Exchange code for short-lived access token via Instagram Login API (POST request)
+    console.log('[INSTAGRAM OAUTH] Exchanging code for access token via Instagram API');
+    const tokenResponse = await axios.post('https://api.instagram.com/oauth/access_token', 
+      new URLSearchParams({
+        client_id: META_IG_APP_ID,
+        client_secret: META_APP_SECRET,
+        grant_type: 'authorization_code',
+        redirect_uri: META_IG_REDIRECT_URI,
+        code: code
+      }).toString(),
+      { 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: 15000 
+      }
+    );
 
-    const tokenResponse = await axios.get(tokenUrl.toString(), { timeout: 15000 });
     const shortLivedToken = tokenResponse.data.access_token;
+    const instagramUserId = tokenResponse.data.user_id;
 
     if (!shortLivedToken) {
-      throw new Error('No access token received from Graph API');
+      throw new Error('No access token received from Instagram API');
     }
 
-    // Step 2: Exchange short-lived token for long-lived token via Graph API
-    console.log('[META OAUTH] Exchanging for long-lived token');
-    const longLivedUrl = new URL('https://graph.facebook.com/v24.0/oauth/access_token');
-    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token');
-    longLivedUrl.searchParams.set('client_id', META_FB_APP_ID);
+    console.log('[INSTAGRAM OAUTH] Short-lived token obtained, user_id =', instagramUserId);
+
+    // Step 2: Exchange short-lived token for long-lived token via Instagram Graph API
+    console.log('[INSTAGRAM OAUTH] Exchanging for long-lived token');
+    const longLivedUrl = new URL('https://graph.instagram.com/access_token');
+    longLivedUrl.searchParams.set('grant_type', 'ig_exchange_token');
     longLivedUrl.searchParams.set('client_secret', META_APP_SECRET);
-    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken);
-    
+    longLivedUrl.searchParams.set('access_token', shortLivedToken);
+
     const longLivedResponse = await axios.get(longLivedUrl.toString(), { timeout: 15000 });
     const longLivedToken = longLivedResponse.data.access_token;
     const expiresIn = longLivedResponse.data.expires_in;
 
     if (!longLivedToken) {
-      throw new Error('No long-lived access token received from Graph API');
+      throw new Error('No long-lived access token received from Instagram API');
     }
 
-    // Diagnostic: debug_token to inspect token validity and scopes (safe, does not log token)
-    try {
-      const appAccessToken = `${META_FB_APP_ID}|${META_APP_SECRET}`;
-      const dbgUrl = new URL('https://graph.facebook.com/debug_token');
-      dbgUrl.searchParams.set('input_token', longLivedToken);
-      dbgUrl.searchParams.set('access_token', appAccessToken);
-
-      const dbg = await axios.get(dbgUrl.toString(), { timeout: 15000 });
-      console.log('[META OAUTH] debug_token is_valid=', dbg.data?.data?.is_valid);
-      console.log('[META OAUTH] debug_token scopes=', dbg.data?.data?.scopes);
-      console.log('[META OAUTH] debug_token user_id=', dbg.data?.data?.user_id);
-    } catch (e) {
-      console.log('[META OAUTH] debug_token failed:', e?.response?.data || e.message);
-    }
+    console.log('[INSTAGRAM OAUTH] Long-lived token obtained, expires_in =', expiresIn);
 
     // Calculate expiration date with validation
     let expiresAt = null;
@@ -2457,247 +2452,50 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       expiresAt = new Date(Date.now() + expiresIn * 1000);
     }
 
-    // Step 3: Get user's Facebook Pages with Instagram Professional Account (Business or Creator)
-    // The Graph API field instagram_business_account covers both Business and Creator account types
-    // Note: connected_instagram_account does not support account_type field, so we only request it for instagram_business_account
-    console.log('[META OAUTH] Fetching Pages with Instagram Professional Account (Business or Creator)');
-    const pagesData = await graphGet(
-      'https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,account_type},connected_instagram_account{id,username}',
-      longLivedToken
-    );
-
-    // Diagnostic: pages returned (safe, does not log access_token)
-    const pagesCount = Array.isArray(pagesData?.data) ? pagesData.data.length : 0;
-    console.log('[META OAUTH] /me/accounts pages returned =', pagesCount);
-    
-    if (pagesCount === 0) {
-      console.warn('[META OAUTH] AVISO: Nenhuma página do Facebook encontrada via /me/accounts');
-      console.warn('[META OAUTH] Possíveis causas: usuário não é admin de nenhuma página, ou permissão pages_show_list não foi concedida');
-    } else {
-      console.log('[META OAUTH] pages names =', (pagesData?.data || []).map(p => p.name));
-      // Log Instagram connection status for each page
-      for (const page of pagesData.data) {
-        const igAccount = page.instagram_business_account || page.connected_instagram_account;
-        if (igAccount) {
-          console.log(`[META OAUTH] Página "${page.name}" (${page.id}) -> Instagram @${igAccount.username} (${igAccount.id})`);
-        } else {
-          console.warn(`[META OAUTH] Página "${page.name}" (${page.id}) -> SEM Instagram conectado`);
-        }
-      }
-    }
-
-    // Use pagesData.data as the initial pages list
-    let allPages = pagesData.data || [];
-
-    // Helper function to check if any page has Instagram connected
-    const hasPageWithInstagram = (pages) => pages.some(p => p.instagram_business_account || p.connected_instagram_account);
-
-    // Step 3b: Fallback via /me/businesses
-    // Run fallback if: /me/accounts returned empty OR returned pages but none have Instagram connected
-    const needsBusinessFallback = allPages.length === 0 || !hasPageWithInstagram(allPages);
-    
-    if (needsBusinessFallback) {
-      if (allPages.length === 0) {
-        console.log('[META OAUTH] /me/accounts returned empty, trying fallback via /me/businesses');
-      } else {
-        console.log('[META OAUTH] Pages found but none have Instagram connected, trying fallback via /me/businesses');
-      }
-      
-      try {
-        // Fetch businesses associated with the user (Business Manager)
-        const businessesData = await graphGet(
-          'https://graph.facebook.com/v24.0/me/businesses?fields=id,name',
-          longLivedToken
-        );
-        
-        const businesses = businessesData?.data || [];
-        
-        if (businesses.length === 0) {
-          console.warn('[META OAUTH] AVISO: Nenhum Business Manager encontrado');
-          console.warn('[META OAUTH] Possíveis causas: usuário não é membro de nenhum Business Manager, ou permissão business_management não foi concedida');
-        } else {
-          console.log('[META OAUTH] businesses returned =', businesses.length);
-          console.log('[META OAUTH] businesses names =', businesses.map(b => b.name || 'unnamed'));
-        }
-        
-        // Track seen page IDs to avoid duplicates efficiently
-        const seenPageIds = new Set(allPages.map(p => p.id));
-        
-        // For each business, fetch owned_pages (with fallback to client_pages)
-        for (const business of businesses) {
-          const businessName = business.name || 'unnamed';
-          let businessPages = [];
-          
-          // Try owned_pages first
-          try {
-            const ownedPagesData = await graphGet(
-              `https://graph.facebook.com/v24.0/${business.id}/owned_pages?fields=id,name,access_token,instagram_business_account{id,username,account_type},connected_instagram_account{id,username}`,
-              longLivedToken
-            );
-            businessPages = ownedPagesData?.data || [];
-            console.log(`[META OAUTH] owned_pages returned = ${businessPages.length} for business "${businessName}"`);
-          } catch (ownedErr) {
-            console.warn(`[META OAUTH] owned_pages failed for business "${businessName}": ${ownedErr.message}`);
-            
-            // Fallback to client_pages
-            try {
-              const clientPagesData = await graphGet(
-                `https://graph.facebook.com/v24.0/${business.id}/client_pages?fields=id,name,access_token,instagram_business_account{id,username,account_type},connected_instagram_account{id,username}`,
-                longLivedToken
-              );
-              businessPages = clientPagesData?.data || [];
-              console.log(`[META OAUTH] client_pages returned = ${businessPages.length} for business "${businessName}"`);
-            } catch (clientErr) {
-              console.warn(`[META OAUTH] client_pages also failed for business "${businessName}": ${clientErr.message}`);
-            }
-          }
-          
-          // Log pages and their Instagram connection status
-          for (const page of businessPages) {
-            const igAccount = page.instagram_business_account || page.connected_instagram_account;
-            if (igAccount) {
-              console.log(`[META OAUTH] Business "${businessName}" -> Página "${page.name}" (${page.id}) -> Instagram @${igAccount.username} (${igAccount.id})`);
-            } else {
-              console.warn(`[META OAUTH] Business "${businessName}" -> Página "${page.name}" (${page.id}) -> SEM Instagram conectado`);
-            }
-          }
-          
-          // Add to allPages (avoid duplicates using Set for O(1) lookup)
-          for (const page of businessPages) {
-            if (!seenPageIds.has(page.id)) {
-              seenPageIds.add(page.id);
-              allPages.push(page);
-            }
-          }
-        }
-        
-        console.log('[META OAUTH] total pages after business fallback =', allPages.length);
-      } catch (businessErr) {
-        console.error('[META OAUTH] Failed to fetch businesses:', businessErr.message);
-        console.error('[META OAUTH] Possíveis causas: permissão business_management não foi concedida');
-      }
-    }
-
-    // Summary logging
-    const pagesWithIG = allPages.filter(p => p.instagram_business_account || p.connected_instagram_account);
-    const pagesWithoutIG = allPages.filter(p => !p.instagram_business_account && !p.connected_instagram_account);
-    
-    console.log('[META OAUTH] ========== RESUMO ==========');
-    console.log(`[META OAUTH] Total de páginas encontradas: ${allPages.length}`);
-    console.log(`[META OAUTH] Páginas COM Instagram Profissional conectado: ${pagesWithIG.length}`);
-    console.log(`[META OAUTH] Páginas SEM Instagram conectado: ${pagesWithoutIG.length}`);
-    
-    if (pagesWithoutIG.length > 0) {
-      console.warn(`[META OAUTH] Páginas sem Instagram: ${pagesWithoutIG.map(p => `"${p.name}"`).join(', ')}`);
-    }
-
-    // Find first page with Instagram Professional Account (Business or Creator)
-    const pageWithIG = allPages.find(page => page.instagram_business_account || page.connected_instagram_account);
-
-    // MVP: Do NOT hard-fail if no pages are found - allow "connected_limited" status
-    // The user's OAuth token is valid, we just can't get Pages/IG via the standard flow
-    
-    let pageId = null;
-    let pageName = null;
-    let pageAccessToken = null;
-    let igBusinessId = null;
+    // Step 3: Get Instagram user profile information
+    // We use instagramUserId from token exchange as the initial ID, but the /me endpoint
+    // may return a different ID format, so we prefer the profile response when available
+    console.log('[INSTAGRAM OAUTH] Fetching Instagram user profile');
     let igUsername = null;
-    let connectionStatus = 'connected';
-    
-    if (pageWithIG) {
-      // Standard flow: we have a page with Instagram connected
-      pageId = pageWithIG.id;
-      pageName = pageWithIG.name;
-      pageAccessToken = pageWithIG.access_token;
-      const igAccount = pageWithIG.instagram_business_account || pageWithIG.connected_instagram_account;
-      igBusinessId = igAccount.id;
-      igUsername = igAccount.username;
-      // account_type is only available for instagram_business_account, not connected_instagram_account
-      // If not available, we mark it as PROFESSIONAL (covers both Business and Creator)
-      const igAccountType = igAccount.account_type || 'PROFESSIONAL';
-      
-      console.log(`[META OAUTH] Conta Instagram selecionada: @${igUsername} (Tipo: ${igAccountType})`);
-      console.log(`[META OAUTH] Página do Facebook associada: "${pageName}"`);
-    } else {
-      // Fallback: No pages with IG found - try to get IG identity via /me endpoint
-      console.log('[META OAUTH] Nenhuma página com Instagram encontrada. Tentando obter identidade via /me...');
-      
-      try {
-        // Try /me?fields=id,name to get basic user identity
-        const meData = await graphGet(
-          'https://graph.facebook.com/v24.0/me?fields=id,name',
-          longLivedToken
-        );
-        console.log('[META OAUTH] /me response: id =', meData?.id, 'name =', meData?.name);
-        
-        // For MVP without pages, we store what we can
-        // The user can still use the token for messaging if they have the right permissions
-        connectionStatus = 'connected_limited';
-        
-        // Try to get Instagram account via Instagram Basic Display API or other endpoints
-        // Note: This may not work without pages, but we try anyway
-        try {
-          // Instagram accounts endpoint (may require additional permissions)
-          const igAccountsData = await graphGet(
-            'https://graph.facebook.com/v24.0/me/instagram_accounts?fields=id,username',
-            longLivedToken
-          );
-          if (igAccountsData?.data && igAccountsData.data.length > 0) {
-            const igAccount = igAccountsData.data[0];
-            igBusinessId = igAccount.id;
-            igUsername = igAccount.username;
-            connectionStatus = 'connected';
-            console.log(`[META OAUTH] Found IG account via /me/instagram_accounts: @${igUsername}`);
-          }
-        } catch (igAccountsErr) {
-          console.log('[META OAUTH] /me/instagram_accounts not available:', igAccountsErr.message);
-        }
-        
-        // If still no IG identity, use FB user id as a fallback identifier
-        // Prefix with 'fallback:fb:' to clearly distinguish from real IG IDs
-        // Real IG IDs are numeric strings, so this prefix pattern avoids collisions
-        if (!igBusinessId && meData?.id) {
-          // Store FB user id - can be used for limited functionality
-          // The user's token is still valid for potential future use
-          igBusinessId = `fallback:fb:${meData.id}`;
-          igUsername = meData.name || null;
-          console.log('[META OAUTH] Using FB identity as fallback:', igBusinessId);
-        }
-        
-      } catch (meErr) {
-        console.error('[META OAUTH] Failed to get /me data:', meErr.message);
-        // Even if /me fails, we still persist what we have (the token)
-        // Use a UUID-like identifier with clear prefix to avoid collisions with real IG IDs
-        connectionStatus = 'connected_limited';
-        igBusinessId = `fallback:unknown:${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+    // Initial ID from token exchange response (numeric user_id)
+    let igBusinessId = instagramUserId ? String(instagramUserId) : null;
+
+    try {
+      const profileUrl = new URL('https://graph.instagram.com/me');
+      profileUrl.searchParams.set('fields', 'id,username');
+      profileUrl.searchParams.set('access_token', longLivedToken);
+
+      const profileResponse = await axios.get(profileUrl.toString(), { timeout: 15000 });
+      igUsername = profileResponse.data.username || null;
+      // Prefer the ID from profile endpoint if available (should match token exchange user_id)
+      if (profileResponse.data.id) {
+        igBusinessId = profileResponse.data.id;
       }
-      
-      // Use the long-lived user token as the access token for limited connections
-      pageAccessToken = longLivedToken;
-      
-      console.log('[META OAUTH] Conexão limitada: sem página do Facebook, mas token válido');
+      console.log('[INSTAGRAM OAUTH] Profile fetched: @' + igUsername + ' (id: ' + igBusinessId + ')');
+    } catch (profileErr) {
+      // Profile fetch failed - use the user_id from token exchange as fallback
+      console.warn('[INSTAGRAM OAUTH] Could not fetch profile, using token user_id:', profileErr.message);
     }
+
+    // Instagram Login flow - no Facebook Pages involved
+    const connectionStatus = 'connected';
 
     // Step 4: Save to database (encrypted tokens)
-    // Persisting: page_id, ig_business_id, username, and long-lived token
+    // For Instagram Login, we only store userAccessToken (no pageAccessToken needed)
     if (process.env.NODE_ENV !== 'production') {
-      // Only log detailed data in development
-      console.log('[META OAUTH] Persistindo dados no banco de dados...');
-      console.log('[META OAUTH] Dados a persistir:', JSON.stringify({
-        userId: userId.substring(0, 8) + '...', // Mask userId
+      console.log('[INSTAGRAM OAUTH] Persisting data to database...');
+      console.log('[INSTAGRAM OAUTH] Data:', JSON.stringify({
+        userId: userId.substring(0, 8) + '...',
         provider: 'instagram',
-        pageId: pageId ? pageId.substring(0, 8) + '...' : null,
         igBusinessId: igBusinessId ? igBusinessId.substring(0, 8) + '...' : null,
         igUsername,
         status: connectionStatus,
-        hasPageAccessToken: !!pageAccessToken,
-        hasLongLivedToken: !!longLivedToken,
         expiresAt: expiresAt ? expiresAt.toISOString() : null
       }));
     } else {
-      console.log('[META OAUTH] Persistindo integração Instagram...');
+      console.log('[INSTAGRAM OAUTH] Persisting Instagram integration...');
     }
-    
+
     await prisma.socialAccount.upsert({
       where: {
         userId_provider: {
@@ -2706,10 +2504,10 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         }
       },
       update: {
-        pageId,
+        pageId: null, // No Facebook Page - Instagram Login only
         igBusinessId,
         igUsername,
-        pageAccessToken: encrypt(pageAccessToken),
+        pageAccessToken: null, // No page token - Instagram Login only
         userAccessToken: encrypt(longLivedToken),
         expiresAt,
         status: connectionStatus,
@@ -2718,78 +2516,73 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       create: {
         userId: userId,
         provider: 'instagram',
-        pageId,
+        pageId: null,
         igBusinessId,
         igUsername,
-        pageAccessToken: encrypt(pageAccessToken),
+        pageAccessToken: null,
         userAccessToken: encrypt(longLivedToken),
         expiresAt,
         status: connectionStatus
       }
     });
 
-    console.log('[META OAUTH] ========== SUCESSO ==========');
-    console.log(`[META OAUTH] Integração Instagram salva com sucesso`);
-    console.log(`[META OAUTH] Status: ${connectionStatus}`);
-    console.log(`[META OAUTH] Instagram: ${igUsername ? '@' + igUsername : 'N/A'}`);
-    console.log(`[META OAUTH] Página: ${pageName || 'N/A'}`);
-    console.log(`[META OAUTH] Token expira em: ${expiresAt ? expiresAt.toISOString() : 'N/A'}`);
-    
-    // Return success with status indicator
-    const statusParam = connectionStatus === 'connected_limited' ? 'connected_limited' : 'connected';
-    return res.redirect(`${BASE_URL}/integracoes/instagram?status=${statusParam}&username=${encodeURIComponent(igUsername || '')}`);
+    console.log('[INSTAGRAM OAUTH] ========== SUCCESS ==========');
+    console.log(`[INSTAGRAM OAUTH] Instagram integration saved successfully`);
+    console.log(`[INSTAGRAM OAUTH] Status: ${connectionStatus}`);
+    console.log(`[INSTAGRAM OAUTH] Instagram: ${igUsername ? '@' + igUsername : 'N/A'}`);
+    console.log(`[INSTAGRAM OAUTH] Token expires at: ${expiresAt ? expiresAt.toISOString() : 'N/A'}`);
+
+    // Return success
+    return res.redirect(`${BASE_URL}/integracoes/instagram?status=connected&username=${encodeURIComponent(igUsername || '')}`);
 
   } catch (error) {
     // Log detailed error information
-    console.error('[META OAUTH] ========== ERRO ==========');
-    console.error('[META OAUTH] Token exchange ou persistência falhou');
-    console.error('[META OAUTH] HTTP Status:', error?.response?.status || 'N/A');
-    console.error('[META OAUTH] Error message:', error.message);
-    
-    // Check for specific error types
-    const errorData = error?.response?.data?.error;
+    console.error('[INSTAGRAM OAUTH] ========== ERROR ==========');
+    console.error('[INSTAGRAM OAUTH] Token exchange or persistence failed');
+    console.error('[INSTAGRAM OAUTH] HTTP Status:', error?.response?.status || 'N/A');
+    console.error('[INSTAGRAM OAUTH] Error message:', error.message);
+
+    // Instagram API returns errors in different formats:
+    // - OAuth errors: { error_type, code, error_message }
+    // - Graph API errors: { error: { message, type, code } }
+    const errorData = error?.response?.data?.error || error?.response?.data;
     if (errorData) {
-      console.error('[META OAUTH] Graph API Error Code:', errorData.code);
-      console.error('[META OAUTH] Graph API Error Type:', errorData.type);
-      console.error('[META OAUTH] Graph API Error Message:', errorData.message);
-      console.error('[META OAUTH] Graph API Error Subcode:', errorData.error_subcode || 'N/A');
+      console.error('[INSTAGRAM OAUTH] API Error:', JSON.stringify(errorData));
+
+      // Instagram/Graph API error types
+      const errorType = errorData.error_type || errorData.type;
+      const errorMessage = errorData.error_message || errorData.message;
       
-      // Log specific permission-related errors with Portuguese messages
-      if (errorData.code === 190) {
-        console.error('[META OAUTH] Token inválido ou expirado');
-      } else if (errorData.code === 10 || errorData.code === 200) {
-        console.error('[META OAUTH] Permissões insuficientes - verifique se o app tem as permissões necessárias');
-      } else if (errorData.code === 100) {
-        // Error #100 often means missing permissions for business endpoints
-        console.error('[META OAUTH] Permissão insuficiente para acessar endpoints de negócios - conta pode não ser Profissional');
-      } else if (errorData.code === 4) {
-        console.error('[META OAUTH] Rate limit atingido - aguarde antes de tentar novamente');
+      if (errorType === 'OAuthException' || errorMessage?.includes('Invalid')) {
+        console.error('[INSTAGRAM OAUTH] Invalid or expired token/code');
+      } else if (errorMessage?.includes('permission')) {
+        console.error('[INSTAGRAM OAUTH] Insufficient permissions');
       }
     }
-    
+
     // In development, return JSON error for debugging
     if (process.env.NODE_ENV !== 'production') {
-      return res.status(500).json({ 
-        error: 'OAuth failed', 
+      return res.status(500).json({
+        error: 'OAuth failed',
         details: error?.response?.data || error.message,
         errorCode: errorData?.code,
-        errorType: errorData?.type
+        errorType: errorData?.error_type || errorData?.type
       });
     }
-    
-    // Determine error reason for redirect with improved mapping
+
+    // Determine error reason for redirect based on error content
     let errorReason = 'token_exchange_failed';
-    if (errorData?.code === 10 || errorData?.code === 200) {
-      errorReason = 'missing_permissions';
-    } else if (errorData?.code === 100) {
-      // #100 typically indicates insufficient permissions for business endpoints
-      errorReason = 'permissao_insuficiente';
-    } else if (errorData?.code === 190) {
+    const errorType = errorData?.error_type || errorData?.type;
+    const errorMessage = errorData?.error_message || errorData?.message || '';
+    
+    if (errorType === 'OAuthException' || errorMessage.includes('Invalid')) {
       errorReason = 'invalid_token';
-    } else if (errorData?.code === 4) {
+    } else if (errorMessage.includes('permission')) {
+      errorReason = 'missing_permissions';
+    } else if (error?.response?.status === 429) {
       errorReason = 'rate_limit';
     }
-    
+
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=${encodeURIComponent(errorReason)}`);
   }
 });
@@ -3116,8 +2909,9 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
-    const pageAccessToken = decrypt(integration.pageAccessToken);
-    if (!pageAccessToken) {
+    // Use userAccessToken (Instagram Login token)
+    const accessToken = decrypt(integration.userAccessToken);
+    if (!accessToken) {
       return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
     }
     
@@ -3125,7 +2919,7 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
     const fields = 'id,caption,media_type,media_url,permalink,timestamp';
     const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
     
-    const data = await graphGet(url, pageAccessToken);
+    const data = await graphGet(url, accessToken);
     const posts = data.data || [];
     
     // Cache posts in database
@@ -3192,8 +2986,9 @@ app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, 
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
-    const pageAccessToken = decrypt(integration.pageAccessToken);
-    if (!pageAccessToken) {
+    // Use userAccessToken (Instagram Login token)
+    const accessToken = decrypt(integration.userAccessToken);
+    if (!accessToken) {
       return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
     }
     
@@ -3201,7 +2996,7 @@ app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, 
     const fields = 'id,caption,media_type,media_url,permalink,timestamp';
     const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=50`;
     
-    const data = await graphGet(url, pageAccessToken);
+    const data = await graphGet(url, accessToken);
     const posts = data.data || [];
     
     // Update cache

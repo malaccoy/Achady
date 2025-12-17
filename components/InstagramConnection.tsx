@@ -31,13 +31,11 @@ export const InstagramConnection: React.FC = () => {
       // Reload status to get fresh data
       loadStatus();
     } else if (status === 'error') {
-      // Map error reasons to user-friendly Portuguese messages
+      // Map error reasons to user-friendly Portuguese messages (no Facebook Pages references)
       const errorMessages: Record<string, string> = {
-        'no_pages_found': 'Nenhuma Página do Facebook encontrada. Você precisa ser administrador de pelo menos uma Página do Facebook.',
-        'pages_without_instagram': 'Suas Páginas do Facebook não têm Instagram Profissional conectado. Conecte uma conta Instagram Business ou Creator à sua Página.',
-        'no_instagram_business': 'Nenhuma conta Instagram Profissional encontrada. Verifique se sua conta é Business ou Creator e está conectada a uma Página.',
+        'no_instagram_business': 'Nenhuma conta Instagram Profissional encontrada. Verifique se sua conta é Business ou Creator.',
         'missing_permissions': 'Permissões insuficientes. Por favor, aceite todas as permissões solicitadas durante a autorização.',
-        'permissao_insuficiente': 'Permissão insuficiente para acessar os dados do Instagram. Verifique se sua conta é Profissional (Business ou Criador) e está vinculada a uma Página do Facebook.',
+        'permissao_insuficiente': 'Permissão insuficiente para acessar os dados do Instagram. Verifique se sua conta é Profissional (Business ou Criador).',
         'invalid_token': 'Token inválido ou expirado. Por favor, tente conectar novamente.',
         'token_exchange_failed': 'Erro ao processar autorização. Por favor, tente novamente.',
         'invalid_state': 'Sessão expirada. Por favor, tente conectar novamente.',
@@ -173,21 +171,12 @@ export const InstagramConnection: React.FC = () => {
                       <span className="status-row__value">@{status.igUsername}</span>
                     </li>
                   )}
-                  {status.pageId && (
-                    <li className="status-row status-row--ok">
-                      <span className="status-row__icon">
-                        <CheckCircle2 className="w-4 h-4" />
-                      </span>
-                      <span className="status-row__label">Page ID:</span>
-                      <span className="status-row__value font-mono text-sm">{status.pageId}</span>
-                    </li>
-                  )}
                   {status.igBusinessId && (
                     <li className="status-row status-row--ok">
                       <span className="status-row__icon">
                         <CheckCircle2 className="w-4 h-4" />
                       </span>
-                      <span className="status-row__label">IG Business ID:</span>
+                      <span className="status-row__label">IG ID:</span>
                       <span className="status-row__value font-mono text-sm">{status.igBusinessId}</span>
                     </li>
                   )}
@@ -272,7 +261,7 @@ export const InstagramConnection: React.FC = () => {
               Ao conectar, você autoriza o Achady a gerenciar comentários e mensagens conforme as permissões do app.
             </p>
             <p className="text-slate-400">
-              A conexão é feita via Meta OAuth e requer uma conta Instagram Profissional vinculada a uma página do Facebook.
+              A conexão é feita via Instagram Login e requer uma conta Instagram Profissional (Business ou Criador).
             </p>
           </div>
         </div>
