@@ -2345,15 +2345,15 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  // Build the Instagram OAuth authorize URL
-  const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
+  // Build the Meta OAuth authorize URL (Facebook domain)
+  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
   oauthUrl.searchParams.set('client_id', clientId);
   oauthUrl.searchParams.set('redirect_uri', redirectUri);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
 
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth dialog');
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Meta OAuth dialog (Facebook domain)');
   res.redirect(oauthUrl.toString());
 });
 
