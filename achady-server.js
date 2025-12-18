@@ -2317,8 +2317,8 @@ async function graphPost(url, accessToken, data = {}) {
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  // Use META_FB_APP_ID with fallback to META_APP_ID
-  const clientId = process.env.META_FB_APP_ID || process.env.META_APP_ID;
+  // Use META_IG_APP_ID with fallback to META_APP_ID
+  const clientId = process.env.META_IG_APP_ID || process.env.META_APP_ID;
   const redirectUri = process.env.META_IG_REDIRECT_URI;
 
   // Log client_id and redirect_uri (do not log secrets)
@@ -2345,15 +2345,15 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  // Build the Meta OAuth authorize URL (Facebook domain)
-  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
+  // Build the Instagram OAuth authorize URL
+  const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
   oauthUrl.searchParams.set('client_id', clientId);
   oauthUrl.searchParams.set('redirect_uri', redirectUri);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
 
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Meta OAuth dialog (Facebook domain)');
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth dialog');
   res.redirect(oauthUrl.toString());
 });
 
