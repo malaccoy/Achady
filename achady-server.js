@@ -2313,7 +2313,7 @@ async function graphPost(url, accessToken, data = {}) {
   }
 }
 
-// GET: Start Instagram OAuth flow - redirects to Facebook OAuth dialog for Meta app
+// GET: Start Instagram OAuth flow - redirects to Instagram OAuth authorize
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
@@ -2337,26 +2337,23 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
 
-  // Instagram Business API scopes (via Facebook OAuth dialog)
-  // - instagram_business_basic: Read profile info and media
-  // - instagram_manage_comments: Read and reply to comments
-  // - instagram_business_manage_messages: Send and receive DMs (required for automation)
-  const scope = 'instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages';
+  // Instagram Login scopes (comma-separated from environment variable)
+  const scope = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
   const statePayload = { userId: req.userId };
   const state = jwt.sign(statePayload, JWT_SECRET, { expiresIn: '15m' });
 
-  // Build the Facebook OAuth dialog URL (Facebook dialog for Meta app)
-  const oauthUrl = new URL('https://www.facebook.com/v24.0/dialog/oauth');
+  // Build the Instagram OAuth authorize URL
+  const oauthUrl = new URL('https://www.instagram.com/oauth/authorize');
   oauthUrl.searchParams.set('client_id', clientId);
   oauthUrl.searchParams.set('redirect_uri', redirectUri);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
   oauthUrl.searchParams.set('state', state);
 
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Facebook OAuth dialog');
+  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth dialog');
   res.redirect(oauthUrl.toString());
 });
 
