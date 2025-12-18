@@ -2317,8 +2317,8 @@ async function graphPost(url, accessToken, data = {}) {
 app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  // Use META_IG_APP_ID with fallback to META_APP_ID
-  const clientId = process.env.META_IG_APP_ID || process.env.META_APP_ID;
+  // Use META_APP_ID for Instagram Login (no Facebook Pages)
+  const clientId = process.env.META_APP_ID;
   const redirectUri = process.env.META_IG_REDIRECT_URI;
 
   // Log client_id and redirect_uri (do not log secrets)
@@ -2351,6 +2351,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   oauthUrl.searchParams.set('redirect_uri', redirectUri);
   oauthUrl.searchParams.set('response_type', 'code');
   oauthUrl.searchParams.set('scope', scope);
+  oauthUrl.searchParams.set('force_reauth', 'true');
   oauthUrl.searchParams.set('state', state);
 
   console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth dialog');
@@ -2398,7 +2399,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   // Validate server configuration
-  if (!META_APP_SECRET || !META_IG_APP_ID || !META_IG_REDIRECT_URI) {
+  if (!META_APP_SECRET || !META_APP_ID || !META_IG_REDIRECT_URI) {
     console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
@@ -2408,7 +2409,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     console.log(JSON.stringify({
       tag: "INSTAGRAM_OAUTH_DEBUG",
       timestamp: new Date().toISOString(),
-      appIdLast4: META_IG_APP_ID ? META_IG_APP_ID.slice(-4) : null,
+      appIdLast4: META_APP_ID ? META_APP_ID.slice(-4) : null,
       secretLength: META_APP_SECRET ? META_APP_SECRET.length : 0,
       redirectUri: META_IG_REDIRECT_URI,
       hasCode: Boolean(code),
@@ -2418,7 +2419,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     console.log('[INSTAGRAM OAUTH] Exchanging code for access token via Instagram API');
     const tokenResponse = await axios.post('https://api.instagram.com/oauth/access_token', 
       new URLSearchParams({
-        client_id: META_IG_APP_ID,
+        client_id: META_APP_ID,
         client_secret: META_APP_SECRET,
         grant_type: 'authorization_code',
         redirect_uri: META_IG_REDIRECT_URI,
@@ -2469,7 +2470,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
     let grantedScopes = [];
     try {
       // Use app access token (app_id|app_secret) to debug the user token
-      const appAccessToken = `${META_IG_APP_ID}|${META_APP_SECRET}`;
+      const appAccessToken = `${META_APP_ID}|${META_APP_SECRET}`;
       const debugUrl = new URL('https://graph.facebook.com/debug_token');
       debugUrl.searchParams.set('input_token', longLivedToken);
       debugUrl.searchParams.set('access_token', appAccessToken);
