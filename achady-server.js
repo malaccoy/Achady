@@ -2947,6 +2947,30 @@ const InstagramRuleSchema = z.object({
   enabled: z.boolean().default(true)
 });
 
+// Helper: Map InstagramPost DB records to API response format
+function mapInstagramPostToResponse(posts) {
+  return {
+    data: posts.map(p => ({
+      id: p.mediaId,
+      caption: p.caption || null,
+      media_type: p.mediaType,
+      media_url: p.mediaUrl || p.thumbnailUrl || null,
+      permalink: p.permalink || null,
+      thumbnail_url: p.thumbnailUrl || null,
+      timestamp: p.timestamp ? p.timestamp.toISOString() : null
+    })),
+    posts: posts.map(p => ({
+      id: p.mediaId,
+      caption: p.caption || null,
+      mediaType: p.mediaType,
+      mediaUrl: p.mediaUrl || p.thumbnailUrl || null,
+      permalink: p.permalink || null,
+      timestamp: p.timestamp ? p.timestamp.toISOString() : null
+    })),
+    total: posts.length
+  };
+}
+
 // GET: Fetch Instagram posts
 // - If refresh=1, fetch from Instagram API and upsert into InstagramPost model
 // - Otherwise, return recent posts from database only
@@ -3091,24 +3115,7 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
       
       return res.json({
         source: 'api',
-        data: dbPosts.map(p => ({
-          id: p.mediaId,
-          caption: p.caption || null,
-          media_type: p.mediaType,
-          media_url: p.mediaUrl || p.thumbnailUrl || null,
-          permalink: p.permalink || null,
-          thumbnail_url: p.thumbnailUrl || null,
-          timestamp: p.timestamp ? p.timestamp.toISOString() : null
-        })),
-        posts: dbPosts.map(p => ({
-          id: p.mediaId,
-          caption: p.caption || null,
-          mediaType: p.mediaType,
-          mediaUrl: p.mediaUrl || p.thumbnailUrl || null,
-          permalink: p.permalink || null,
-          timestamp: p.timestamp ? p.timestamp.toISOString() : null
-        })),
-        total: dbPosts.length
+        ...mapInstagramPostToResponse(dbPosts)
       });
     }
     
@@ -3123,24 +3130,7 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
     
     res.json({
       source: 'db',
-      data: dbPosts.map(p => ({
-        id: p.mediaId,
-        caption: p.caption || null,
-        media_type: p.mediaType,
-        media_url: p.mediaUrl || p.thumbnailUrl || null,
-        permalink: p.permalink || null,
-        thumbnail_url: p.thumbnailUrl || null,
-        timestamp: p.timestamp ? p.timestamp.toISOString() : null
-      })),
-      posts: dbPosts.map(p => ({
-        id: p.mediaId,
-        caption: p.caption || null,
-        mediaType: p.mediaType,
-        mediaUrl: p.mediaUrl || p.thumbnailUrl || null,
-        permalink: p.permalink || null,
-        timestamp: p.timestamp ? p.timestamp.toISOString() : null
-      })),
-      total: dbPosts.length
+      ...mapInstagramPostToResponse(dbPosts)
     });
   } catch (error) {
     console.error('[INSTAGRAM POSTS] Unexpected error:', error.message);
