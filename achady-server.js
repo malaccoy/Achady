@@ -2364,7 +2364,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   const META_APP_SECRET = process.env.META_APP_SECRET;
   const BASE_URL = process.env.APP_BASE_URL || 'https://www.achady.com.br';
 
-  console.log('[INSTAGRAM OAUTH] EXCHANGE redirect_uri =', META_IG_REDIRECT_URI);
+  console.log('[INSTAGRAM OAUTH] EXCHANGE redirect_uri =', 'https://www.achady.com.br/api/meta/auth/instagram/callback');
 
   const { code, error: oauthError, error_description, state } = req.query;
 
@@ -2399,7 +2399,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
   }
 
   // Validate server configuration
-  if (!META_APP_SECRET || !META_APP_ID || !META_IG_REDIRECT_URI) {
+  if (!META_APP_SECRET || !META_APP_ID) {
     console.error('[INSTAGRAM OAUTH] Missing server configuration');
     return res.redirect(`${BASE_URL}/integracoes/instagram?status=error&reason=server_config`);
   }
@@ -2411,7 +2411,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
       timestamp: new Date().toISOString(),
       appIdLast4: META_APP_ID ? META_APP_ID.slice(-4) : null,
       secretLength: META_APP_SECRET ? META_APP_SECRET.length : 0,
-      redirectUri: META_IG_REDIRECT_URI,
+      redirectUri: 'https://www.achady.com.br/api/meta/auth/instagram/callback',
       hasCode: Boolean(code),
     }));
 
@@ -2422,7 +2422,7 @@ app.get('/api/meta/auth/instagram/callback', oauthLimiter, async (req, res) => {
         client_id: META_APP_ID,
         client_secret: META_APP_SECRET,
         grant_type: 'authorization_code',
-        redirect_uri: META_IG_REDIRECT_URI,
+        redirect_uri: 'https://www.achady.com.br/api/meta/auth/instagram/callback',
         code: code
       }).toString(),
       { 
