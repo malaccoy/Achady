@@ -29,5 +29,6 @@ next-env.d.ts
 *.sw?
 .env
 *.db
+*.db-journal
 data/
 test-shopee-api.js
