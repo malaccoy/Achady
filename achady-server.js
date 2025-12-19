@@ -2354,7 +2354,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   oauthUrl.searchParams.set('force_reauth', 'true');
   oauthUrl.searchParams.set('state', state);
 
-  console.log('[INSTAGRAM OAUTH] Redirecting user to Instagram OAuth dialog');
+  console.log('[INSTAGRAM OAUTH] OAuth URL =', oauthUrl.toString());
   res.redirect(oauthUrl.toString());
 });
 
