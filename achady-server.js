@@ -2947,12 +2947,39 @@ const InstagramRuleSchema = z.object({
   enabled: z.boolean().default(true)
 });
 
+// Helper: Map InstagramPost DB records to API response format
+function mapInstagramPostToResponse(posts) {
+  return {
+    data: posts.map(p => ({
+      id: p.mediaId,
+      caption: p.caption || null,
+      media_type: p.mediaType,
+      media_url: p.mediaUrl || p.thumbnailUrl || null,
+      permalink: p.permalink || null,
+      thumbnail_url: p.thumbnailUrl || null,
+      timestamp: p.timestamp ? p.timestamp.toISOString() : null
+    })),
+    posts: posts.map(p => ({
+      id: p.mediaId,
+      caption: p.caption || null,
+      mediaType: p.mediaType,
+      mediaUrl: p.mediaUrl || p.thumbnailUrl || null,
+      permalink: p.permalink || null,
+      timestamp: p.timestamp ? p.timestamp.toISOString() : null
+    })),
+    total: posts.length
+  };
+}
+
 // GET: Fetch Instagram posts
+// - If refresh=1, fetch from Instagram API and upsert into InstagramPost model
+// - Otherwise, return recent posts from database only
 app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 25, 50);
+    const refresh = req.query.refresh === '1';
+    const limit = Math.min(parseInt(req.query.limit) || 50, 50);
     
-    console.log('[INSTAGRAM POSTS] Fetching posts for user', req.userId);
+    console.log('[INSTAGRAM POSTS] Request for user', req.userId, '- refresh:', refresh);
     
     // Get user's Instagram integration - must be provider='instagram' and status='connected'
     const integration = await prisma.socialAccount.findUnique({
@@ -2982,115 +3009,128 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
     
     console.log('[INSTAGRAM POSTS] igBusinessId:', integration.igBusinessId);
     
-    // Decrypt the user access token
-    const accessToken = decrypt(integration.userAccessToken);
-    if (!accessToken) {
-      console.error('[INSTAGRAM POSTS] Failed to decrypt userAccessToken for user', req.userId);
-      return res.status(500).json({ error: 'token_decrypt_failed', message: 'Erro ao descriptografar token. Reconecte o Instagram.' });
-    }
-    
-    // Fetch media from Instagram Graph API
-    // Use graph.instagram.com for Instagram Login (no Facebook Pages)
-    const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp';
-    const url = `https://graph.instagram.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
-    
-    console.log('[INSTAGRAM POSTS] Calling Instagram API for igBusinessId:', integration.igBusinessId);
-    
-    let data;
-    try {
-      data = await graphGet(url, accessToken);
-    } catch (apiError) {
-      // Parse and handle specific Instagram API errors
-      const errorMsg = apiError.message || '';
-      console.error('[INSTAGRAM POSTS] Instagram API error:', errorMsg);
+    // If refresh=1, fetch from Instagram API and upsert into InstagramPost
+    if (refresh) {
+      // Decrypt the user access token (never log it)
+      const accessToken = decrypt(integration.userAccessToken);
+      if (!accessToken) {
+        console.error('[INSTAGRAM POSTS] Failed to decrypt userAccessToken for user', req.userId);
+        return res.status(500).json({ error: 'token_decrypt_failed', message: 'Erro ao descriptografar token. Reconecte o Instagram.' });
+      }
       
-      // Check for common error types
-      if (errorMsg.includes('OAuthException') || errorMsg.includes('Invalid OAuth') || errorMsg.includes('access token')) {
-        return res.status(401).json({ 
-          error: 'oauth_exception', 
-          message: 'Token de acesso inválido ou expirado. Reconecte o Instagram.' 
+      // Fetch media from Instagram Graph API
+      const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp';
+      const url = `https://graph.instagram.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
+      
+      console.log('[INSTAGRAM POSTS] Calling Instagram API for igBusinessId:', integration.igBusinessId);
+      
+      let apiData;
+      try {
+        apiData = await graphGet(url, accessToken);
+      } catch (apiError) {
+        // Parse and handle specific Instagram API errors
+        const errorMsg = apiError.message || '';
+        console.error('[INSTAGRAM POSTS] Instagram API error:', errorMsg);
+        // Log error body if available
+        if (apiError.response?.data) {
+          console.error('[INSTAGRAM POSTS] API error body:', JSON.stringify(apiError.response.data));
+        }
+        
+        // Check for common error types
+        if (errorMsg.includes('OAuthException') || errorMsg.includes('Invalid OAuth') || errorMsg.includes('access token')) {
+          return res.status(401).json({ 
+            error: 'oauth_exception', 
+            message: 'Token de acesso inválido ou expirado. Reconecte o Instagram.' 
+          });
+        }
+        
+        if (errorMsg.includes('permission') || errorMsg.includes('scope')) {
+          return res.status(403).json({ 
+            error: 'insufficient_permissions', 
+            message: 'Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.' 
+          });
+        }
+        
+        if (errorMsg.includes('rate limit') || errorMsg.includes('limit')) {
+          return res.status(429).json({ 
+            error: 'rate_limit', 
+            message: 'Limite de requisições excedido. Tente novamente em alguns minutos.' 
+          });
+        }
+        
+        // Generic API error
+        return res.status(500).json({ 
+          error: 'instagram_api_error', 
+          message: 'Erro ao buscar posts do Instagram. Tente novamente.' 
         });
       }
       
-      if (errorMsg.includes('permission') || errorMsg.includes('scope')) {
-        return res.status(403).json({ 
-          error: 'insufficient_permissions', 
-          message: 'Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.' 
-        });
-      }
+      const apiPosts = apiData.data || [];
+      console.log('[INSTAGRAM POSTS] API returned', apiPosts.length, 'posts');
       
-      if (errorMsg.includes('rate limit') || errorMsg.includes('limit')) {
-        return res.status(429).json({ 
-          error: 'rate_limit', 
-          message: 'Limite de requisições excedido. Tente novamente em alguns minutos.' 
-        });
+      // Upsert each post into InstagramPost model
+      let upsertCount = 0;
+      for (const item of apiPosts) {
+        try {
+          await prisma.instagramPost.upsert({
+            where: { mediaId: item.id },
+            update: {
+              igBusinessId: integration.igBusinessId,
+              mediaType: item.media_type || null,
+              caption: item.caption || null,
+              mediaUrl: item.media_url || null,
+              permalink: item.permalink || null,
+              thumbnailUrl: item.thumbnail_url || null,
+              timestamp: item.timestamp ? new Date(item.timestamp) : null,
+              raw: JSON.stringify(item),
+              updatedAt: new Date()
+            },
+            create: {
+              igBusinessId: integration.igBusinessId,
+              mediaId: item.id,
+              mediaType: item.media_type || null,
+              caption: item.caption || null,
+              mediaUrl: item.media_url || null,
+              permalink: item.permalink || null,
+              thumbnailUrl: item.thumbnail_url || null,
+              timestamp: item.timestamp ? new Date(item.timestamp) : null,
+              raw: JSON.stringify(item)
+            }
+          });
+          upsertCount++;
+        } catch (upsertError) {
+          console.warn('[INSTAGRAM POSTS] Failed to upsert post', item.id, ':', upsertError.message);
+        }
       }
+      console.log('[INSTAGRAM POSTS] Upserted', upsertCount, 'posts into InstagramPost');
       
-      // Generic API error
-      return res.status(500).json({ 
-        error: 'instagram_api_error', 
-        message: 'Erro ao buscar posts do Instagram. Tente novamente.' 
+      // Query posts from database after upsert
+      const dbPosts = await prisma.instagramPost.findMany({
+        where: { igBusinessId: integration.igBusinessId },
+        orderBy: { timestamp: 'desc' },
+        take: limit
+      });
+      
+      console.log('[INSTAGRAM POSTS] Returning', dbPosts.length, 'posts from DB (source: api)');
+      
+      return res.json({
+        source: 'api',
+        ...mapInstagramPostToResponse(dbPosts)
       });
     }
     
-    const posts = data.data || [];
-    console.log('[INSTAGRAM POSTS] Successfully fetched', posts.length, 'posts');
+    // refresh is not 1 - return posts from database only
+    const dbPosts = await prisma.instagramPost.findMany({
+      where: { igBusinessId: integration.igBusinessId },
+      orderBy: { timestamp: 'desc' },
+      take: limit
+    });
     
-    // Cache posts in database
-    for (const post of posts) {
-      try {
-        await prisma.instagramPostCache.upsert({
-          where: {
-            igBusinessId_mediaId: {
-              igBusinessId: integration.igBusinessId,
-              mediaId: post.id
-            }
-          },
-          update: {
-            caption: post.caption || null,
-            mediaType: post.media_type,
-            mediaUrl: post.media_url || post.thumbnail_url || null,
-            permalink: post.permalink || null,
-            timestamp: post.timestamp ? new Date(post.timestamp) : null,
-            updatedAt: new Date()
-          },
-          create: {
-            userId: req.userId,
-            igBusinessId: integration.igBusinessId,
-            mediaId: post.id,
-            caption: post.caption || null,
-            mediaType: post.media_type,
-            mediaUrl: post.media_url || post.thumbnail_url || null,
-            permalink: post.permalink || null,
-            timestamp: post.timestamp ? new Date(post.timestamp) : null
-          }
-        });
-      } catch (cacheError) {
-        // Log cache error but don't fail the request
-        console.warn('[INSTAGRAM POSTS] Failed to cache post', post.id, ':', cacheError.message);
-      }
-    }
+    console.log('[INSTAGRAM POSTS] Returning', dbPosts.length, 'posts from DB (source: db)');
     
     res.json({
-      data: posts.map(p => ({
-        id: p.id,
-        caption: p.caption || null,
-        media_type: p.media_type,
-        media_url: p.media_url || p.thumbnail_url || null,
-        permalink: p.permalink || null,
-        thumbnail_url: p.thumbnail_url || null,
-        timestamp: p.timestamp || null
-      })),
-      // Also include in legacy format for backward compatibility
-      posts: posts.map(p => ({
-        id: p.id,
-        caption: p.caption || null,
-        mediaType: p.media_type,
-        mediaUrl: p.media_url || p.thumbnail_url || null,
-        permalink: p.permalink || null,
-        timestamp: p.timestamp || null
-      })),
-      total: posts.length
+      source: 'db',
+      ...mapInstagramPostToResponse(dbPosts)
     });
   } catch (error) {
     console.error('[INSTAGRAM POSTS] Unexpected error:', error.message);

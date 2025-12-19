@@ -267,12 +267,14 @@ export const disconnectInstagram = async (): Promise<void> => {
 
 // --- Instagram Posts ---
 
-export const getInstagramPosts = async (limit: number = 25): Promise<InstagramPostsResponse> => {
+// Get posts from DB (no refresh) - used on page load for instant display
+export const getInstagramPosts = async (limit: number = 50): Promise<InstagramPostsResponse> => {
   return request<InstagramPostsResponse>(`/meta/instagram/posts?limit=${limit}`);
 };
 
-export const syncInstagramPosts = async (): Promise<{ ok: boolean; synced: number }> => {
-  return request<{ ok: boolean; synced: number }>('/meta/instagram/posts/sync', { method: 'POST' });
+// Sync posts from Instagram API (refresh=1) - used by "Sincronizar" button
+export const syncInstagramPosts = async (): Promise<InstagramPostsResponse> => {
+  return request<InstagramPostsResponse>('/meta/instagram/posts?refresh=1');
 };
 
 // --- Instagram Rules ---

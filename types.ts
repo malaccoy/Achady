@@ -145,6 +145,7 @@ export interface InstagramRulePayload {
 export interface InstagramPostsResponse {
   posts: InstagramPost[];
   total: number;
+  source?: 'api' | 'db'; // Source of posts: 'api' if fetched from Instagram, 'db' if from cache
 }
 
 // Instagram rule test response

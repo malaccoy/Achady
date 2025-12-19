@@ -60,6 +60,7 @@ export const InstagramPostsAndRules: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [postsSource, setPostsSource] = useState<'api' | 'db' | null>(null); // Track source of posts
   
   // UI state
   const [selectedPost, setSelectedPost] = useState<InstagramPost | null>(null);
@@ -88,13 +89,14 @@ export const InstagramPostsAndRules: React.FC = () => {
       setStatus(statusRes);
       
       if (statusRes.connected) {
-        // Load posts and rules
+        // Load posts and rules (posts without refresh - from DB for instant display)
         try {
           const [postsRes, rulesRes] = await Promise.all([
-            getInstagramPosts(25),
+            getInstagramPosts(50),
             getInstagramRules()
           ]);
           setPosts(postsRes.posts);
+          setPostsSource(postsRes.source || 'db');
           setRules(rulesRes);
         } catch (fetchError: any) {
           // Handle specific error codes from backend
@@ -126,12 +128,12 @@ export const InstagramPostsAndRules: React.FC = () => {
     try {
       setSyncing(true);
       setError(null);
+      // syncInstagramPosts now calls GET /api/meta/instagram/posts?refresh=1
+      // which returns the posts directly after upserting
       const res = await syncInstagramPosts();
-      setSuccessMessage(`${res.synced} posts sincronizados`);
-      
-      // Reload posts
-      const postsRes = await getInstagramPosts(25);
-      setPosts(postsRes.posts);
+      setPosts(res.posts);
+      setPostsSource(res.source || 'api');
+      setSuccessMessage(`${res.total} posts sincronizados`);
       
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (e: any) {
@@ -414,6 +416,9 @@ export const InstagramPostsAndRules: React.FC = () => {
           <h2 className="app-card__title flex items-center gap-2">
             <Image className="w-5 h-5 text-orange-500" />
             Posts Recentes ({posts.length})
+            {postsSource === 'db' && posts.length > 0 && (
+              <span className="ml-2 text-xs font-normal text-slate-500">(cache)</span>
+            )}
           </h2>
           
           {posts.length === 0 ? (
