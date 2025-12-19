@@ -337,3 +337,22 @@ model InstagramProcessedComment {
   @@index([igBusinessId])
   @@index([commentId])
 }
+
+// Instagram Post - persists Instagram posts fetched from IG Graph API
+model InstagramPost {
+  id            String   @id @default(cuid())
+  igBusinessId  String
+  mediaId       String   @unique
+  mediaType     String?
+  caption       String?
+  mediaUrl      String?
+  permalink     String?
+  thumbnailUrl  String?
+  timestamp     DateTime?
+  raw           String?  // JSON string for optional raw data
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([igBusinessId])
+  @@index([timestamp])
+}
