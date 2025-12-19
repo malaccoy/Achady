@@ -2338,7 +2338,7 @@ app.get('/api/meta/auth/instagram', oauthLimiter, requireAuth, (req, res) => {
   }
 
   // Instagram Login scopes (comma-separated from environment variable)
-  const scope = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages';
+  const scope = process.env.META_IG_SCOPES || 'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages';
 
   // Create signed state parameter containing userId for callback verification
   // This allows the callback to identify the user without requiring site auth token
