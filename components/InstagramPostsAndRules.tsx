@@ -89,14 +89,33 @@ export const InstagramPostsAndRules: React.FC = () => {
       
       if (statusRes.connected) {
         // Load posts and rules
-        const [postsRes, rulesRes] = await Promise.all([
-          getInstagramPosts(25),
-          getInstagramRules()
-        ]);
-        setPosts(postsRes.posts);
-        setRules(rulesRes);
+        try {
+          const [postsRes, rulesRes] = await Promise.all([
+            getInstagramPosts(25),
+            getInstagramRules()
+          ]);
+          setPosts(postsRes.posts);
+          setRules(rulesRes);
+        } catch (fetchError: any) {
+          // Handle specific error codes from backend
+          console.error('[Instagram Posts] Fetch error:', fetchError);
+          const errorCode = fetchError.error || '';
+          
+          if (errorCode === 'not_connected' || errorCode === 'token_decrypt_failed') {
+            setError('Sua conexão com o Instagram expirou. Por favor, reconecte sua conta.');
+          } else if (errorCode === 'oauth_exception') {
+            setError('Token de acesso inválido. Reconecte o Instagram.');
+          } else if (errorCode === 'insufficient_permissions') {
+            setError('Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.');
+          } else if (errorCode === 'rate_limit') {
+            setError('Limite de requisições excedido. Aguarde alguns minutos e tente novamente.');
+          } else {
+            setError(fetchError.message || 'Erro ao carregar posts. Tente novamente.');
+          }
+        }
       }
     } catch (e: any) {
+      console.error('[Instagram Posts] Load error:', e);
       setError(e.message || 'Erro ao carregar dados');
     } finally {
       setLoading(false);
@@ -116,7 +135,23 @@ export const InstagramPostsAndRules: React.FC = () => {
       
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (e: any) {
-      setError(e.message || 'Erro ao sincronizar');
+      // Log full error for debugging
+      console.error('[Instagram Sync] Error:', e);
+      
+      // Handle specific error codes from backend
+      const errorCode = e.error || '';
+      
+      if (errorCode === 'not_connected' || errorCode === 'token_decrypt_failed') {
+        setError('Sua conexão com o Instagram expirou. Por favor, reconecte sua conta.');
+      } else if (errorCode === 'oauth_exception') {
+        setError('Token de acesso inválido. Reconecte o Instagram.');
+      } else if (errorCode === 'insufficient_permissions') {
+        setError('Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.');
+      } else if (errorCode === 'rate_limit') {
+        setError('Limite de requisições excedido. Aguarde alguns minutos e tente novamente.');
+      } else {
+        setError(e.message || 'Erro ao sincronizar posts. Tente novamente.');
+      }
     } finally {
       setSyncing(false);
     }

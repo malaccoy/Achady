@@ -14,6 +14,16 @@ import {
   InstagramAutoReplyConfig
 } from '../types';
 
+// Custom error class that preserves API error codes
+class ApiError extends Error {
+  error: string;
+  constructor(message: string, errorCode: string) {
+    super(message);
+    this.error = errorCode;
+    this.name = 'ApiError';
+  }
+}
+
 // Helper for making HTTP requests with common config
 async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = {
@@ -32,12 +42,14 @@ async function makeRequest<T>(url: string, options: RequestInit = {}): Promise<T
   if (response.status === 401) {
     // Redirecionar para login via window.location causava loop infinito.
     // O App.tsx já captura este erro e muda o estado para exibir <Auth />
-    throw new Error('Não autorizado');
+    throw new ApiError('Não autorizado', 'unauthorized');
   }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.error || `Erro na requisição: ${response.status}`);
+    const errorMessage = errorBody.message || errorBody.error || `Erro na requisição: ${response.status}`;
+    const errorCode = errorBody.error || 'unknown_error';
+    throw new ApiError(errorMessage, errorCode);
   }
 
   if (response.status === 204) {
