@@ -2952,7 +2952,9 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
   try {
     const limit = Math.min(parseInt(req.query.limit) || 25, 50);
     
-    // Get user's Instagram integration
+    console.log('[INSTAGRAM POSTS] Fetching posts for user', req.userId);
+    
+    // Get user's Instagram integration - must be provider='instagram' and status='connected'
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -2962,74 +2964,146 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
-      return res.status(400).json({ error: 'Instagram não conectado' });
+    // Check if integration exists and is connected
+    if (!integration) {
+      console.log('[INSTAGRAM POSTS] No Instagram integration found for user', req.userId);
+      return res.status(400).json({ error: 'not_connected', message: 'Instagram não conectado' });
     }
     
-    // Use userAccessToken (Instagram Login token)
+    if (integration.status !== 'connected') {
+      console.log('[INSTAGRAM POSTS] Instagram integration not in connected status:', integration.status);
+      return res.status(400).json({ error: 'not_connected', message: 'Instagram não conectado ou com status inválido' });
+    }
+    
+    if (!integration.igBusinessId) {
+      console.log('[INSTAGRAM POSTS] Missing igBusinessId for user', req.userId);
+      return res.status(400).json({ error: 'not_connected', message: 'Conta Instagram sem Business ID. Reconecte.' });
+    }
+    
+    console.log('[INSTAGRAM POSTS] igBusinessId:', integration.igBusinessId);
+    
+    // Decrypt the user access token
     const accessToken = decrypt(integration.userAccessToken);
     if (!accessToken) {
-      return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
+      console.error('[INSTAGRAM POSTS] Failed to decrypt userAccessToken for user', req.userId);
+      return res.status(500).json({ error: 'token_decrypt_failed', message: 'Erro ao descriptografar token. Reconecte o Instagram.' });
     }
     
     // Fetch media from Instagram Graph API
-    const fields = 'id,caption,media_type,media_url,permalink,timestamp';
-    const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
+    // Use graph.instagram.com for Instagram Login (no Facebook Pages)
+    const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp';
+    const url = `https://graph.instagram.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
     
-    const data = await graphGet(url, accessToken);
-    const posts = data.data || [];
+    console.log('[INSTAGRAM POSTS] Calling Instagram API for igBusinessId:', integration.igBusinessId);
     
-    // Cache posts in database
-    for (const post of posts) {
-      await prisma.instagramPostCache.upsert({
-        where: {
-          igBusinessId_mediaId: {
-            igBusinessId: integration.igBusinessId,
-            mediaId: post.id
-          }
-        },
-        update: {
-          caption: post.caption || null,
-          mediaType: post.media_type,
-          mediaUrl: post.media_url || null,
-          permalink: post.permalink || null,
-          timestamp: post.timestamp ? new Date(post.timestamp) : null,
-          updatedAt: new Date()
-        },
-        create: {
-          userId: req.userId,
-          igBusinessId: integration.igBusinessId,
-          mediaId: post.id,
-          caption: post.caption || null,
-          mediaType: post.media_type,
-          mediaUrl: post.media_url || null,
-          permalink: post.permalink || null,
-          timestamp: post.timestamp ? new Date(post.timestamp) : null
-        }
+    let data;
+    try {
+      data = await graphGet(url, accessToken);
+    } catch (apiError) {
+      // Parse and handle specific Instagram API errors
+      const errorMsg = apiError.message || '';
+      console.error('[INSTAGRAM POSTS] Instagram API error:', errorMsg);
+      
+      // Check for common error types
+      if (errorMsg.includes('OAuthException') || errorMsg.includes('Invalid OAuth') || errorMsg.includes('access token')) {
+        return res.status(401).json({ 
+          error: 'oauth_exception', 
+          message: 'Token de acesso inválido ou expirado. Reconecte o Instagram.' 
+        });
+      }
+      
+      if (errorMsg.includes('permission') || errorMsg.includes('scope')) {
+        return res.status(403).json({ 
+          error: 'insufficient_permissions', 
+          message: 'Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.' 
+        });
+      }
+      
+      if (errorMsg.includes('rate limit') || errorMsg.includes('limit')) {
+        return res.status(429).json({ 
+          error: 'rate_limit', 
+          message: 'Limite de requisições excedido. Tente novamente em alguns minutos.' 
+        });
+      }
+      
+      // Generic API error
+      return res.status(500).json({ 
+        error: 'instagram_api_error', 
+        message: 'Erro ao buscar posts do Instagram. Tente novamente.' 
       });
     }
     
+    const posts = data.data || [];
+    console.log('[INSTAGRAM POSTS] Successfully fetched', posts.length, 'posts');
+    
+    // Cache posts in database
+    for (const post of posts) {
+      try {
+        await prisma.instagramPostCache.upsert({
+          where: {
+            igBusinessId_mediaId: {
+              igBusinessId: integration.igBusinessId,
+              mediaId: post.id
+            }
+          },
+          update: {
+            caption: post.caption || null,
+            mediaType: post.media_type,
+            mediaUrl: post.media_url || post.thumbnail_url || null,
+            permalink: post.permalink || null,
+            timestamp: post.timestamp ? new Date(post.timestamp) : null,
+            updatedAt: new Date()
+          },
+          create: {
+            userId: req.userId,
+            igBusinessId: integration.igBusinessId,
+            mediaId: post.id,
+            caption: post.caption || null,
+            mediaType: post.media_type,
+            mediaUrl: post.media_url || post.thumbnail_url || null,
+            permalink: post.permalink || null,
+            timestamp: post.timestamp ? new Date(post.timestamp) : null
+          }
+        });
+      } catch (cacheError) {
+        // Log cache error but don't fail the request
+        console.warn('[INSTAGRAM POSTS] Failed to cache post', post.id, ':', cacheError.message);
+      }
+    }
+    
     res.json({
+      data: posts.map(p => ({
+        id: p.id,
+        caption: p.caption || null,
+        media_type: p.media_type,
+        media_url: p.media_url || p.thumbnail_url || null,
+        permalink: p.permalink || null,
+        thumbnail_url: p.thumbnail_url || null,
+        timestamp: p.timestamp || null
+      })),
+      // Also include in legacy format for backward compatibility
       posts: posts.map(p => ({
         id: p.id,
-        caption: p.caption,
+        caption: p.caption || null,
         mediaType: p.media_type,
-        mediaUrl: p.media_url,
-        permalink: p.permalink,
-        timestamp: p.timestamp
+        mediaUrl: p.media_url || p.thumbnail_url || null,
+        permalink: p.permalink || null,
+        timestamp: p.timestamp || null
       })),
       total: posts.length
     });
   } catch (error) {
-    console.error('[INSTAGRAM POSTS] Error:', error.message);
-    res.status(500).json({ error: 'Erro ao buscar posts' });
+    console.error('[INSTAGRAM POSTS] Unexpected error:', error.message);
+    res.status(500).json({ error: 'server_error', message: 'Erro interno ao buscar posts' });
   }
 });
 
 // POST: Force sync Instagram posts
 app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, res) => {
   try {
-    // Get user's Instagram integration
+    console.log('[INSTAGRAM SYNC] Starting sync for user', req.userId);
+    
+    // Get user's Instagram integration - must be provider='instagram' and status='connected'
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -3039,60 +3113,120 @@ app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, 
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
-      return res.status(400).json({ error: 'Instagram não conectado' });
+    // Check if integration exists and is connected
+    if (!integration) {
+      console.log('[INSTAGRAM SYNC] No Instagram integration found for user', req.userId);
+      return res.status(400).json({ error: 'not_connected', message: 'Instagram não conectado' });
     }
     
-    // Use userAccessToken (Instagram Login token)
+    if (integration.status !== 'connected') {
+      console.log('[INSTAGRAM SYNC] Instagram integration not in connected status:', integration.status);
+      return res.status(400).json({ error: 'not_connected', message: 'Instagram não conectado ou com status inválido' });
+    }
+    
+    if (!integration.igBusinessId) {
+      console.log('[INSTAGRAM SYNC] Missing igBusinessId for user', req.userId);
+      return res.status(400).json({ error: 'not_connected', message: 'Conta Instagram sem Business ID. Reconecte.' });
+    }
+    
+    console.log('[INSTAGRAM SYNC] igBusinessId:', integration.igBusinessId);
+    
+    // Decrypt the user access token
     const accessToken = decrypt(integration.userAccessToken);
     if (!accessToken) {
-      return res.status(400).json({ error: 'Token inválido. Reconecte o Instagram.' });
+      console.error('[INSTAGRAM SYNC] Failed to decrypt userAccessToken for user', req.userId);
+      return res.status(500).json({ error: 'token_decrypt_failed', message: 'Erro ao descriptografar token. Reconecte o Instagram.' });
     }
     
     // Fetch media from Instagram Graph API
-    const fields = 'id,caption,media_type,media_url,permalink,timestamp';
-    const url = `https://graph.facebook.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=50`;
+    // Use graph.instagram.com for Instagram Login (no Facebook Pages)
+    const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp';
+    const url = `https://graph.instagram.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=50`;
     
-    const data = await graphGet(url, accessToken);
+    console.log('[INSTAGRAM SYNC] Calling Instagram API for igBusinessId:', integration.igBusinessId);
+    
+    let data;
+    try {
+      data = await graphGet(url, accessToken);
+    } catch (apiError) {
+      // Parse and handle specific Instagram API errors
+      const errorMsg = apiError.message || '';
+      console.error('[INSTAGRAM SYNC] Instagram API error:', errorMsg);
+      
+      // Check for common error types
+      if (errorMsg.includes('OAuthException') || errorMsg.includes('Invalid OAuth') || errorMsg.includes('access token')) {
+        return res.status(401).json({ 
+          error: 'oauth_exception', 
+          message: 'Token de acesso inválido ou expirado. Reconecte o Instagram.' 
+        });
+      }
+      
+      if (errorMsg.includes('permission') || errorMsg.includes('scope')) {
+        return res.status(403).json({ 
+          error: 'insufficient_permissions', 
+          message: 'Permissões insuficientes. Reconecte o Instagram e conceda todas as permissões.' 
+        });
+      }
+      
+      if (errorMsg.includes('rate limit') || errorMsg.includes('limit')) {
+        return res.status(429).json({ 
+          error: 'rate_limit', 
+          message: 'Limite de requisições excedido. Tente novamente em alguns minutos.' 
+        });
+      }
+      
+      // Generic API error
+      return res.status(500).json({ 
+        error: 'instagram_api_error', 
+        message: 'Erro ao sincronizar posts do Instagram. Tente novamente.' 
+      });
+    }
+    
     const posts = data.data || [];
+    console.log('[INSTAGRAM SYNC] Successfully fetched', posts.length, 'posts');
     
     // Update cache
     let synced = 0;
     for (const post of posts) {
-      await prisma.instagramPostCache.upsert({
-        where: {
-          igBusinessId_mediaId: {
+      try {
+        await prisma.instagramPostCache.upsert({
+          where: {
+            igBusinessId_mediaId: {
+              igBusinessId: integration.igBusinessId,
+              mediaId: post.id
+            }
+          },
+          update: {
+            caption: post.caption || null,
+            mediaType: post.media_type,
+            mediaUrl: post.media_url || post.thumbnail_url || null,
+            permalink: post.permalink || null,
+            timestamp: post.timestamp ? new Date(post.timestamp) : null,
+            updatedAt: new Date()
+          },
+          create: {
+            userId: req.userId,
             igBusinessId: integration.igBusinessId,
-            mediaId: post.id
+            mediaId: post.id,
+            caption: post.caption || null,
+            mediaType: post.media_type,
+            mediaUrl: post.media_url || post.thumbnail_url || null,
+            permalink: post.permalink || null,
+            timestamp: post.timestamp ? new Date(post.timestamp) : null
           }
-        },
-        update: {
-          caption: post.caption || null,
-          mediaType: post.media_type,
-          mediaUrl: post.media_url || null,
-          permalink: post.permalink || null,
-          timestamp: post.timestamp ? new Date(post.timestamp) : null,
-          updatedAt: new Date()
-        },
-        create: {
-          userId: req.userId,
-          igBusinessId: integration.igBusinessId,
-          mediaId: post.id,
-          caption: post.caption || null,
-          mediaType: post.media_type,
-          mediaUrl: post.media_url || null,
-          permalink: post.permalink || null,
-          timestamp: post.timestamp ? new Date(post.timestamp) : null
-        }
-      });
-      synced++;
+        });
+        synced++;
+      } catch (cacheError) {
+        // Log cache error but continue with other posts
+        console.warn('[INSTAGRAM SYNC] Failed to cache post', post.id, ':', cacheError.message);
+      }
     }
     
     console.log(`[INSTAGRAM SYNC] Synced ${synced} posts for user ${req.userId}`);
     res.json({ ok: true, synced });
   } catch (error) {
-    console.error('[INSTAGRAM SYNC] Error:', error.message);
-    res.status(500).json({ error: 'Erro ao sincronizar posts' });
+    console.error('[INSTAGRAM SYNC] Unexpected error:', error.message);
+    res.status(500).json({ error: 'server_error', message: 'Erro interno ao sincronizar posts' });
   }
 });
 
