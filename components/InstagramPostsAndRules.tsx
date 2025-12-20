@@ -237,13 +237,9 @@ export const InstagramPostsAndRules: React.FC = () => {
     // Clear editing state
     setEditingRule(null);
     
-    // Set form state correctly
+    // Set form state correctly - reset to defaults with appropriate mediaId
     setRuleForm({
       ...defaultRuleForm,
-      keyword: '',
-      replyMessage: defaultRuleForm.replyMessage,
-      priority: 0,
-      status: 'active',
       mediaId: mode === 'new' && mediaId ? mediaId : null
     });
     
