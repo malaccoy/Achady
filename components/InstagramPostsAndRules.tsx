@@ -9,7 +9,7 @@ import {
   deleteInstagramRule,
   testInstagramRules
 } from '../services/api';
-import { InstagramStatus, InstagramPost, InstagramRule, InstagramRulePayload, InstagramMatchType, InstagramRuleTestResponse, InstagramRuleTestMatch } from '../types';
+import { InstagramStatus, InstagramPost, InstagramRule, InstagramRulePayload, InstagramRuleStatus, InstagramRuleTestResponse, InstagramRuleTestMatch } from '../types';
 import { 
   Loader2, 
   RefreshCw, 
@@ -22,7 +22,7 @@ import {
   XCircle, 
   AlertTriangle,
   MessageSquare,
-  Send,
+  Globe,
   Image,
   Video,
   Grid,
@@ -31,24 +31,18 @@ import {
 
 interface RuleFormData {
   keyword: string;
-  matchType: InstagramMatchType;
+  replyMessage: string;
   mediaId: string | null;
-  actionSendDM: boolean;
-  actionReplyComment: boolean;
-  replyTemplateDM: string;
-  replyTemplateComment: string;
-  enabled: boolean;
+  status: InstagramRuleStatus;
+  priority: number;
 }
 
 const defaultRuleForm: RuleFormData = {
   keyword: '',
-  matchType: 'CONTAINS',
+  replyMessage: 'Olá {username}! Obrigado pelo seu comentário. Entre em contato pelo WhatsApp: {whatsappLink}',
   mediaId: null,
-  actionSendDM: true,
-  actionReplyComment: false,
-  replyTemplateDM: 'Olá {username}! Obrigado pelo seu comentário. Entre em contato pelo WhatsApp: {whatsappLink}',
-  replyTemplateComment: '',
-  enabled: true
+  status: 'active',
+  priority: 0
 };
 
 export const InstagramPostsAndRules: React.FC = () => {
@@ -166,13 +160,10 @@ export const InstagramPostsAndRules: React.FC = () => {
       
       const payload: InstagramRulePayload = {
         keyword: ruleForm.keyword,
-        matchType: ruleForm.matchType,
+        replyMessage: ruleForm.replyMessage,
         mediaId: ruleForm.mediaId || null,
-        actionSendDM: ruleForm.actionSendDM,
-        actionReplyComment: ruleForm.actionReplyComment,
-        replyTemplateDM: ruleForm.replyTemplateDM,
-        replyTemplateComment: ruleForm.replyTemplateComment || null,
-        enabled: ruleForm.enabled
+        status: ruleForm.status,
+        priority: ruleForm.priority
       };
       
       if (editingRule) {
@@ -222,13 +213,10 @@ export const InstagramPostsAndRules: React.FC = () => {
     setEditingRule(rule);
     setRuleForm({
       keyword: rule.keyword,
-      matchType: rule.matchType,
+      replyMessage: rule.replyMessage,
       mediaId: rule.mediaId || null,
-      actionSendDM: rule.actionSendDM,
-      actionReplyComment: rule.actionReplyComment,
-      replyTemplateDM: rule.replyTemplateDM,
-      replyTemplateComment: rule.replyTemplateComment || '',
-      enabled: rule.enabled
+      status: rule.status,
+      priority: rule.priority
     });
     setShowRuleForm(true);
   }
@@ -338,8 +326,8 @@ export const InstagramPostsAndRules: React.FC = () => {
               onClick={() => handleNewRule()}
               className="btn-primary text-sm"
             >
-              <Plus className="w-4 h-4" />
-              Nova Regra
+              <Globe className="w-4 h-4" />
+              Regra global
             </button>
           </div>
         </div>
@@ -362,7 +350,7 @@ export const InstagramPostsAndRules: React.FC = () => {
         {/* Global Rules */}
         <div className="app-card">
           <h2 className="app-card__title flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-orange-500" />
+            <Globe className="w-5 h-5 text-orange-500" />
             Regras Globais (todos os posts)
           </h2>
           
@@ -373,30 +361,23 @@ export const InstagramPostsAndRules: React.FC = () => {
               {rules.filter(r => !r.mediaId).map(rule => (
                 <div 
                   key={rule.id}
-                  className={`p-3 rounded-lg border ${rule.enabled ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}`}
+                  className={`p-3 rounded-lg border ${rule.status === 'active' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className={`text-xs px-2 py-1 rounded ${
-                        rule.matchType === 'CONTAINS' ? 'bg-blue-900/30 text-blue-300' :
-                        rule.matchType === 'EQUALS' ? 'bg-green-900/30 text-green-300' :
-                        'bg-purple-900/30 text-purple-300'
+                        rule.status === 'active' ? 'bg-green-900/30 text-green-300' : 'bg-slate-700/50 text-slate-400'
                       }`}>
-                        {rule.matchType}
+                        {rule.status === 'active' ? 'Ativa' : 'Pausada'}
                       </span>
                       <span className="font-medium text-slate-200">"{rule.keyword}"</span>
+                      {rule.priority > 0 && (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-900/30 text-blue-300">
+                          Prioridade: {rule.priority}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {rule.actionSendDM && (
-                        <span className="text-xs px-2 py-1 rounded bg-orange-900/30 text-orange-300">
-                          <Send className="w-3 h-3 inline mr-1" />DM
-                        </span>
-                      )}
-                      {rule.actionReplyComment && (
-                        <span className="text-xs px-2 py-1 rounded bg-cyan-900/30 text-cyan-300">
-                          <MessageSquare className="w-3 h-3 inline mr-1" />Resposta
-                        </span>
-                      )}
                       <button onClick={() => handleEditRule(rule)} className="p-1 text-slate-400 hover:text-white">
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -405,6 +386,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                       </button>
                     </div>
                   </div>
+                  <p className="text-xs text-slate-400 mt-2 truncate">{rule.replyMessage}</p>
                 </div>
               ))}
             </div>
@@ -456,7 +438,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                           title="Configurar regra para este post"
                         >
                           <Plus className="w-3 h-3" />
-                          Regra
+                          Criar regra
                         </button>
                         {post.permalink && (
                           <a 
@@ -499,13 +481,100 @@ export const InstagramPostsAndRules: React.FC = () => {
           )}
         </div>
 
+        {/* Rules per Post */}
+        {rules.filter(r => r.mediaId).length > 0 && (
+          <div className="app-card">
+            <h2 className="app-card__title flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-orange-500" />
+              Regras por Post
+            </h2>
+            
+            <div className="space-y-4">
+              {/* Group rules by mediaId */}
+              {Array.from(new Set(rules.filter(r => r.mediaId).map(r => r.mediaId))).map(mediaId => {
+                const post = posts.find(p => p.id === mediaId);
+                const postSpecificRules = rules.filter(r => r.mediaId === mediaId);
+                
+                return (
+                  <div key={mediaId} className="border border-slate-700 rounded-lg overflow-hidden">
+                    {/* Post header */}
+                    <div className="flex items-center gap-3 p-3 bg-slate-800/50 border-b border-slate-700">
+                      {post?.mediaUrl ? (
+                        <img 
+                          src={post.mediaUrl} 
+                          alt={post.caption || 'Post'} 
+                          className="w-12 h-12 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded bg-slate-700 flex items-center justify-center">
+                          <Image className="w-5 h-5 text-slate-500" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className="text-sm text-slate-200 font-medium">
+                          {post?.caption ? (post.caption.length > 50 ? post.caption.substring(0, 50) + '...' : post.caption) : 'Post sem legenda'}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {post?.timestamp ? new Date(post.timestamp).toLocaleDateString('pt-BR') : ''}
+                          {' · '}{postSpecificRules.length} regra(s)
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => handleNewRule(mediaId || undefined)}
+                        className="btn-secondary text-xs px-2 py-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Adicionar
+                      </button>
+                    </div>
+                    
+                    {/* Rules list */}
+                    <div className="p-3 space-y-2">
+                      {postSpecificRules.map(rule => (
+                        <div 
+                          key={rule.id}
+                          className={`p-2 rounded border ${rule.status === 'active' ? 'bg-slate-800/30 border-slate-700' : 'bg-slate-900/50 border-slate-800 opacity-60'}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                rule.status === 'active' ? 'bg-green-900/30 text-green-300' : 'bg-slate-700/50 text-slate-400'
+                              }`}>
+                                {rule.status === 'active' ? 'Ativa' : 'Pausada'}
+                              </span>
+                              <span className="text-sm text-slate-200">"{rule.keyword}"</span>
+                              {rule.priority > 0 && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300">
+                                  P{rule.priority}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => handleEditRule(rule)} className="p-1 text-slate-400 hover:text-white">
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              <button onClick={() => handleDeleteRule(rule.id)} className="p-1 text-slate-400 hover:text-red-400">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Rule Form Modal */}
         {showRuleForm && (
           <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div className="bg-slate-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-slate-100">
-                  {editingRule ? 'Editar Regra' : 'Nova Regra'}
+                  {editingRule ? 'Editar Regra' : (ruleForm.mediaId ? 'Nova Regra para Post' : 'Nova Regra Global')}
                 </h3>
                 <button onClick={() => { setShowRuleForm(false); setEditingRule(null); }} className="text-slate-400 hover:text-white">
                   <X className="w-5 h-5" />
@@ -525,91 +594,67 @@ export const InstagramPostsAndRules: React.FC = () => {
                   />
                 </div>
                 
-                {/* Match Type */}
+                {/* Reply Message */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Tipo de Match</label>
-                  <select
-                    value={ruleForm.matchType}
-                    onChange={e => setRuleForm({ ...ruleForm, matchType: e.target.value as InstagramMatchType })}
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Mensagem de resposta *</label>
+                  <textarea
+                    value={ruleForm.replyMessage}
+                    onChange={e => setRuleForm({ ...ruleForm, replyMessage: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:border-orange-500 focus:outline-none"
-                  >
-                    <option value="CONTAINS">Contém (case-insensitive)</option>
-                    <option value="EQUALS">Igual exato (case-insensitive)</option>
-                    <option value="REGEX">Regex</option>
-                  </select>
-                </div>
-                
-                {/* Actions */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Ações</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={ruleForm.actionSendDM}
-                        onChange={e => setRuleForm({ ...ruleForm, actionSendDM: e.target.checked })}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
-                      />
-                      <span className="text-slate-300">Enviar DM (Private Reply)</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={ruleForm.actionReplyComment}
-                        onChange={e => setRuleForm({ ...ruleForm, actionReplyComment: e.target.checked })}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
-                      />
-                      <span className="text-slate-300">Responder comentário publicamente</span>
-                    </label>
-                  </div>
-                </div>
-                
-                {/* DM Template */}
-                {ruleForm.actionSendDM && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Template da DM *</label>
-                    <textarea
-                      value={ruleForm.replyTemplateDM}
-                      onChange={e => setRuleForm({ ...ruleForm, replyTemplateDM: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:border-orange-500 focus:outline-none"
-                      rows={3}
-                      placeholder="Use placeholders: {username}, {comment}, {permalink}, {whatsappLink}"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Placeholders: {'{username}'}, {'{comment}'}, {'{permalink}'}, {'{mediaId}'}, {'{igUsername}'}, {'{whatsappLink}'}
-                    </p>
-                  </div>
-                )}
-                
-                {/* Comment Template */}
-                {ruleForm.actionReplyComment && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Template da Resposta</label>
-                    <textarea
-                      value={ruleForm.replyTemplateComment}
-                      onChange={e => setRuleForm({ ...ruleForm, replyTemplateComment: e.target.value })}
-                      className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:border-orange-500 focus:outline-none"
-                      rows={2}
-                      placeholder="Resposta pública ao comentário"
-                    />
-                  </div>
-                )}
-                
-                {/* Enabled */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={ruleForm.enabled}
-                    onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })}
-                    className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-orange-500 focus:ring-orange-500"
+                    rows={3}
+                    placeholder="Use placeholders: {username}, {comment}, {permalink}, {whatsappLink}"
                   />
-                  <span className="text-slate-300">Regra ativa</span>
-                </label>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Placeholders: {'{username}'}, {'{comment}'}, {'{permalink}'}, {'{mediaId}'}, {'{igUsername}'}, {'{whatsappLink}'}
+                  </p>
+                </div>
+                
+                {/* Priority */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Prioridade (opcional)</label>
+                  <input
+                    type="number"
+                    value={ruleForm.priority}
+                    onChange={e => setRuleForm({ ...ruleForm, priority: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:border-orange-500 focus:outline-none"
+                    min={0}
+                    placeholder="0"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Regras com maior prioridade são aplicadas primeiro
+                  </p>
+                </div>
+                
+                {/* Status Toggle */}
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-900 border border-slate-700">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${ruleForm.status === 'active' ? 'bg-green-500' : 'bg-slate-500'}`} />
+                    <div>
+                      <span className="text-slate-200 font-medium">Status da regra</span>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {ruleForm.status === 'active' ? 'Regra ativa e funcionando' : 'Regra pausada (não será aplicada)'}
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ruleForm.status === 'active'}
+                      onChange={e => setRuleForm({ ...ruleForm, status: e.target.checked ? 'active' : 'paused' })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                  </label>
+                </div>
                 
                 {/* Info */}
-                {ruleForm.mediaId && (
-                  <div className="text-xs text-slate-400 p-2 bg-slate-900 rounded">
-                    Esta regra será aplicada apenas ao post selecionado (ID: {ruleForm.mediaId.substring(0, 20)}...)
+                {ruleForm.mediaId ? (
+                  <div className="text-xs text-slate-400 p-2 bg-slate-900 rounded border border-slate-700">
+                    <strong className="text-slate-300">Regra específica:</strong> Esta regra será aplicada apenas ao post selecionado
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 p-2 bg-slate-900 rounded border border-slate-700">
+                    <strong className="text-slate-300">Regra global:</strong> Esta regra será aplicada a todos os posts
                   </div>
                 )}
               </div>
@@ -623,7 +668,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                 </button>
                 <button 
                   onClick={handleSaveRule}
-                  disabled={savingRule || !ruleForm.keyword || (ruleForm.actionSendDM && !ruleForm.replyTemplateDM)}
+                  disabled={savingRule || !ruleForm.keyword || !ruleForm.replyMessage}
                   className="btn-primary"
                 >
                   {savingRule ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -680,16 +725,16 @@ export const InstagramPostsAndRules: React.FC = () => {
                           <div key={idx} className="p-2 bg-slate-800 rounded">
                             <div className="flex items-center gap-2 mb-1">
                               <CheckCircle2 className="w-4 h-4 text-green-400" />
-                              <span className="text-sm text-slate-200">Match: "{match.keyword}" ({match.matchType})</span>
+                              <span className="text-sm text-slate-200">Match: "{match.keyword}"</span>
+                              {match.priority > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-blue-900/30 text-blue-300">
+                                  Prioridade: {match.priority}
+                                </span>
+                              )}
                             </div>
                             {match.renderedDM && (
                               <div className="mt-2 text-xs text-slate-400">
-                                <strong>DM:</strong> {match.renderedDM}
-                              </div>
-                            )}
-                            {match.renderedComment && (
-                              <div className="mt-1 text-xs text-slate-400">
-                                <strong>Resposta:</strong> {match.renderedComment}
+                                <strong>Resposta:</strong> {match.renderedDM}
                               </div>
                             )}
                           </div>

@@ -111,20 +111,17 @@ export interface InstagramPost {
   timestamp?: string;
 }
 
-// Instagram automation rule match types
-export type InstagramMatchType = 'CONTAINS' | 'EQUALS' | 'REGEX';
+// Instagram rule status type
+export type InstagramRuleStatus = 'active' | 'paused';
 
 // Instagram automation rule
 export interface InstagramRule {
   id: string;
-  enabled: boolean;
-  matchType: InstagramMatchType;
   keyword: string;
+  replyMessage: string;
   mediaId?: string | null;
-  actionSendDM: boolean;
-  actionReplyComment: boolean;
-  replyTemplateDM: string;
-  replyTemplateComment?: string | null;
+  status: InstagramRuleStatus;
+  priority: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -132,13 +129,10 @@ export interface InstagramRule {
 // Instagram rule create/update payload
 export interface InstagramRulePayload {
   keyword: string;
-  matchType: InstagramMatchType;
+  replyMessage: string;
   mediaId?: string | null;
-  actionSendDM: boolean;
-  actionReplyComment: boolean;
-  replyTemplateDM: string;
-  replyTemplateComment?: string | null;
-  enabled?: boolean;
+  status?: InstagramRuleStatus;
+  priority?: number;
 }
 
 // Instagram posts response
@@ -152,11 +146,9 @@ export interface InstagramPostsResponse {
 export interface InstagramRuleTestMatch {
   ruleId: string;
   keyword: string;
-  matchType: InstagramMatchType;
-  actionSendDM: boolean;
-  actionReplyComment: boolean;
+  priority: number;
+  status: InstagramRuleStatus;
   renderedDM?: string | null;
-  renderedComment?: string | null;
 }
 
 export interface InstagramRuleTestResponse {
