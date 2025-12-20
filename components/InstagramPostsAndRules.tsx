@@ -574,7 +574,7 @@ export const InstagramPostsAndRules: React.FC = () => {
             <div className="bg-slate-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-slate-100">
-                  {editingRule ? 'Editar Regra' : (ruleForm.mediaId ? 'Nova Regra para Post' : 'Nova Regra Global')}
+                  {editingRule ? 'Editar Regra' : (ruleForm.mediaId ? 'Nova Regra para Post' : 'Nova Regra (Global)')}
                 </h3>
                 <button onClick={() => { setShowRuleForm(false); setEditingRule(null); }} className="text-slate-400 hover:text-white">
                   <X className="w-5 h-5" />
