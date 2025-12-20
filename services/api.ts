@@ -281,7 +281,8 @@ export const syncInstagramPosts = async (): Promise<InstagramPostsResponse> => {
 
 export const getInstagramRules = async (mediaId?: string): Promise<InstagramRule[]> => {
   const query = mediaId ? `?mediaId=${encodeURIComponent(mediaId)}` : '';
-  return request<InstagramRule[]>(`/meta/instagram/rules${query}`);
+  const response = await request<{ data: InstagramRule[] }>(`/meta/instagram/rules${query}`);
+  return response.data;
 };
 
 export const createInstagramRule = async (payload: InstagramRulePayload): Promise<InstagramRule> => {
