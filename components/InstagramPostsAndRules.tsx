@@ -615,7 +615,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                   <input
                     type="number"
                     value={ruleForm.priority}
-                    onChange={e => setRuleForm({ ...ruleForm, priority: parseInt(e.target.value) || 0 })}
+                    onChange={e => setRuleForm({ ...ruleForm, priority: parseInt(e.target.value, 10) || 0 })}
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-slate-200 focus:border-orange-500 focus:outline-none"
                     min={0}
                     placeholder="0"
