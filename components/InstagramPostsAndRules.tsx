@@ -221,25 +221,30 @@ export const InstagramPostsAndRules: React.FC = () => {
     setShowRuleForm(true);
   }
 
-  function handleNewRule(postId?: string) {
-    // Dev logging to verify click handler runs
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Nova Regra] handleNewRule called', { postId: postId || 'global' });
+  /**
+   * Opens the rule modal with a specific mode.
+   * @param options.mode - "global" for global rules, "new" for post-specific rules
+   * @param options.mediaId - Optional media ID for post-specific rules
+   */
+  function openRuleModal({ mode, mediaId }: { mode: 'global' | 'new'; mediaId?: string }) {
+    // Temporary logs for debugging (keep for now)
+    if (mode === 'global') {
+      console.log('[UI] clicked: global rule');
+    } else {
+      console.log('[UI] clicked: new rule');
     }
+    
+    // Clear editing state
     setEditingRule(null);
+    
+    // Set form state correctly - reset to defaults with appropriate mediaId
     setRuleForm({
       ...defaultRuleForm,
-      mediaId: postId || null
+      mediaId: mode === 'new' && mediaId ? mediaId : null
     });
+    
+    // Open modal
     setShowRuleForm(true);
-  }
-
-  function handleOpenGlobalRuleModal() {
-    // Debug logging to verify click handler fires (temporary - remove later)
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[UI] Open global rule modal');
-    }
-    handleNewRule();
   }
 
   async function handleTestRules() {
@@ -316,6 +321,7 @@ export const InstagramPostsAndRules: React.FC = () => {
           </div>
           <div className="flex gap-2">
             <button 
+              type="button"
               onClick={() => setShowTestModal(true)}
               className="btn-secondary text-sm"
             >
@@ -323,6 +329,7 @@ export const InstagramPostsAndRules: React.FC = () => {
               Testar Regras
             </button>
             <button 
+              type="button"
               onClick={handleSync}
               disabled={syncing}
               className="btn-secondary text-sm"
@@ -332,7 +339,7 @@ export const InstagramPostsAndRules: React.FC = () => {
             </button>
             <button 
               type="button"
-              onClick={handleOpenGlobalRuleModal}
+              onClick={() => openRuleModal({ mode: 'global' })}
               className="btn-primary text-sm"
             >
               <Globe className="w-4 h-4" />
@@ -442,12 +449,13 @@ export const InstagramPostsAndRules: React.FC = () => {
                       {/* Overlay on hover */}
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
                         <button 
-                          onClick={(e) => { e.stopPropagation(); handleNewRule(post.id); }}
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openRuleModal({ mode: 'new', mediaId: post.id }); }}
                           className="btn-primary text-xs px-3 py-1.5"
                           title="Configurar regra para este post"
                         >
                           <Plus className="w-3 h-3" />
-                          Criar regra
+                          Nova Regra
                         </button>
                         {post.permalink && (
                           <a 
@@ -529,7 +537,8 @@ export const InstagramPostsAndRules: React.FC = () => {
                         </p>
                       </div>
                       <button 
-                        onClick={() => handleNewRule(mediaId || undefined)}
+                        type="button"
+                        onClick={() => openRuleModal({ mode: 'new', mediaId: mediaId || undefined })}
                         className="btn-secondary text-xs px-2 py-1"
                       >
                         <Plus className="w-3 h-3" />
@@ -579,13 +588,19 @@ export const InstagramPostsAndRules: React.FC = () => {
 
         {/* Rule Form Modal */}
         {showRuleForm && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+            onClick={() => { setShowRuleForm(false); setEditingRule(null); }}
+          >
+            <div 
+              className="bg-slate-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-slate-100">
                   {editingRule ? 'Editar Regra' : (ruleForm.mediaId ? 'Nova Regra para Post' : 'Nova Regra (Global)')}
                 </h3>
-                <button onClick={() => { setShowRuleForm(false); setEditingRule(null); }} className="text-slate-400 hover:text-white">
+                <button type="button" onClick={() => { setShowRuleForm(false); setEditingRule(null); }} className="text-slate-400 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -670,12 +685,14 @@ export const InstagramPostsAndRules: React.FC = () => {
               
               <div className="p-4 border-t border-slate-700 flex justify-end gap-2">
                 <button 
+                  type="button"
                   onClick={() => { setShowRuleForm(false); setEditingRule(null); }}
                   className="btn-secondary"
                 >
                   Cancelar
                 </button>
                 <button 
+                  type="button"
                   onClick={handleSaveRule}
                   disabled={savingRule || !ruleForm.keyword || !ruleForm.replyMessage}
                   className="btn-primary"
@@ -690,11 +707,17 @@ export const InstagramPostsAndRules: React.FC = () => {
 
         {/* Test Modal */}
         {showTestModal && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-lg w-full max-w-lg">
+          <div 
+            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+            onClick={() => { setShowTestModal(false); setTestResult(null); }}
+          >
+            <div 
+              className="bg-slate-800 rounded-lg w-full max-w-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-slate-100">Testar Regras</h3>
-                <button onClick={() => { setShowTestModal(false); setTestResult(null); }} className="text-slate-400 hover:text-white">
+                <button type="button" onClick={() => { setShowTestModal(false); setTestResult(null); }} className="text-slate-400 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -712,6 +735,7 @@ export const InstagramPostsAndRules: React.FC = () => {
                 </div>
                 
                 <button 
+                  type="button"
                   onClick={handleTestRules}
                   disabled={testing || !testText.trim()}
                   className="btn-primary w-full"
