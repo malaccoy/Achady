@@ -234,6 +234,14 @@ export const InstagramPostsAndRules: React.FC = () => {
     setShowRuleForm(true);
   }
 
+  function handleOpenGlobalRuleModal() {
+    // Debug logging to verify click handler fires (temporary - remove later)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[UI] Open global rule modal');
+    }
+    handleNewRule();
+  }
+
   async function handleTestRules() {
     if (!testText.trim()) return;
     
@@ -323,7 +331,8 @@ export const InstagramPostsAndRules: React.FC = () => {
               Sincronizar
             </button>
             <button 
-              onClick={() => handleNewRule()}
+              type="button"
+              onClick={handleOpenGlobalRuleModal}
               className="btn-primary text-sm"
             >
               <Globe className="w-4 h-4" />
