@@ -2924,16 +2924,16 @@ function normalizeInstagramWebhook(payload) {
 // Zod schema for Instagram rule validation (new schema)
 const InstagramRuleCreateSchema = z.object({
   mediaId: z.string().optional().nullable(),
-  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Keyword é obrigatória')),
-  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'replyMessage é obrigatória')),
+  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Palavra-chave é obrigatória')),
+  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Mensagem de resposta é obrigatória')),
   priority: z.number().int().optional().default(0),
   status: z.enum(['active', 'paused']).optional().default('active')
 });
 
 const InstagramRuleUpdateSchema = z.object({
   mediaId: z.string().optional().nullable(),
-  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Keyword é obrigatória')).optional(),
-  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'replyMessage é obrigatória')).optional(),
+  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Palavra-chave é obrigatória')).optional(),
+  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Mensagem de resposta é obrigatória')).optional(),
   priority: z.number().int().optional(),
   status: z.enum(['active', 'paused']).optional()
 });
@@ -3474,7 +3474,7 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
       return res.status(400).json({ error: 'Texto do comentário é obrigatório' });
     }
     
-    // Get user's Instagram integration
+    // Get user's Instagram integration (provider='instagram', status='connected')
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -3484,7 +3484,7 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
+    if (!integration || integration.status !== 'connected' || !integration.igBusinessId) {
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
