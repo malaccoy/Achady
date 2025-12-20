@@ -2824,29 +2824,15 @@ app.put('/api/meta/instagram/auto-reply', apiLimiter, requireAuth, async (req, r
 // INSTAGRAM POSTS & RULES AUTOMATION
 // =======================
 
-// Helper: Match rule against text
+// Helper: Match rule against text (case-insensitive contains match)
+// Keywords are stored normalized to lowercase, so we compare lowercase
 function matchRule(rule, text) {
   if (!text || !rule.keyword) return false;
   
   const lowerText = text.toLowerCase();
-  const lowerKeyword = rule.keyword.toLowerCase();
+  const lowerKeyword = rule.keyword.toLowerCase(); // keyword is already stored lowercase, but normalize again for safety
   
-  try {
-    switch (rule.matchType) {
-      case 'CONTAINS':
-        return lowerText.includes(lowerKeyword);
-      case 'EQUALS':
-        return lowerText.trim() === lowerKeyword.trim();
-      case 'REGEX':
-        const regex = new RegExp(rule.keyword, 'i');
-        return regex.test(text);
-      default:
-        return lowerText.includes(lowerKeyword);
-    }
-  } catch (e) {
-    console.error('[MATCH RULE] Regex error:', e.message);
-    return false;
-  }
+  return lowerText.includes(lowerKeyword);
 }
 
 // Helper: Render template with placeholders
@@ -2935,16 +2921,21 @@ function normalizeInstagramWebhook(payload) {
   return result;
 }
 
-// Zod schema for rule validation
-const InstagramRuleSchema = z.object({
-  keyword: z.string().min(1, 'Keyword é obrigatória'),
-  matchType: z.enum(['CONTAINS', 'EQUALS', 'REGEX']).default('CONTAINS'),
+// Zod schema for Instagram rule validation (new schema)
+const InstagramRuleCreateSchema = z.object({
   mediaId: z.string().optional().nullable(),
-  actionSendDM: z.boolean().default(true),
-  actionReplyComment: z.boolean().default(false),
-  replyTemplateDM: z.string().min(1, 'Template de DM é obrigatório'),
-  replyTemplateComment: z.string().optional().nullable(),
-  enabled: z.boolean().default(true)
+  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Palavra-chave é obrigatória')),
+  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Mensagem de resposta é obrigatória')),
+  priority: z.number().int().optional().default(0),
+  status: z.enum(['active', 'paused']).optional().default('active')
+});
+
+const InstagramRuleUpdateSchema = z.object({
+  mediaId: z.string().optional().nullable(),
+  keyword: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Palavra-chave é obrigatória')).optional(),
+  replyMessage: z.string().transform(s => s.trim()).pipe(z.string().min(1, 'Mensagem de resposta é obrigatória')).optional(),
+  priority: z.number().int().optional(),
+  status: z.enum(['active', 'paused']).optional()
 });
 
 // Helper: Map InstagramPost DB records to API response format
@@ -3279,9 +3270,9 @@ app.post('/api/meta/instagram/posts/sync', apiLimiter, requireAuth, async (req, 
 // GET: List Instagram rules
 app.get('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) => {
   try {
-    const mediaId = req.query.mediaId || null;
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=list`);
     
-    // Get user's Instagram integration
+    // Get user's Instagram integration (provider='instagram', status='connected')
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -3291,32 +3282,27 @@ app.get('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) =
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
+    if (!integration || integration.status !== 'connected' || !integration.igBusinessId) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=list error=not_connected`);
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
-    // Build filter
-    const where = {
-      userId: req.userId,
-      igBusinessId: integration.igBusinessId
-    };
-    
-    // If mediaId provided, show rules for that post OR global rules
-    if (mediaId) {
-      where.OR = [
-        { mediaId: mediaId },
-        { mediaId: null }
-      ];
-    }
-    
+    // Query rules scoped by userId and igBusinessId, ordered by priority desc, updatedAt desc
     const rules = await prisma.instagramRule.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
+      where: {
+        userId: req.userId,
+        igBusinessId: integration.igBusinessId
+      },
+      orderBy: [
+        { priority: 'desc' },
+        { updatedAt: 'desc' }
+      ]
     });
     
-    res.json(rules);
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=list count=${rules.length}`);
+    res.json({ data: rules });
   } catch (error) {
-    console.error('[INSTAGRAM RULES] Error:', error.message);
+    console.error(`[INSTAGRAM RULES] userId=${req.userId} action=list error=${error.message}`);
     res.status(500).json({ error: 'Erro ao listar regras' });
   }
 });
@@ -3324,7 +3310,9 @@ app.get('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) =
 // POST: Create Instagram rule
 app.post('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) => {
   try {
-    // Get user's Instagram integration
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=create`);
+    
+    // Get user's Instagram integration (provider='instagram', status='connected')
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -3334,38 +3322,49 @@ app.post('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) 
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
+    if (!integration || integration.status !== 'connected' || !integration.igBusinessId) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=create error=not_connected`);
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
     // Validate payload
-    const parsed = InstagramRuleSchema.safeParse(req.body);
+    const parsed = InstagramRuleCreateSchema.safeParse(req.body);
     if (!parsed.success) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=create error=validation_failed`);
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
     
     const data = parsed.data;
     
-    // Create rule
-    const rule = await prisma.instagramRule.create({
-      data: {
-        userId: req.userId,
-        igBusinessId: integration.igBusinessId,
-        keyword: data.keyword,
-        matchType: data.matchType,
-        mediaId: data.mediaId || null,
-        actionSendDM: data.actionSendDM,
-        actionReplyComment: data.actionReplyComment,
-        replyTemplateDM: data.replyTemplateDM,
-        replyTemplateComment: data.replyTemplateComment || null,
-        enabled: data.enabled
-      }
-    });
+    // Normalize keyword to lowercase before storing
+    const keywordNormalized = data.keyword.toLowerCase();
     
-    console.log(`[INSTAGRAM RULE] Created rule ${rule.id} for user ${req.userId}`);
-    res.json(rule);
+    // Create rule
+    try {
+      const rule = await prisma.instagramRule.create({
+        data: {
+          userId: req.userId,
+          igBusinessId: integration.igBusinessId,
+          keyword: keywordNormalized,
+          replyMessage: data.replyMessage,
+          priority: data.priority,
+          status: data.status,
+          mediaId: data.mediaId || null
+        }
+      });
+      
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=create ruleId=${rule.id}`);
+      res.json(rule);
+    } catch (createError) {
+      // Handle unique constraint violation (igBusinessId, mediaId, keyword)
+      if (createError.code === 'P2002') {
+        console.log(`[INSTAGRAM RULES] userId=${req.userId} action=create error=duplicate_rule`);
+        return res.status(409).json({ error: 'duplicate_rule' });
+      }
+      throw createError;
+    }
   } catch (error) {
-    console.error('[INSTAGRAM RULES CREATE] Error:', error.message);
+    console.error(`[INSTAGRAM RULES] userId=${req.userId} action=create error=${error.message}`);
     res.status(500).json({ error: 'Erro ao criar regra' });
   }
 });
@@ -3374,43 +3373,66 @@ app.post('/api/meta/instagram/rules', apiLimiter, requireAuth, async (req, res) 
 app.put('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req, res) => {
   try {
     const ruleId = req.params.id;
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=update ruleId=${ruleId}`);
     
-    // Verify ownership
+    // Verify ownership - only allow updating user's own rule
     const existing = await prisma.instagramRule.findUnique({
       where: { id: ruleId }
     });
     
     if (!existing || existing.userId !== req.userId) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=update error=not_found`);
       return res.status(404).json({ error: 'Regra não encontrada' });
     }
     
     // Validate payload
-    const parsed = InstagramRuleSchema.safeParse(req.body);
+    const parsed = InstagramRuleUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=update error=validation_failed`);
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
     
     const data = parsed.data;
     
-    // Update rule
-    const rule = await prisma.instagramRule.update({
-      where: { id: ruleId },
-      data: {
-        keyword: data.keyword,
-        matchType: data.matchType,
-        mediaId: data.mediaId || null,
-        actionSendDM: data.actionSendDM,
-        actionReplyComment: data.actionReplyComment,
-        replyTemplateDM: data.replyTemplateDM,
-        replyTemplateComment: data.replyTemplateComment || null,
-        enabled: data.enabled
-      }
-    });
+    // Build update data
+    const updateData = {};
+    if (data.keyword !== undefined) {
+      // Normalize keyword to lowercase before storing
+      updateData.keyword = data.keyword.toLowerCase();
+    }
+    if (data.replyMessage !== undefined) {
+      updateData.replyMessage = data.replyMessage;
+    }
+    if (data.priority !== undefined) {
+      updateData.priority = data.priority;
+    }
+    if (data.status !== undefined) {
+      updateData.status = data.status;
+    }
+    // Allow mediaId to be set to null (for global rules)
+    if ('mediaId' in data) {
+      updateData.mediaId = data.mediaId || null;
+    }
     
-    console.log(`[INSTAGRAM RULE] Updated rule ${rule.id}`);
-    res.json(rule);
+    // Update rule
+    try {
+      const rule = await prisma.instagramRule.update({
+        where: { id: ruleId },
+        data: updateData
+      });
+      
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=update ruleId=${rule.id} success`);
+      res.json(rule);
+    } catch (updateError) {
+      // Handle unique constraint violation (igBusinessId, mediaId, keyword)
+      if (updateError.code === 'P2002') {
+        console.log(`[INSTAGRAM RULES] userId=${req.userId} action=update error=duplicate_rule`);
+        return res.status(409).json({ error: 'duplicate_rule' });
+      }
+      throw updateError;
+    }
   } catch (error) {
-    console.error('[INSTAGRAM RULES UPDATE] Error:', error.message);
+    console.error(`[INSTAGRAM RULES] userId=${req.userId} action=update error=${error.message}`);
     res.status(500).json({ error: 'Erro ao atualizar regra' });
   }
 });
@@ -3419,13 +3441,15 @@ app.put('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req, re
 app.delete('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req, res) => {
   try {
     const ruleId = req.params.id;
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=delete ruleId=${ruleId}`);
     
-    // Verify ownership
+    // Verify ownership - only allow deleting user's own rule
     const existing = await prisma.instagramRule.findUnique({
       where: { id: ruleId }
     });
     
     if (!existing || existing.userId !== req.userId) {
+      console.log(`[INSTAGRAM RULES] userId=${req.userId} action=delete error=not_found`);
       return res.status(404).json({ error: 'Regra não encontrada' });
     }
     
@@ -3433,10 +3457,10 @@ app.delete('/api/meta/instagram/rules/:id', apiLimiter, requireAuth, async (req,
       where: { id: ruleId }
     });
     
-    console.log(`[INSTAGRAM RULE] Deleted rule ${ruleId}`);
+    console.log(`[INSTAGRAM RULES] userId=${req.userId} action=delete ruleId=${ruleId} success`);
     res.json({ ok: true });
   } catch (error) {
-    console.error('[INSTAGRAM RULES DELETE] Error:', error.message);
+    console.error(`[INSTAGRAM RULES] userId=${req.userId} action=delete error=${error.message}`);
     res.status(500).json({ error: 'Erro ao deletar regra' });
   }
 });
@@ -3450,7 +3474,7 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
       return res.status(400).json({ error: 'Texto do comentário é obrigatório' });
     }
     
-    // Get user's Instagram integration
+    // Get user's Instagram integration (provider='instagram', status='connected')
     const integration = await prisma.socialAccount.findUnique({
       where: {
         userId_provider: {
@@ -3460,16 +3484,16 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
       }
     });
     
-    if (!integration || !integration.igBusinessId) {
+    if (!integration || integration.status !== 'connected' || !integration.igBusinessId) {
       return res.status(400).json({ error: 'Instagram não conectado' });
     }
     
-    // Find matching rules
+    // Find matching rules (only active rules)
     const rules = await prisma.instagramRule.findMany({
       where: {
         userId: req.userId,
         igBusinessId: integration.igBusinessId,
-        enabled: true,
+        status: 'active',
         OR: mediaId ? [{ mediaId }, { mediaId: null }] : [{ mediaId: null }]
       }
     });
@@ -3489,11 +3513,9 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
         matches.push({
           ruleId: rule.id,
           keyword: rule.keyword,
-          matchType: rule.matchType,
-          actionSendDM: rule.actionSendDM,
-          actionReplyComment: rule.actionReplyComment,
-          renderedDM: rule.actionSendDM ? renderInstagramTemplate(rule.replyTemplateDM, ctx) : null,
-          renderedComment: rule.actionReplyComment ? renderInstagramTemplate(rule.replyTemplateComment, ctx) : null
+          priority: rule.priority,
+          status: rule.status,
+          renderedDM: renderInstagramTemplate(rule.replyMessage, ctx)
         });
       }
     }
