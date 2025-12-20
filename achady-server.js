@@ -3018,6 +3018,12 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
         return res.status(500).json({ error: 'token_decrypt_failed', message: 'Erro ao descriptografar token. Reconecte o Instagram.' });
       }
       
+      // Guard: ensure token was actually decrypted (must not start with "enc:")
+      if (accessToken.startsWith('enc:')) {
+        console.error('[INSTAGRAM POSTS] Token still encrypted after decrypt for user', req.userId);
+        return res.status(500).json({ error: 'token_not_decrypted', message: 'Falha na descriptografia do token. Reconecte o Instagram.' });
+      }
+      
       // Fetch media from Instagram Graph API
       const fields = 'id,caption,media_type,media_url,permalink,thumbnail_url,timestamp';
       const url = `https://graph.instagram.com/v24.0/${integration.igBusinessId}/media?fields=${fields}&limit=${limit}`;
@@ -3102,7 +3108,7 @@ app.get('/api/meta/instagram/posts', apiLimiter, requireAuth, async (req, res) =
           console.warn('[INSTAGRAM POSTS] Failed to upsert post', item.id, ':', upsertError.message);
         }
       }
-      console.log('[INSTAGRAM POSTS] Upserted', upsertCount, 'posts into InstagramPost');
+      console.log('[INSTAGRAM POSTS] Upserted', upsertCount, 'posts into DB');
       
       // Query posts from database after upsert
       const dbPosts = await prisma.instagramPost.findMany({
