@@ -273,25 +273,26 @@ model InstagramPostCache {
   @@index([igBusinessId])
 }
 
-// Instagram automation rules - keyword-based triggers for DM/comment replies
+// InstagramRuleStatus: "active" | "paused"
+
 model InstagramRule {
-  id                   String   @id @default(cuid())
-  userId               String
-  igBusinessId         String
-  enabled              Boolean  @default(true)
-  matchType            String   @default("CONTAINS") // CONTAINS, EQUALS, REGEX
-  keyword              String
-  mediaId              String?  // null = applies to all posts
-  actionSendDM         Boolean  @default(true)
-  actionReplyComment   Boolean  @default(false)
-  replyTemplateDM      String   // DM template with placeholders
-  replyTemplateComment String?  // Comment reply template (optional)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id           String   @id @default(cuid())
+  userId       String
+  igBusinessId String
+  // If mediaId is null => global rule (applies to all posts)
+  mediaId      String?
+  keyword      String   // case-insensitive contains match
+  replyMessage String   // DM message template
+  status       String   @default("active") // "active" | "paused"
+  priority     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([userId])
   @@index([igBusinessId])
   @@index([mediaId])
+  @@index([status])
+  @@unique([igBusinessId, mediaId, keyword])
 }
 
 // Instagram automation event log - for idempotency and tracking
