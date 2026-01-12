@@ -285,7 +285,32 @@ const botManager = new BotManager();
 // MIDDLEWARE
 // =======================
 const requireAuth = async (req, res, next) => {
-  const token = req.cookies.token;
+  let token = null;
+
+  // 1. Try req.cookies?.token first
+  if (req.cookies?.token) {
+    token = req.cookies.token;
+  }
+
+  // 2. Try Authorization header (Bearer <token>, case-insensitive)
+  if (!token && req.headers.authorization) {
+    const authHeader = req.headers.authorization;
+    const bearerMatch = authHeader.match(/^bearer\s+(.+)$/i);
+    if (bearerMatch) {
+      token = bearerMatch[1];
+    }
+  }
+
+  // 3. Fallback: manually parse req.headers.cookie for token=...
+  if (!token && req.headers.cookie) {
+    const cookieHeader = req.headers.cookie;
+    // JWT tokens use base64url encoding: A-Za-z0-9._- characters only
+    const tokenMatch = cookieHeader.match(/(?:^|;\s*)token=([A-Za-z0-9._-]+)/);
+    if (tokenMatch) {
+      token = tokenMatch[1];
+    }
+  }
+
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
 
   try {
