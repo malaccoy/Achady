@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Menu } from "lucide-react";
 import { MainContainer } from "./MainContainer";
 import { AccountSection } from "./AccountSection";
+import { FEATURE_INSTAGRAM_ENABLED, isInstagramMenuId } from "../src/config/features";
 
 export type MenuItemId =
   | "status"
@@ -34,6 +35,14 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "instagram-rules", label: "Instagram — Posts & Regras" },
 ];
 
+// Filter menu items based on feature flags
+const getVisibleMenuItems = () => {
+  if (FEATURE_INSTAGRAM_ENABLED) {
+    return MENU_ITEMS;
+  }
+  return MENU_ITEMS.filter((item) => !isInstagramMenuId(item.id));
+};
+
 export const Layout: React.FC<LayoutProps> = ({
   activeSection,
   onChangeSection,
@@ -57,7 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({
         <div className="achady-sidebar-badge mt-4 md:mt-0">Shopee Deals • Beta</div>
 
         <nav className="achady-nav">
-          {MENU_ITEMS.map((item) => (
+          {getVisibleMenuItems().map((item) => (
             <button
               key={item.id}
               className={

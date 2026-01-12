@@ -9,9 +9,11 @@ import { ShopeeApiConfig } from './components/ShopeeApiConfig';
 import { InstagramConnection } from './components/InstagramConnection';
 import { InstagramAutoReply } from './components/InstagramAutoReply';
 import { InstagramPostsAndRules } from './components/InstagramPostsAndRules';
+import { FeatureDisabled } from './components/FeatureDisabled';
 import { Auth } from './components/Auth';
 import { getMe, logout } from './services/api';
 import { Loader2 } from 'lucide-react';
+import { FEATURE_INSTAGRAM_ENABLED, isInstagramMenuId } from './src/config/features';
 
 function App() {
   const [activeSection, setActiveSection] = useState<MenuItemId>("status");
@@ -39,6 +41,16 @@ function App() {
   };
 
   const renderContent = () => {
+    // Check if user is trying to access Instagram features when disabled
+    if (!FEATURE_INSTAGRAM_ENABLED && isInstagramMenuId(activeSection)) {
+      return (
+        <FeatureDisabled 
+          featureName="Instagram" 
+          onGoHome={() => setActiveSection("status")} 
+        />
+      );
+    }
+
     switch (activeSection) {
       case "status": return <StatusConnection />;
       case "groups": return <GroupManager />;
