@@ -13,7 +13,7 @@ import { FeatureDisabled } from './components/FeatureDisabled';
 import { Auth } from './components/Auth';
 import { getMe, logout } from './services/api';
 import { Loader2 } from 'lucide-react';
-import { FEATURE_INSTAGRAM_ENABLED } from './src/config/features';
+import { FEATURE_INSTAGRAM_ENABLED, isInstagramMenuId } from './src/config/features';
 
 function App() {
   const [activeSection, setActiveSection] = useState<MenuItemId>("status");
@@ -42,11 +42,7 @@ function App() {
 
   const renderContent = () => {
     // Check if user is trying to access Instagram features when disabled
-    const isInstagramRoute = activeSection === "instagram" || 
-                             activeSection === "instagram-auto-reply" || 
-                             activeSection === "instagram-rules";
-    
-    if (!FEATURE_INSTAGRAM_ENABLED && isInstagramRoute) {
+    if (!FEATURE_INSTAGRAM_ENABLED && isInstagramMenuId(activeSection)) {
       return (
         <FeatureDisabled 
           featureName="Instagram" 

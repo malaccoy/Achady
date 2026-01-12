@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Menu } from "lucide-react";
 import { MainContainer } from "./MainContainer";
 import { AccountSection } from "./AccountSection";
-import { FEATURE_INSTAGRAM_ENABLED } from "../src/config/features";
+import { FEATURE_INSTAGRAM_ENABLED, isInstagramMenuId } from "../src/config/features";
 
 export type MenuItemId =
   | "status"
@@ -35,15 +35,12 @@ const MENU_ITEMS: { id: MenuItemId; label: string }[] = [
   { id: "instagram-rules", label: "Instagram — Posts & Regras" },
 ];
 
-// Menu item IDs that are part of the Instagram feature
-const INSTAGRAM_MENU_IDS: MenuItemId[] = ["instagram", "instagram-auto-reply", "instagram-rules"];
-
 // Filter menu items based on feature flags
 const getVisibleMenuItems = () => {
   if (FEATURE_INSTAGRAM_ENABLED) {
     return MENU_ITEMS;
   }
-  return MENU_ITEMS.filter((item) => !INSTAGRAM_MENU_IDS.includes(item.id));
+  return MENU_ITEMS.filter((item) => !isInstagramMenuId(item.id));
 };
 
 export const Layout: React.FC<LayoutProps> = ({

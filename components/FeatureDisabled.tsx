@@ -18,7 +18,7 @@ export const FeatureDisabled: React.FC<FeatureDisabledProps> = ({
           {featureName} temporarily disabled
         </h2>
         <p className="text-slate-400 mb-6 max-w-md">
-          Instagram features are temporarily disabled. Please check back later.
+          {featureName} features are temporarily disabled. Please check back later.
         </p>
         {onGoHome && (
           <button
