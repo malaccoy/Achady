@@ -298,6 +298,23 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+const requireAdmin = async (req, res, next) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { role: true, email: true }
+  });
+
+  if (!user) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+
+  if (user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Sem permissão' });
+  }
+
+  next();
+};
+
 // =======================
 // AUTH CONTROLLER
 // =======================
@@ -3532,6 +3549,19 @@ app.post('/api/meta/instagram/rules/test', apiLimiter, requireAuth, async (req, 
 });
 
 app.use('/api', ApiRouter);
+
+// =======================
+// ADMIN ROUTES
+// =======================
+const AdminRouter = express.Router();
+AdminRouter.use(requireAuth);
+AdminRouter.use(requireAdmin);
+
+AdminRouter.get('/ping', (req, res) => {
+  res.json({ ok: true, admin: true });
+});
+
+app.use('/admin', AdminRouter);
 
 // Serve static assets for the dashboard frontend
 app.use(express.static(path.join(__dirname, 'dist')));
