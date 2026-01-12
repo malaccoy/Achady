@@ -3559,6 +3559,7 @@ app.use('/api', ApiRouter);
 // ADMIN ROUTES
 // =======================
 const AdminRouter = express.Router();
+AdminRouter.use(apiLimiter);
 AdminRouter.use(requireAuth);
 AdminRouter.use(requireAdmin);
 
