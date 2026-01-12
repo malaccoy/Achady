@@ -287,28 +287,21 @@ const botManager = new BotManager();
 const requireAuth = async (req, res, next) => {
   let token = null;
 
-  // 1. Try req.cookies?.token first
-  if (req.cookies?.token) {
-    token = req.cookies.token;
+  token = req.cookies?.token || null;
+
+  if (!token) {
+    const auth = req.get('authorization') || req.headers.authorization || '';
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    if (match) token = match[1].trim();
   }
 
-  // 2. Try Authorization header (Bearer <token>, case-insensitive)
-  if (!token && req.headers.authorization) {
-    const authHeader = req.headers.authorization;
-    const bearerMatch = authHeader.match(/^bearer\s+(.+)$/i);
-    if (bearerMatch) {
-      token = bearerMatch[1];
-    }
-  }
-
-  // 3. Fallback: manually parse req.headers.cookie for token=...
-  if (!token && req.headers.cookie) {
-    const cookieHeader = req.headers.cookie;
-    // JWT tokens use base64url encoding: A-Za-z0-9._- characters only
-    const tokenMatch = cookieHeader.match(/(?:^|;\s*)token=([A-Za-z0-9._-]+)/);
-    if (tokenMatch) {
-      token = tokenMatch[1];
-    }
+  if (!token) {
+    const raw = req.headers.cookie || '';
+    const part = raw
+      .split(';')
+      .map(s => s.trim())
+      .find(s => s.startsWith('token='));
+    if (part) token = decodeURIComponent(part.slice('token='.length));
   }
 
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
