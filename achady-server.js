@@ -299,20 +299,25 @@ const requireAuth = async (req, res, next) => {
 };
 
 const requireAdmin = async (req, res, next) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.userId },
-    select: { role: true, email: true }
-  });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { role: true, email: true }
+    });
 
-  if (!user) {
-    return res.status(401).json({ error: 'Não autenticado' });
+    if (!user) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    if (user.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Sem permissão' });
+    }
+
+    next();
+  } catch (e) {
+    console.error('[ADMIN MIDDLEWARE] Error:', e.message);
+    return res.status(500).json({ error: 'Erro interno do servidor' });
   }
-
-  if (user.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Sem permissão' });
-  }
-
-  next();
 };
 
 // =======================
