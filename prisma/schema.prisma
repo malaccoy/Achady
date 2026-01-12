@@ -7,16 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
-
 model User {
   id             String    @id @default(cuid())
   email          String    @unique
   passwordHash   String?   // null se for conta apenas OAuth
-  role           UserRole  @default(USER)
+  role           String    @default("USER")
   emailVerified  Boolean   @default(false)
   verificationToken String?        // token de verificação de email (opcional)
   resetToken        String?        // token de reset de senha (opcional)
