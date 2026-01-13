@@ -285,9 +285,12 @@ const botManager = new BotManager();
 // MIDDLEWARE
 // =======================
 const requireAuth = async (req, res, next) => {
-  // Temporary debug logging for authentication
-  console.log('[requireAuth DEBUG] Authorization header:', req.headers.authorization);
-  console.log('[requireAuth DEBUG] Cookies:', req.cookies);
+  // Temporary debug logging for authentication (only when DEBUG_AUTH=true)
+  const debugAuth = process.env.DEBUG_AUTH === 'true';
+  if (debugAuth) {
+    console.log('[requireAuth DEBUG] Authorization header:', req.headers.authorization ? 'present' : 'absent');
+    console.log('[requireAuth DEBUG] Cookies:', req.cookies ? Object.keys(req.cookies) : 'none');
+  }
 
   let token = req.cookies?.token || null;
 
@@ -303,7 +306,9 @@ const requireAuth = async (req, res, next) => {
     if (part) token = decodeURIComponent(part.slice('token='.length));
   }
 
-  console.log('[requireAuth DEBUG] Extracted token:', token ? `${token.substring(0, 20)}...` : 'null');
+  if (debugAuth) {
+    console.log('[requireAuth DEBUG] Extracted token:', token ? 'present' : 'null');
+  }
 
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
 
