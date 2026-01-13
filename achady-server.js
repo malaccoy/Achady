@@ -285,6 +285,10 @@ const botManager = new BotManager();
 // MIDDLEWARE
 // =======================
 const requireAuth = async (req, res, next) => {
+  // Temporary debug logging for authentication
+  console.log('[requireAuth DEBUG] Authorization header:', req.headers.authorization);
+  console.log('[requireAuth DEBUG] Cookies:', req.cookies);
+
   let token = req.cookies?.token || null;
 
   if (!token) {
@@ -298,6 +302,8 @@ const requireAuth = async (req, res, next) => {
     const part = raw.split(';').map(s => s.trim()).find(s => s.startsWith('token='));
     if (part) token = decodeURIComponent(part.slice('token='.length));
   }
+
+  console.log('[requireAuth DEBUG] Extracted token:', token ? `${token.substring(0, 20)}...` : 'null');
 
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
 
