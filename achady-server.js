@@ -285,22 +285,17 @@ const botManager = new BotManager();
 // MIDDLEWARE
 // =======================
 const requireAuth = async (req, res, next) => {
-  let token = null;
-
-  token = req.cookies?.token || null;
+  let token = req.cookies?.token || null;
 
   if (!token) {
     const auth = req.get('authorization') || req.headers.authorization || '';
-    const match = auth.match(/^Bearer\s+(.+)$/i);
-    if (match) token = match[1].trim();
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m) token = m[1].trim();
   }
 
   if (!token) {
     const raw = req.headers.cookie || '';
-    const part = raw
-      .split(';')
-      .map(s => s.trim())
-      .find(s => s.startsWith('token='));
+    const part = raw.split(';').map(s => s.trim()).find(s => s.startsWith('token='));
     if (part) token = decodeURIComponent(part.slice('token='.length));
   }
 
@@ -309,7 +304,7 @@ const requireAuth = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId;
-    next();
+    return next();
   } catch (e) {
     res.clearCookie('token');
     return res.status(401).json({ error: 'Sessão inválida' });
